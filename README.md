@@ -1,28 +1,29 @@
 # ScRNASeq Docker
 
-Entorno Docker reproducible para análisis de **Single-Cell RNA-seq** con R 4.5 y Python 3.
+Reproducible Docker environment for **Single-Cell RNA-seq analysis** with R 4.5 and Python 3.
 
 ---
 
-## Contenido
+## Table of Contents
 
-- [Requisitos](#requisitos)
-- [Instalación rápida](#instalación-rápida)
-- [Uso interactivo](#uso-interactivo)
-- [Paquetes incluidos](#paquetes-incluidos)
-- [Construir la imagen desde cero](#construir-la-imagen-desde-cero)
-- [Estructura del repositorio](#estructura-del-repositorio)
-
----
-
-## Requisitos
-
-- [Docker](https://docs.docker.com/get-docker/) instalado
-- ~5 GB de espacio en disco
+- [Requirements](#requirements)
+- [Quick Start](#quick-start)
+- [Interactive Use](#interactive-use)
+- [Included Packages](#included-packages)
+- [Can I install other programs? (CellRanger, CellBender...)](#can-i-install-other-programs)
+- [Build from Scratch](#build-from-scratch)
+- [Repository Structure](#repository-structure)
 
 ---
 
-## Instalación rápida
+## Requirements
+
+- [Docker](https://docs.docker.com/get-docker/) installed
+- ~5 GB of free disk space
+
+---
+
+## Quick Start
 
 ```bash
 docker pull cliford2001/scrnaseq_docker:latest
@@ -30,115 +31,163 @@ docker pull cliford2001/scrnaseq_docker:latest
 
 ---
 
-## Uso interactivo
+## Interactive Use
 
-**Sesión R:**
+**Interactive R session:**
 ```bash
 docker run --rm -it -v $(pwd):/workspace cliford2001/scrnaseq_docker:latest
 ```
 
-**Sesión Python:**
+**Interactive Python session:**
 ```bash
 docker run --rm -it -v $(pwd):/workspace cliford2001/scrnaseq_docker:latest python3
 ```
 
-**Bash (explorar el contenedor):**
+**Bash shell (explore the container):**
 ```bash
 docker run --rm -it -v $(pwd):/workspace cliford2001/scrnaseq_docker:latest bash
 ```
 
-**Correr un script R:**
+**Run an R script:**
 ```bash
-docker run --rm -v $(pwd):/workspace cliford2001/scrnaseq_docker:latest Rscript /workspace/mi_script.R
+docker run --rm -v $(pwd):/workspace cliford2001/scrnaseq_docker:latest Rscript /workspace/my_script.R
 ```
 
-**Correr un script Python:**
+**Run a Python script:**
 ```bash
-docker run --rm -v $(pwd):/workspace cliford2001/scrnaseq_docker:latest python3 /workspace/mi_script.py
+docker run --rm -v $(pwd):/workspace cliford2001/scrnaseq_docker:latest python3 /workspace/my_script.py
 ```
 
-> **Nota:** El flag `-v $(pwd):/workspace` monta tu carpeta actual dentro del contenedor en `/workspace`. Siempre ejecuta el comando desde la carpeta donde están tus datos.
+> **Note:** The `-v $(pwd):/workspace` flag mounts your current folder inside the container at `/workspace`. Always run the command from the directory where your data is located.
 
 ---
 
-## Paquetes incluidos
+## Included Packages
 
 ### R 4.5
 
-| Paquete | Versión | Descripción |
+| Package | Version | Description |
 |---|---|---|
-| Seurat | 5.4.0 | Análisis single-cell |
-| SeuratDisk | 0.0.0.9021 | Lectura/escritura de formatos h5seurat/h5ad |
-| SeuratWrappers | 0.4.0 | Integraciones con otros métodos |
-| monocle3 | 1.4.26 | Análisis de trayectorias |
-| DESeq2 | 1.50.2 | Expresión diferencial |
-| scater | 1.38.1 | Control de calidad y visualización |
-| SingleCellExperiment | 1.32.0 | Estructura de datos Bioconductor |
-| SummarizedExperiment | 1.40.0 | Contenedor de experimentos |
-| zellkonverter | 1.20.1 | Conversión SCE ↔ AnnData |
-| harmony | 1.2.4 | Integración de datasets |
-| DoubletFinder | 2.0.6 | Detección de dobletes |
-| clustree | 0.5.1 | Visualización de resoluciones de clustering |
-| hdf5r | 1.3.12 | Lectura/escritura HDF5 |
-| Matrix | 1.7-5 | Matrices dispersas |
-| ggplot2 | 4.0.2 | Visualización |
-| patchwork | 1.3.2 | Composición de gráficos |
-| cowplot | 1.2.0 | Figuras científicas |
-| gridExtra | 2.3 | Grids de gráficos |
-| dplyr | 1.2.0 | Manipulación de datos |
-| tibble | 3.3.1 | Tablas modernas |
-| tidyverse | 2.0.0 | Ecosistema de análisis de datos |
-| knitr | 1.51 | Reportes dinámicos |
-| kableExtra | 1.4.0 | Tablas en reportes |
-| VennDiagram | 1.8.2 | Diagramas de Venn |
-| ggvenn | 0.1.19 | Diagramas de Venn con ggplot2 |
-| eulerr | 7.0.4 | Diagramas de Euler |
-| UpSetR | 1.4.0 | Gráficos UpSet |
-| harmony | 1.2.4 | Integración batch |
+| Seurat | 5.4.0 | Single-cell analysis framework |
+| SeuratDisk | 0.0.0.9021 | Read/write h5seurat and h5ad formats |
+| SeuratWrappers | 0.4.0 | Integrations with external methods |
+| monocle3 | 1.4.26 | Trajectory analysis |
+| DESeq2 | 1.50.2 | Differential expression |
+| scater | 1.38.1 | QC and visualization (Bioconductor) |
+| SingleCellExperiment | 1.32.0 | Bioconductor single-cell data structure |
+| SummarizedExperiment | 1.40.0 | Bioconductor experiment container |
+| zellkonverter | 1.20.1 | SCE ↔ AnnData conversion |
+| harmony | 1.2.4 | Dataset integration / batch correction |
+| DoubletFinder | 2.0.6 | Doublet detection |
+| clustree | 0.5.1 | Clustering resolution visualization |
+| hdf5r | 1.3.12 | HDF5 file I/O |
+| Matrix | 1.7-5 | Sparse matrix support |
+| ggplot2 | 4.0.2 | Data visualization |
+| patchwork | 1.3.2 | Composing plots |
+| cowplot | 1.2.0 | Publication-ready figures |
+| gridExtra | 2.3 | Plot grids |
+| dplyr | 1.2.0 | Data manipulation |
+| tibble | 3.3.1 | Modern data frames |
+| tidyverse | 2.0.0 | Data analysis ecosystem |
+| knitr | 1.51 | Dynamic reports |
+| kableExtra | 1.4.0 | Enhanced tables in reports |
+| VennDiagram | 1.8.2 | Venn diagrams |
+| ggvenn | 0.1.19 | Venn diagrams with ggplot2 |
+| eulerr | 7.0.4 | Euler diagrams |
+| UpSetR | 1.4.0 | UpSet plots |
 
 ### Python 3
 
-| Paquete | Descripción |
+| Package | Description |
 |---|---|
-| scanpy | Análisis single-cell en Python |
-| scFates | Análisis de trayectorias |
-| palantir | Diferenciación celular y trayectorias |
-| pandas | Manipulación de datos |
-| numpy | Cálculo numérico |
-| scipy | Estadística científica |
+| scanpy | Single-cell analysis in Python |
+| scFates | Trajectory analysis |
+| palantir | Cell differentiation and trajectories |
+| pandas | Data manipulation |
+| numpy | Numerical computing |
+| scipy | Scientific statistics |
 | scikit-learn | Machine learning |
-| matplotlib | Visualización |
-| seaborn | Visualización estadística |
+| matplotlib | Visualization |
+| seaborn | Statistical visualization |
 
 ---
 
-## Construir la imagen desde cero
+## Can I install other programs?
 
-Necesitas un [token de GitHub](https://github.com/settings/tokens) para instalar los paquetes privados/GitHub.
+**Yes.** Any tool available as a system package, pip package, or binary can be added to the Dockerfile.
+
+### CellBender
+
+CellBender (ambient RNA removal) can be added directly since it is a Python package:
+
+```dockerfile
+RUN pip install --no-cache-dir cellbender
+```
+
+Or install it inside a running container for testing:
+```bash
+docker run --rm -it cliford2001/scrnaseq_docker:latest bash
+pip install cellbender
+```
+
+### CellRanger
+
+CellRanger (10x Genomics read alignment) requires a **manual download** from the [10x Genomics website](https://www.10xgenomics.com/support/software/cell-ranger/downloads) (free registration required). Once downloaded, it can be added to the Dockerfile like this:
+
+```dockerfile
+# Copy the downloaded tarball into the image
+COPY cellranger-9.0.0.tar.gz /opt/
+RUN tar -xzf /opt/cellranger-9.0.0.tar.gz -C /opt/ && \
+    rm /opt/cellranger-9.0.0.tar.gz
+ENV PATH="/opt/cellranger-9.0.0:$PATH"
+```
+
+Then build with:
+```bash
+# Place the cellranger tarball in the same folder as the Dockerfile
+docker build -t scrnaseq_docker:cellranger .
+```
+
+### Other tools
+
+| Tool | How to add |
+|---|---|
+| STARsolo | `apt-get install star` |
+| Salmon / Alevin | `apt-get install salmon` |
+| samtools | `apt-get install samtools` |
+| FastQC | `apt-get install fastqc` |
+| Trim Galore | `apt-get install trim-galore` |
+
+---
+
+## Build from Scratch
+
+You need a [GitHub personal access token](https://github.com/settings/tokens) to install packages from GitHub.
 
 ```bash
 git clone https://github.com/cliford2001/ScRNASeq-Docker.git
 cd ScRNASeq-Docker
-docker build --build-arg GITHUB_PAT=tu_token -t scrnaseq_docker:latest .
+docker build --build-arg GITHUB_PAT=your_token -t scrnaseq_docker:latest .
 ```
 
-> El build tarda aproximadamente **45-60 minutos** la primera vez por la compilación de paquetes C++ (BPCells/monocle3).
+> The build takes approximately **45–60 minutes** on the first run due to C++ compilation (BPCells/monocle3).
 
 ---
 
-## Estructura del repositorio
+## Repository Structure
 
 ```
 ScRNASeq-Docker/
-├── Dockerfile          # Definición completa de la imagen
-├── docker-compose.yml  # Configuración para docker compose
-└── workspace/          # Carpeta montada por defecto (tus datos van aquí)
+├── Dockerfile          # Full image definition
+├── docker-compose.yml  # docker compose configuration
+└── workspace/          # Default mount point for your data
 ```
 
 ---
 
-## Ejemplo de uso en R
+## Usage Examples
 
+**R:**
 ```r
 library(Seurat)
 library(harmony)
@@ -147,12 +196,11 @@ library(DESeq2)
 library(ggplot2)
 library(patchwork)
 
-# Cargar datos (deben estar en /workspace)
-seurat_obj <- readRDS("/workspace/mi_objeto.rds")
+# Load data (must be in /workspace)
+seurat_obj <- readRDS("/workspace/my_object.rds")
 ```
 
-## Ejemplo de uso en Python
-
+**Python:**
 ```python
 import scanpy as sc
 import scFates as scf
@@ -160,12 +208,12 @@ import palantir
 import pandas as pd
 import numpy as np
 
-# Cargar datos
-adata = sc.read_h5ad("/workspace/mi_datos.h5ad")
+# Load data
+adata = sc.read_h5ad("/workspace/my_data.h5ad")
 ```
 
 ---
 
-## Autor
+## Author
 
-Desarrollado por [@cliford2001](https://github.com/cliford2001)
+Developed by [@cliford2001](https://github.com/cliford2001)
