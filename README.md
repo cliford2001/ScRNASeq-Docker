@@ -109,6 +109,7 @@ docker run --rm -v $(pwd):/workspace cliford2001/scrnaseq_docker:latest python3 
 | scikit-learn | Machine learning |
 | matplotlib | Visualization |
 | seaborn | Statistical visualization |
+| cellbender | Ambient RNA removal |
 
 ---
 
@@ -118,16 +119,12 @@ docker run --rm -v $(pwd):/workspace cliford2001/scrnaseq_docker:latest python3 
 
 ### CellBender
 
-CellBender (ambient RNA removal) can be added directly since it is a Python package:
+CellBender (ambient RNA removal) is **already included** in this image. Use it directly:
 
-```dockerfile
-RUN pip install --no-cache-dir cellbender
-```
-
-Or install it inside a running container for testing:
 ```bash
-docker run --rm -it cliford2001/scrnaseq_docker:latest bash
-pip install cellbender
+cellbender remove-background \
+    --input raw_feature_bc_matrix.h5 \
+    --output output.h5
 ```
 
 ### CellRanger
