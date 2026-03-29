@@ -63,13 +63,13 @@ docker --version
 ### Linux / Mac
 
 ```bash
-docker pull cliford2001/scrnaseq_docker:latest
+docker pull mvergara19/scrnaseq_docker:latest
 ```
 
 ### Windows (PowerShell)
 
 ```powershell
-docker pull cliford2001/scrnaseq_docker:latest
+docker pull mvergara19/scrnaseq_docker:latest
 ```
 
 ---
@@ -80,54 +80,54 @@ docker pull cliford2001/scrnaseq_docker:latest
 
 **Interactive R session:**
 ```bash
-docker run --rm -it -v $(pwd):/workspace cliford2001/scrnaseq_docker:latest
+docker run --rm -it -v $(pwd):/workspace mvergara19/scrnaseq_docker:latest
 ```
 
 **Interactive Python session:**
 ```bash
-docker run --rm -it -v $(pwd):/workspace cliford2001/scrnaseq_docker:latest python3
+docker run --rm -it -v $(pwd):/workspace mvergara19/scrnaseq_docker:latest python3
 ```
 
 **Bash shell:**
 ```bash
-docker run --rm -it -v $(pwd):/workspace cliford2001/scrnaseq_docker:latest bash
+docker run --rm -it -v $(pwd):/workspace mvergara19/scrnaseq_docker:latest bash
 ```
 
 **Run an R script:**
 ```bash
-docker run --rm -v $(pwd):/workspace cliford2001/scrnaseq_docker:latest Rscript /workspace/my_script.R
+docker run --rm -v $(pwd):/workspace mvergara19/scrnaseq_docker:latest Rscript /workspace/my_script.R
 ```
 
 **Run a Python script:**
 ```bash
-docker run --rm -v $(pwd):/workspace cliford2001/scrnaseq_docker:latest python3 /workspace/my_script.py
+docker run --rm -v $(pwd):/workspace mvergara19/scrnaseq_docker:latest python3 /workspace/my_script.py
 ```
 
 ### Windows (PowerShell)
 
 **Interactive R session:**
 ```powershell
-docker run --rm -it -v ${PWD}:/workspace cliford2001/scrnaseq_docker:latest
+docker run --rm -it -v ${PWD}:/workspace mvergara19/scrnaseq_docker:latest
 ```
 
 **Interactive Python session:**
 ```powershell
-docker run --rm -it -v ${PWD}:/workspace cliford2001/scrnaseq_docker:latest python3
+docker run --rm -it -v ${PWD}:/workspace mvergara19/scrnaseq_docker:latest python3
 ```
 
 **Bash shell:**
 ```powershell
-docker run --rm -it -v ${PWD}:/workspace cliford2001/scrnaseq_docker:latest bash
+docker run --rm -it -v ${PWD}:/workspace mvergara19/scrnaseq_docker:latest bash
 ```
 
 **Run an R script:**
 ```powershell
-docker run --rm -v ${PWD}:/workspace cliford2001/scrnaseq_docker:latest Rscript /workspace/my_script.R
+docker run --rm -v ${PWD}:/workspace mvergara19/scrnaseq_docker:latest Rscript /workspace/my_script.R
 ```
 
 **Run a Python script:**
 ```powershell
-docker run --rm -v ${PWD}:/workspace cliford2001/scrnaseq_docker:latest python3 /workspace/my_script.py
+docker run --rm -v ${PWD}:/workspace mvergara19/scrnaseq_docker:latest python3 /workspace/my_script.py
 ```
 
 > **Note:** The `-v` flag mounts your current folder into the container at `/workspace`.
@@ -201,7 +201,7 @@ CellRanger 9.0.1 is already included. Example usage:
 
 **Linux / Mac:**
 ```bash
-docker run --rm -v $(pwd):/workspace cliford2001/scrnaseq_docker:latest \
+docker run --rm -v $(pwd):/workspace mvergara19/scrnaseq_docker:latest \
     cellranger count \
     --id=sample \
     --transcriptome=/workspace/refdata \
@@ -211,7 +211,7 @@ docker run --rm -v $(pwd):/workspace cliford2001/scrnaseq_docker:latest \
 
 **Windows (PowerShell):**
 ```powershell
-docker run --rm -v ${PWD}:/workspace cliford2001/scrnaseq_docker:latest `
+docker run --rm -v ${PWD}:/workspace mvergara19/scrnaseq_docker:latest `
     cellranger count `
     --id=sample `
     --transcriptome=/workspace/refdata `
@@ -225,7 +225,7 @@ CellBender is already included. Example usage:
 
 **Linux / Mac:**
 ```bash
-docker run --rm -v $(pwd):/workspace cliford2001/scrnaseq_docker:latest \
+docker run --rm -v $(pwd):/workspace mvergara19/scrnaseq_docker:latest \
     cellbender remove-background \
     --input /workspace/raw_feature_bc_matrix.h5 \
     --output /workspace/output.h5
@@ -233,7 +233,7 @@ docker run --rm -v $(pwd):/workspace cliford2001/scrnaseq_docker:latest \
 
 **Windows (PowerShell):**
 ```powershell
-docker run --rm -v ${PWD}:/workspace cliford2001/scrnaseq_docker:latest `
+docker run --rm -v ${PWD}:/workspace mvergara19/scrnaseq_docker:latest `
     cellbender remove-background `
     --input /workspace/raw_feature_bc_matrix.h5 `
     --output /workspace/output.h5
