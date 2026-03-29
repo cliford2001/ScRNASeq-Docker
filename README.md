@@ -19,7 +19,23 @@ Reproducible Docker environment for **Single-Cell RNA-seq analysis** with R 4.5 
 ## Requirements
 
 - [Docker](https://docs.docker.com/get-docker/) installed
-- ~5 GB of free disk space
+- ~10 GB of free disk space
+
+### Installing Docker
+
+**Ubuntu/Debian:**
+```bash
+sudo apt-get update
+sudo apt-get install -y docker.io
+sudo systemctl enable --now docker
+sudo usermod -aG docker $USER  # run Docker without sudo (re-login required)
+```
+
+**Mac:** Download [Docker Desktop](https://www.docker.com/products/docker-desktop/)
+
+**Windows:** Download [Docker Desktop](https://www.docker.com/products/docker-desktop/)
+
+> After installing, verify it works with: `docker --version`
 
 ---
 
