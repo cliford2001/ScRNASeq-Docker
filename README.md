@@ -172,18 +172,18 @@ docker run --rm -v ${PWD}:/workspace mvergara19/scrnaseq_docker:latest python3 /
 
 ### Python 3
 
-| Package | Description |
-|---|---|
-| scanpy | Single-cell analysis in Python |
-| scFates | Trajectory analysis |
-| palantir | Cell differentiation and trajectories |
-| cellbender | Ambient RNA removal |
-| pandas | Data manipulation |
-| numpy | Numerical computing |
-| scipy | Scientific statistics |
-| scikit-learn | Machine learning |
-| matplotlib | Visualization |
-| seaborn | Statistical visualization |
+| Package | Version | Description |
+|---|---|---|
+| scanpy | 1.12 | Single-cell analysis in Python |
+| scFates | 1.2.3 | Trajectory analysis |
+| palantir | 1.4.4 | Cell differentiation and trajectories |
+| cellbender | 0.3.0 | Ambient RNA removal |
+| pandas | 2.3.3 | Data manipulation |
+| numpy | 2.4.3 | Numerical computing |
+| scipy | 1.17.1 | Scientific statistics |
+| scikit-learn | 1.8.0 | Machine learning |
+| matplotlib | 3.10.8 | Visualization |
+| seaborn | 0.13.2 | Statistical visualization |
 
 ### Command-line tools
 
