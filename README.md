@@ -201,36 +201,14 @@ CellRanger 9.0.1 is already included. Example usage:
 
 **Linux / Mac:**
 ```bash
-# Create transcriptome reference
 docker run --rm -v $(pwd):/workspace mvergara19/scrnaseq_docker:latest \
-    cellranger mkref --genome=Ara --fasta=Arabi.fasta --genes=Arabi.gtf
-
-# Run counts
-docker run --rm -v $(pwd):/workspace mvergara19/scrnaseq_docker:latest \
-    cellranger count --localcores=80 --id=Sample_0N --fastqs=. --sample=SITTB12 --transcriptome=Ara --create-bam false
-
-docker run --rm -v $(pwd):/workspace mvergara19/scrnaseq_docker:latest \
-    cellranger count --localcores=80 --id=Sample_05N --fastqs=. --sample=SITTC12 --transcriptome=Ara --create-bam false
-
-docker run --rm -v $(pwd):/workspace mvergara19/scrnaseq_docker:latest \
-    cellranger count --localcores=80 --id=Sample_5N --fastqs=. --sample=SITTD12 --transcriptome=Ara --create-bam false
+    cellranger count --id=sample_id --fastqs=/workspace/fastqs --sample=sample_name --transcriptome=/workspace/refdata
 ```
 
 **Windows (PowerShell):**
 ```powershell
-# Create transcriptome reference
 docker run --rm -v ${PWD}:/workspace mvergara19/scrnaseq_docker:latest `
-    cellranger mkref --genome=Ara --fasta=Arabi.fasta --genes=Arabi.gtf
-
-# Run counts
-docker run --rm -v ${PWD}:/workspace mvergara19/scrnaseq_docker:latest `
-    cellranger count --localcores=80 --id=Sample_0N --fastqs=. --sample=SITTB12 --transcriptome=Ara --create-bam false
-
-docker run --rm -v ${PWD}:/workspace mvergara19/scrnaseq_docker:latest `
-    cellranger count --localcores=80 --id=Sample_05N --fastqs=. --sample=SITTC12 --transcriptome=Ara --create-bam false
-
-docker run --rm -v ${PWD}:/workspace mvergara19/scrnaseq_docker:latest `
-    cellranger count --localcores=80 --id=Sample_5N --fastqs=. --sample=SITTD12 --transcriptome=Ara --create-bam false
+    cellranger count --id=sample_id --fastqs=/workspace/fastqs --sample=sample_name --transcriptome=/workspace/refdata
 ```
 
 ### CellBender
@@ -240,45 +218,13 @@ CellBender is already included. Example usage:
 **Linux / Mac:**
 ```bash
 docker run --rm -v $(pwd):/workspace mvergara19/scrnaseq_docker:latest \
-    cellbender remove-background \
-    --input ./Sample_0N/outs/raw_feature_bc_matrix.h5 \
-    --output ./Cellbender/Sample_0N/Cellbender_0N.h5 \
-    --output-filtered-matrix ./Cellbender/Sample_0N/cellbender_filtered_output/ \
-    --checkpoint 0N.tar.gz --force-use-checkpoint --cpu-threads 80
-
-docker run --rm -v $(pwd):/workspace mvergara19/scrnaseq_docker:latest \
-    cellbender remove-background \
-    --input ./Sample_05N/outs/raw_feature_bc_matrix.h5 \
-    --output ./Cellbender/Sample_05N/Cellbender_05N.h5 \
-    --checkpoint 05N.tar.gz --force-use-checkpoint --cpu-threads 80
-
-docker run --rm -v $(pwd):/workspace mvergara19/scrnaseq_docker:latest \
-    cellbender remove-background \
-    --input ./Sample_5N/outs/raw_feature_bc_matrix.h5 \
-    --output ./Cellbender/Sample_5N/Cellbender_5N.h5 \
-    --checkpoint 5N.tar.gz --force-use-checkpoint --cpu-threads 80
+    cellbender remove-background --input /workspace/raw_feature_bc_matrix.h5 --output /workspace/output.h5
 ```
 
 **Windows (PowerShell):**
 ```powershell
 docker run --rm -v ${PWD}:/workspace mvergara19/scrnaseq_docker:latest `
-    cellbender remove-background `
-    --input ./Sample_0N/outs/raw_feature_bc_matrix.h5 `
-    --output ./Cellbender/Sample_0N/Cellbender_0N.h5 `
-    --output-filtered-matrix ./Cellbender/Sample_0N/cellbender_filtered_output/ `
-    --checkpoint 0N.tar.gz --force-use-checkpoint --cpu-threads 80
-
-docker run --rm -v ${PWD}:/workspace mvergara19/scrnaseq_docker:latest `
-    cellbender remove-background `
-    --input ./Sample_05N/outs/raw_feature_bc_matrix.h5 `
-    --output ./Cellbender/Sample_05N/Cellbender_05N.h5 `
-    --checkpoint 05N.tar.gz --force-use-checkpoint --cpu-threads 80
-
-docker run --rm -v ${PWD}:/workspace mvergara19/scrnaseq_docker:latest `
-    cellbender remove-background `
-    --input ./Sample_5N/outs/raw_feature_bc_matrix.h5 `
-    --output ./Cellbender/Sample_5N/Cellbender_5N.h5 `
-    --checkpoint 5N.tar.gz --force-use-checkpoint --cpu-threads 80
+    cellbender remove-background --input /workspace/raw_feature_bc_matrix.h5 --output /workspace/output.h5
 ```
 
 ---
