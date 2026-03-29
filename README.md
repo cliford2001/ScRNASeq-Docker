@@ -129,7 +129,7 @@ cellbender remove-background \
 
 ### CellRanger
 
-CellRanger 10.0.0 is **already included** in this image. Use it directly:
+CellRanger 9.0.1 is **already included** in this image. Use it directly:
 
 ```bash
 docker run --rm -v $(pwd):/workspace scrnaseq_docker:latest \

@@ -97,10 +97,10 @@ RUN R -e "install.packages('https://cran.r-project.org/src/contrib/Archive/grr/g
 RUN R -e "remotes::install_github('cole-trapnell-lab/monocle3')"
 
 # ── CellRanger 10.0.0 ─────────────────────────────────────────────────────────
-COPY cellranger-10.0.0.tar.gz /opt/
-RUN tar -xzf /opt/cellranger-10.0.0.tar.gz -C /opt/ && \
-    rm /opt/cellranger-10.0.0.tar.gz
-ENV PATH="/opt/cellranger-10.0.0:$PATH"
+COPY cellranger-9.0.1.tar.gz /opt/
+RUN tar -xzf /opt/cellranger-9.0.1.tar.gz -C /opt/ && \
+    rm /opt/cellranger-9.0.1.tar.gz
+ENV PATH="/opt/cellranger-9.0.1:$PATH"
 
 WORKDIR /workspace
 
