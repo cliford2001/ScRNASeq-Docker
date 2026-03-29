@@ -2,15 +2,18 @@
 
 Reproducible Docker environment for **Single-Cell RNA-seq analysis** with R 4.5 and Python 3.
 
+Includes: Seurat 5, monocle3, DESeq2, harmony, CellRanger 9.0.1, CellBender, scanpy, and more.
+
 ---
 
 ## Table of Contents
 
 - [Requirements](#requirements)
+- [Installing Docker](#installing-docker)
 - [Quick Start](#quick-start)
 - [Interactive Use](#interactive-use)
 - [Included Packages](#included-packages)
-- [Can I install other programs? (CellRanger, CellBender...)](#can-i-install-other-programs)
+- [CellRanger & CellBender](#cellranger--cellbender)
 - [Build from Scratch](#build-from-scratch)
 - [Repository Structure](#repository-structure)
 
@@ -18,36 +21,62 @@ Reproducible Docker environment for **Single-Cell RNA-seq analysis** with R 4.5 
 
 ## Requirements
 
-- [Docker](https://docs.docker.com/get-docker/) installed
+- Docker installed (see below)
 - ~10 GB of free disk space
 
-### Installing Docker
+---
 
-**Ubuntu/Debian:**
+## Installing Docker
+
+### Linux (Ubuntu/Debian)
+
 ```bash
 sudo apt-get update
 sudo apt-get install -y docker.io
 sudo systemctl enable --now docker
-sudo usermod -aG docker $USER  # run Docker without sudo (re-login required)
+sudo usermod -aG docker $USER   # allows running Docker without sudo
 ```
+> **Re-login** after running `usermod` for the change to take effect.
+> Verify: `docker --version`
 
-**Mac:** Download [Docker Desktop](https://www.docker.com/products/docker-desktop/)
+### Mac
 
-**Windows:** Download [Docker Desktop](https://www.docker.com/products/docker-desktop/)
+1. Download [Docker Desktop for Mac](https://www.docker.com/products/docker-desktop/)
+2. Open the `.dmg` and drag Docker to Applications
+3. Launch Docker Desktop from Applications
+4. Verify: open Terminal and run `docker --version`
 
-> After installing, verify it works with: `docker --version`
+### Windows (PowerShell)
+
+1. Download [Docker Desktop for Windows](https://www.docker.com/products/docker-desktop/)
+2. Run the installer (requires WSL 2 — the installer will guide you)
+3. Launch Docker Desktop
+4. Verify: open PowerShell and run:
+```powershell
+docker --version
+```
 
 ---
 
 ## Quick Start
 
+### Linux / Mac
+
 ```bash
+docker pull cliford2001/scrnaseq_docker:latest
+```
+
+### Windows (PowerShell)
+
+```powershell
 docker pull cliford2001/scrnaseq_docker:latest
 ```
 
 ---
 
 ## Interactive Use
+
+### Linux / Mac
 
 **Interactive R session:**
 ```bash
@@ -59,7 +88,7 @@ docker run --rm -it -v $(pwd):/workspace cliford2001/scrnaseq_docker:latest
 docker run --rm -it -v $(pwd):/workspace cliford2001/scrnaseq_docker:latest python3
 ```
 
-**Bash shell (explore the container):**
+**Bash shell:**
 ```bash
 docker run --rm -it -v $(pwd):/workspace cliford2001/scrnaseq_docker:latest bash
 ```
@@ -74,7 +103,36 @@ docker run --rm -v $(pwd):/workspace cliford2001/scrnaseq_docker:latest Rscript 
 docker run --rm -v $(pwd):/workspace cliford2001/scrnaseq_docker:latest python3 /workspace/my_script.py
 ```
 
-> **Note:** The `-v $(pwd):/workspace` flag mounts your current folder inside the container at `/workspace`. Always run the command from the directory where your data is located.
+### Windows (PowerShell)
+
+**Interactive R session:**
+```powershell
+docker run --rm -it -v ${PWD}:/workspace cliford2001/scrnaseq_docker:latest
+```
+
+**Interactive Python session:**
+```powershell
+docker run --rm -it -v ${PWD}:/workspace cliford2001/scrnaseq_docker:latest python3
+```
+
+**Bash shell:**
+```powershell
+docker run --rm -it -v ${PWD}:/workspace cliford2001/scrnaseq_docker:latest bash
+```
+
+**Run an R script:**
+```powershell
+docker run --rm -v ${PWD}:/workspace cliford2001/scrnaseq_docker:latest Rscript /workspace/my_script.R
+```
+
+**Run a Python script:**
+```powershell
+docker run --rm -v ${PWD}:/workspace cliford2001/scrnaseq_docker:latest python3 /workspace/my_script.py
+```
+
+> **Note:** The `-v` flag mounts your current folder into the container at `/workspace`.
+> Linux/Mac use `$(pwd)`, Windows PowerShell uses `${PWD}`.
+> Always run the command from the directory where your data is located.
 
 ---
 
@@ -119,36 +177,31 @@ docker run --rm -v $(pwd):/workspace cliford2001/scrnaseq_docker:latest python3 
 | scanpy | Single-cell analysis in Python |
 | scFates | Trajectory analysis |
 | palantir | Cell differentiation and trajectories |
+| cellbender | Ambient RNA removal |
 | pandas | Data manipulation |
 | numpy | Numerical computing |
 | scipy | Scientific statistics |
 | scikit-learn | Machine learning |
 | matplotlib | Visualization |
 | seaborn | Statistical visualization |
-| cellbender | Ambient RNA removal |
+
+### Command-line tools
+
+| Tool | Version | Description |
+|---|---|---|
+| CellRanger | 9.0.1 | 10x Genomics read alignment and quantification |
 
 ---
 
-## Can I install other programs?
-
-**Yes.** Any tool available as a system package, pip package, or binary can be added to the Dockerfile.
-
-### CellBender
-
-CellBender (ambient RNA removal) is **already included** in this image. Use it directly:
-
-```bash
-cellbender remove-background \
-    --input raw_feature_bc_matrix.h5 \
-    --output output.h5
-```
+## CellRanger & CellBender
 
 ### CellRanger
 
-CellRanger 9.0.1 is **already included** in this image. Use it directly:
+CellRanger 9.0.1 is already included. Example usage:
 
+**Linux / Mac:**
 ```bash
-docker run --rm -v $(pwd):/workspace scrnaseq_docker:latest \
+docker run --rm -v $(pwd):/workspace cliford2001/scrnaseq_docker:latest \
     cellranger count \
     --id=sample \
     --transcriptome=/workspace/refdata \
@@ -156,40 +209,60 @@ docker run --rm -v $(pwd):/workspace scrnaseq_docker:latest \
     --sample=sample_name
 ```
 
-### Other tools
+**Windows (PowerShell):**
+```powershell
+docker run --rm -v ${PWD}:/workspace cliford2001/scrnaseq_docker:latest `
+    cellranger count `
+    --id=sample `
+    --transcriptome=/workspace/refdata `
+    --fastqs=/workspace/fastqs `
+    --sample=sample_name
+```
 
-| Tool | How to add |
-|---|---|
-| STARsolo | `apt-get install star` |
-| Salmon / Alevin | `apt-get install salmon` |
-| samtools | `apt-get install samtools` |
-| FastQC | `apt-get install fastqc` |
-| Trim Galore | `apt-get install trim-galore` |
+### CellBender
+
+CellBender is already included. Example usage:
+
+**Linux / Mac:**
+```bash
+docker run --rm -v $(pwd):/workspace cliford2001/scrnaseq_docker:latest \
+    cellbender remove-background \
+    --input /workspace/raw_feature_bc_matrix.h5 \
+    --output /workspace/output.h5
+```
+
+**Windows (PowerShell):**
+```powershell
+docker run --rm -v ${PWD}:/workspace cliford2001/scrnaseq_docker:latest `
+    cellbender remove-background `
+    --input /workspace/raw_feature_bc_matrix.h5 `
+    --output /workspace/output.h5
+```
 
 ---
 
 ## Build from Scratch
 
 You need a [GitHub personal access token](https://github.com/settings/tokens) to install packages from GitHub.
+You also need the `cellranger-9.0.1.tar.gz` file downloaded from [10x Genomics](https://www.10xgenomics.com/support/software/cell-ranger/downloads) placed in the same folder as the Dockerfile.
 
+**Linux / Mac:**
 ```bash
 git clone https://github.com/cliford2001/ScRNASeq-Docker.git
 cd ScRNASeq-Docker
+# Place cellranger-9.0.1.tar.gz here
+docker build --build-arg GITHUB_PAT=your_token -t scrnaseq_docker:latest .
+```
+
+**Windows (PowerShell):**
+```powershell
+git clone https://github.com/cliford2001/ScRNASeq-Docker.git
+cd ScRNASeq-Docker
+# Place cellranger-9.0.1.tar.gz here
 docker build --build-arg GITHUB_PAT=your_token -t scrnaseq_docker:latest .
 ```
 
 > The build takes approximately **45–60 minutes** on the first run due to C++ compilation (BPCells/monocle3).
-
----
-
-## Repository Structure
-
-```
-ScRNASeq-Docker/
-├── Dockerfile          # Full image definition
-├── docker-compose.yml  # docker compose configuration
-└── workspace/          # Default mount point for your data
-```
 
 ---
 
@@ -218,6 +291,17 @@ import numpy as np
 
 # Load data
 adata = sc.read_h5ad("/workspace/my_data.h5ad")
+```
+
+---
+
+## Repository Structure
+
+```
+ScRNASeq-Docker/
+├── Dockerfile          # Full image definition
+├── docker-compose.yml  # docker compose configuration
+└── workspace/          # Default mount point for your data
 ```
 
 ---
