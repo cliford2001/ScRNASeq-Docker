@@ -129,20 +129,15 @@ cellbender remove-background \
 
 ### CellRanger
 
-CellRanger (10x Genomics read alignment) requires a **manual download** from the [10x Genomics website](https://www.10xgenomics.com/support/software/cell-ranger/downloads) (free registration required). Once downloaded, it can be added to the Dockerfile like this:
+CellRanger 10.0.0 is **already included** in this image. Use it directly:
 
-```dockerfile
-# Copy the downloaded tarball into the image
-COPY cellranger-9.0.0.tar.gz /opt/
-RUN tar -xzf /opt/cellranger-9.0.0.tar.gz -C /opt/ && \
-    rm /opt/cellranger-9.0.0.tar.gz
-ENV PATH="/opt/cellranger-9.0.0:$PATH"
-```
-
-Then build with:
 ```bash
-# Place the cellranger tarball in the same folder as the Dockerfile
-docker build -t scrnaseq_docker:cellranger .
+docker run --rm -v $(pwd):/workspace scrnaseq_docker:latest \
+    cellranger count \
+    --id=sample \
+    --transcriptome=/workspace/refdata \
+    --fastqs=/workspace/fastqs \
+    --sample=sample_name
 ```
 
 ### Other tools
