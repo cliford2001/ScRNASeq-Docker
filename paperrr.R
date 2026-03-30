@@ -299,3 +299,249 @@ FeaturePlot(sub_obj, features = gene)
 # ── Gene set, one cell type ───────────────────────────────────────────────────
 VlnPlot(sub_obj, features = genes_of_interest)
 FeaturePlot(sub_obj, features = genes_of_interest)
+
+# ============================================================
+# AGRUPACIÓN DE TIPOS CELULARES (OPCIONAL)
+# ============================================================
+
+# Definir agrupaciones: "nombre original" = "nombre agrupado"
+# Los tipos no listados aquí mantienen su nombre original
+grouping <- c(
+  "Companion Cell"    = "Vascular Cell",
+  "Cambium"           = "Vascular Cell",
+  "Phloem Parenchyma" = "Vascular Cell",
+  "Xylem"             = "Vascular Cell",
+  "Sieve Element"     = "Vascular Cell",
+  "Meristemoid"       = "Stomatal Line"
+)
+
+pbmc_harmony$annotation_agrupada <- recode(pbmc_harmony$celltype_reference, !!!grouping)
+
+# Para usar la agrupación en plots, cambiar la columna:
+# group.by = "annotation_agrupada"
+
+# ============================================================
+# UMAP
+# ============================================================
+
+figure <- DimPlot(pbmc_harmony,
+                  group.by = "annotation_agrupada",  # <- cambiar a annotation_agrupada si se desea
+                  label = TRUE, repel = TRUE, raster = FALSE)
+
+ggsave(file.path("metodologia/umap_annotated.pdf"), figure, width = 18, height = 18, dpi = 500, limitsize = FALSE)
+
+
+
+
+# ============================================================
+# CURACIÓN DE TIPOS CELULARES
+# ============================================================
+
+Idents(pbmc_harmony) <- "annotation_agrupada"
+
+marcadores <- read.table("recursos/biblio_marks.txt", header = TRUE, sep = "\t", quote = "")
+
+# --- PASO 1: Definir qué tipos celulares quieres subclustarizar ---
+tipos_a_curar <- c("Meristemoid", "Pavement Cell")  # modificar según necesidad
+
+# --- PASO 3: Subclustar e inspeccionar ---
+# Correr uno a la vez, inspeccionar, luego definir correcciones
+meristemoid_umap   <- subclustar_tipo(pbmc_harmony, "Stomatal Line")
+pavement_cell_umap <- subclustar_tipo(pbmc_harmony, "Pavement Cell")
+
+# Inspeccionar clusters
+DimPlot(meristemoid_umap,   group.by = "cluster_subtipo", label = TRUE, raster = FALSE)
+DimPlot(pavement_cell_umap, group.by = "cluster_subtipo", label = TRUE, raster = FALSE)
+
+# Inspeccionar marcadores bibliográficos
+for (i in 1:nrow(marcadores)) {
+  print(FeaturePlot(pavement_cell_umap, features = marcadores$gene[i]) +
+          ggtitle(paste(marcadores$cell.type[i], "-", marcadores$gene[i])))
+}
+
+# Ver marcadores de cada cluster
+markers_meristemoid   <- FindAllMarkers(meristemoid_umap,   only.pos = TRUE, min.pct = 0.25, logfc.threshold = 0.25)
+markers_pavement_cell <- FindAllMarkers(pavement_cell_umap, only.pos = TRUE, min.pct = 0.25, logfc.threshold = 0.25)
+
+markers_meristemoid   %>% group_by(cluster) %>% slice_max(n = 3, order_by = avg_log2FC)
+markers_pavement_cell %>% group_by(cluster) %>% slice_max(n = 3, order_by = avg_log2FC)
+
+# ============================================================
+# PASO 4: Definir correcciones DESPUÉS de inspeccionar
+# ============================================================
+# Llenar esto luego de ver los plots y marcadores
+
+correcciones <- list(
+  
+  # Meristemoid = list(
+  #   obj = meristemoid_umap,
+  #   mapa = c(
+  #     "0" = "Stomatal Line",
+  #     "1" = "Stomatal Line",
+  #     "2" = "Pavement Cell",  # <- este cluster se reasigna
+  #     "3" = "Stomatal Line",
+  #     "4" = "Stomatal Line"
+  #   )
+  # ),
+  
+  PavementCell = list(
+    obj = pavement_cell_umap,
+    mapa = c(
+      "0" = "Pavement Cell",
+      "1" = "Pavement Cell",
+      "2" = "Pavement Cell",
+      "3" = "Mesophyll",      # <- este cluster se reasigna
+      "4" = "Pavement Cell"
+    )
+  )
+)
+
+# ============================================================
+# PASO 5: Aplicar correcciones al objeto global
+# ============================================================
+
+# Primero copiar anotación base
+pbmc_harmony$celltype_reference_cutared <- pbmc_harmony$annotation_agrupada
+
+# Aplicar correcciones de subcluster
+for (tipo in names(correcciones)) {
+  obj_local   <- correcciones[[tipo]]$obj
+  mapa_local  <- correcciones[[tipo]]$mapa
+  celdas      <- colnames(obj_local)
+  nuevos      <- mapa_local[obj_local$cluster_subtipo]
+  pbmc_harmony$celltype_reference_cutared[celdas] <- nuevos
+}
+
+pbmc_harmony$celltype_reference_curated <- pbmc_harmony$annotation_agrupada
+
+# TYPO 2: en el DimPlot usas otro nombre distinto
+# Tenías:   group.by = "celltype_reference"
+# Corregir:
+figure <- DimPlot(pbmc_harmony, group.by = "celltype_reference_curated",
+                  label = TRUE, repel = TRUE, raster = FALSE)
+
+ggsave(file.path(output_dir, "umap_curada.pdf"), figure, width = 18, height = 18,
+       dpi = 500, limitsize = FALSE)
+
+# ============================================================
+# SUBSETS POR TIPO CELULAR
+# ============================================================
+
+celular_subsets <- setNames(
+  lapply(unique(pbmc_harmony$celltype_reference_curated), function(tipo) {
+    subset(pbmc_harmony, subset = celltype_reference_curated == tipo)
+  }),
+  gsub("[^[:alnum:]_]", "_", unique(pbmc_harmony$celltype_reference_curated))
+)
+
+# ============================================================
+# PSEUDOREPLICADOS Y PSEUDOBULK
+# ============================================================
+
+celular_subsets_replicados <- Filter(Negate(is.null),
+                                     lapply(celular_subsets, asignar_pseudoreplicados))
+
+pseudobulk_list <- lapply(celular_subsets_replicados, hacer_pseudobulk)
+
+# Guardar pseudobulks
+dir.create("results/pseudobulk_replicas", recursive = TRUE, showWarnings = FALSE)
+for (tipo in names(pseudobulk_list)) {
+  write.csv(pseudobulk_list[[tipo]],
+            file.path("results/pseudobulk_replicas", paste0("Pseudobulk_", tipo, ".csv")),
+            row.names = TRUE)
+}
+
+# ============================================================
+# DESEQ2
+# ============================================================
+
+comparaciones <- list(
+  list(conds = c("0.5N", "5N"), tag = "05_5"),
+  list(conds = c("0N",   "5N"), tag = "0_5")
+)
+
+for (tag in sapply(comparaciones, `[[`, "tag")) {
+  dir.create(file.path("results/deseq2", tag), recursive = TRUE, showWarnings = FALSE)
+}
+
+for (tipo in names(pseudobulk_list)) {
+  cat("DESeq2:", tipo, "\n")
+  correr_deseq2(as.matrix(pseudobulk_list[[tipo]]),
+                comparaciones = comparaciones,
+                output_dir = "results/deseq2")
+}
+
+# ============================================================
+# VOLCANO PLOTS
+# ============================================================
+
+dir.create("results/volcano_plots", showWarnings = FALSE)
+csv_files <- list.files("results/deseq2/05_5/", pattern = "\\.csv$", full.names = TRUE)
+
+pdf("results/volcano_plots/VolcanoPlots.pdf", width = 12, height = 6)
+plots <- list()
+for (file in csv_files) {
+  plots <- append(plots, list(hacer_volcano(file, "results/volcano_plots")))
+  if (length(plots) == 2) { grid.arrange(grobs = plots, ncol = 2); plots <- list() }
+}
+if (length(plots) == 1) grid.arrange(grobs = plots, ncol = 1)
+dev.off()
+
+# ============================================================
+# TABLA DIFERENCIALES Y HEATMAP
+# ============================================================
+
+dir.create("results/diff/05_5", recursive = TRUE, showWarnings = FALSE)
+
+listas     <- lapply(csv_files, procesar_deseq2_resultado, output_dir = "results/diff/05_5")
+tabla_class <- Reduce(function(x, y) full_join(x, y, by = "AGI"), lapply(listas, `[[`, "class"))
+tabla_logfc <- Reduce(function(x, y) full_join(x, y, by = "AGI"), lapply(listas, `[[`, "logfc"))
+
+tabla_class <- tabla_class %>% filter(apply(select(., -AGI) != 0, 1, any))
+tabla_logfc <- tabla_logfc %>% filter(AGI %in% tabla_class$AGI)
+
+write_tsv(tabla_class, "results/diff/05_5/tabla_diferenciales.tsv")
+write_tsv(tabla_logfc, "results/diff/05_5/tabla_log2FC.tsv")
+
+# Heatmap
+matriz <- as.matrix(column_to_rownames(tabla_logfc, "AGI"))
+matriz[is.na(matriz)] <- 0
+hacer_heatmap(matriz)
+
+
+
+# ============================================================
+# GO ENRICHMENT
+# ============================================================
+
+dir.create("results/Enrichment", showWarnings = FALSE)
+
+tabla    <- read.table("results/diff/05_5/tabla_diferenciales.tsv",
+                       header = TRUE, row.names = 1, sep = "\t")
+tabla    <- tabla[, colSums(tabla != 0) > 0, drop = FALSE]
+universo <- read.table("recursos/gene_association.tair.tsv",
+                       sep = "\t", quote = "", fill = TRUE, comment.char = "!")[, -1]
+universo <- as.matrix(universo)[, 1]
+
+# Parámetros
+espacio       <- "BP"
+qval          <- 0.05
+nivel_poda    <- 6
+
+# Correr enriquecimiento
+go_total  <- correr_enriquecimiento_go(tabla, universo, espacio, simplificar = FALSE)
+go_simple <- correr_enriquecimiento_go(tabla, universo, espacio, simplificar = TRUE)
+
+# Podar
+go_total_podado  <- podar_go(go_total,  nivel_poda, espacio, qval, simplificar = FALSE)
+go_simple_podado <- podar_go(go_simple, nivel_poda, espacio, qval, simplificar = TRUE)
+
+# Plots
+p1 <- graficar_go_balones(go_total)
+p2 <- graficar_go_balones(go_simple)
+p3 <- graficar_go_balones(go_total_podado)
+p4 <- graficar_go_balones(go_simple_podado)
+
+pdf(file.path(output_dir, "GO_enrichment.pdf"), width = 18, height = 18)
+try({ print(p1); print(p2); print(p3); print(p4) }, silent = TRUE)
+dev.off()
