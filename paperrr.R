@@ -676,21 +676,27 @@ for (comp in comparaciones) {
 # =============================================================================
 # GO ENRICHMENT — ALL COMPARISONS
 # =============================================================================
-# Organism-specific parameters:
+# ── 1. Set organism ───────────────────────────────────────────────────────────
 #   Arabidopsis : orgdb = org.At.tair.db, keytype = "TAIR"
-#   Human       : orgdb = org.Hs.eg.db,   keytype = "ENSEMBL" or "SYMBOL"
-#   Mouse       : orgdb = org.Mm.eg.db,   keytype = "ENSEMBL" or "SYMBOL"
+#   Human       : orgdb = org.Hs.eg.db,   keytype = "ENSEMBL"  (or "SYMBOL")
+#   Mouse       : orgdb = org.Mm.eg.db,   keytype = "ENSEMBL"  (or "SYMBOL")
+#   Rice        : orgdb = org.Os.eg.db,   keytype = "GID"
 
 orgdb   <- org.At.tair.db
 keytype <- "TAIR"
 
-# Background gene universe (TAIR format for Arabidopsis)
-universo <- read.table("recursos/gene_association.tair.tsv",
-                       sep = "\t", quote = "", fill = TRUE, comment.char = "!")[, -1]
-universo <- as.matrix(universo)[, 1]
+# ── 2. Background gene universe ───────────────────────────────────────────────
+# Option A (recommended — works for ANY organism with an OrgDb package):
+universo <- keys(orgdb, keytype = keytype)
 
-# GO parameters
-espacio    <- "BP"
+# Option B (Arabidopsis only — use a custom gene association file instead):
+# universo <- read.table("recursos/gene_association.tair.tsv",
+#                        sep = "\t", quote = "", fill = TRUE,
+#                        comment.char = "!")[, -1]
+# universo <- as.matrix(universo)[, 1]
+
+# ── 3. GO parameters ──────────────────────────────────────────────────────────
+espacio    <- "BP"   # "BP" = Biological Process, "MF" = Molecular Function, "CC" = Cellular Component
 qval       <- 0.05
 nivel_poda <- 6
 
