@@ -533,7 +533,6 @@ fig_dotplot <- hacer_dotplot_marcadores(
   annot_col       = "celltype_reference_curated",
   cell_order      = cell_order_dotplot,
   clusters_remove = c("Sieve Element", "Myrosin Idioblast"),  # adjust as needed
-  rename_map      = c("Meristemoid" = "Stomatal lineage"),
   outfile         = file.path(output_dir, "dotplot_marcadores.pdf"),
   width           = 20,
   height          = 10
