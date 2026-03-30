@@ -106,13 +106,18 @@ load_cellbender_filtered_h5 <- function(h5_path, project = "Sample") {
 #' @export
 plot_qc_violin_grid <- function(obj1, label, color) {
 
-  n1       <- ncol(obj1)
+  n1        <- ncol(obj1)
   obj1$cond <- label
 
+  features <- c("nFeature_RNA", "nCount_RNA", "percent.mt")
+  if ("percent.cp" %in% colnames(obj1@meta.data)) {
+    features <- c(features, "percent.cp")
+  }
+
   p1 <- VlnPlot(obj1,
-                features = c("nFeature_RNA", "nCount_RNA", "percent.mt", "percent.cp"),
+                features = features,
                 pt.size  = 0.1,
-                ncol     = 4,
+                ncol     = length(features),
                 group.by = "cond",
                 cols     = color) +
     ggtitle(paste0(label, " (", n1, " cells)")) +
@@ -345,22 +350,32 @@ process_sample <- function(sample_info,
                            min_counts   = 0,
                            max_counts   = Inf,
                            max_mt       = 100,
-                           max_cp       = 100) {
+                           max_cp       = 100,
+                           mt_pattern   = "^ATMG",
+                           cp_pattern   = "^ATCG") {
 
   obj <- load_cellbender_filtered_h5(sample_info$file, sample_info$label)
 
   # Compute organelle percentages
-  obj[["percent.mt"]] <- PercentageFeatureSet(obj, pattern = "^ATMG")
-  obj[["percent.cp"]] <- PercentageFeatureSet(obj, pattern = "^ATCG")
+  obj[["percent.mt"]] <- PercentageFeatureSet(obj, pattern = mt_pattern)
 
-  # Apply QC filters
-  obj <- subset(obj, subset =
-                  nFeature_RNA > min_features &
-                  nFeature_RNA < max_features &
-                  nCount_RNA   > min_counts   &
-                  nCount_RNA   < max_counts   &
-                  percent.mt   < max_mt       &
-                  percent.cp   < max_cp)
+  if (!is.null(cp_pattern)) {
+    obj[["percent.cp"]] <- PercentageFeatureSet(obj, pattern = cp_pattern)
+    obj <- subset(obj, subset =
+                    nFeature_RNA > min_features &
+                    nFeature_RNA < max_features &
+                    nCount_RNA   > min_counts   &
+                    nCount_RNA   < max_counts   &
+                    percent.mt   < max_mt       &
+                    percent.cp   < max_cp)
+  } else {
+    obj <- subset(obj, subset =
+                    nFeature_RNA > min_features &
+                    nFeature_RNA < max_features &
+                    nCount_RNA   > min_counts   &
+                    nCount_RNA   < max_counts   &
+                    percent.mt   < max_mt)
+  }
 
   # Doublet detection
   obj <- doubletfinder_pipeline(obj, etiqueta = sample_info$label)
