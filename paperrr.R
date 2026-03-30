@@ -12,9 +12,9 @@
 
 # ── Libraries and functions ───────────────────────────────────────────────────
 
-source("load_libraries.R")
-source("metodologia/custom_seurat.R")
-source("metodologia/ScRNA_Analysis_Functions.R")
+source("metodologia/ScRNASeq-Docker/load_libraries.R")
+source("metodologia/ScRNASeq-Docker/custom_seurat.R")
+source("metodologia/ScRNASeq-Docker/ScRNA_Analysis_Functions.R")
 
 sessionInfo()
 
@@ -129,10 +129,6 @@ pbmc_harmony <- pbmc_harmony %>%
 pbmc_harmony$orig.ident_uni <- pbmc_harmony$condition
 pbmc_harmony.bkp            <- pbmc_harmony
 
-cat("\n=== SUMMARY ===\n")
-cat("Samples processed:", length(seurat_list), "\n")
-cat("Total cells:      ", ncol(pbmc_harmony), "\n")
-cat("Conditions:       ", paste(unique(pbmc_harmony$condition), collapse = ", "), "\n")
 table(pbmc_harmony$condition)
 table(pbmc_harmony$orig.ident)
 
@@ -150,7 +146,6 @@ ggsave(
 harmony_var      <- "orig.ident"
 dims_use         <- 1:30
 k_param          <- 30
-resolutions_test <- c(0.05, 0.15, 0.30, 0.40, 0.50, 0.60, 0.7, 0.8, 0.9, 1.0)
 k_range          <- 2:40
 
 pbmc_harmony <- pbmc_harmony %>%
@@ -175,6 +170,7 @@ ggsave(file.path(output_dir, "elbow_plot.pdf"), elbow_plot, width = 8, height = 
 # =============================================================================
 # CLUSTREE — RESOLUTION SWEEP
 # =============================================================================
+resolutions_test <- c(0.15, 0.30, 0.50, 0.8, 1.0)
 
 clu <- pbmc_harmony %>%
   RunUMAP(reduction = "harmony", dims = dims_use, verbose = FALSE) %>%
@@ -204,9 +200,6 @@ pbmc_harmony <- pbmc_harmony %>%
   FindNeighbors(reduction = "harmony", dims = dims_use, k.param = k_param, verbose = FALSE) %>%
   FindClusters(resolution = cluster_resolution, algorithm = 4, verbose = FALSE)
 
-cat("\n=== CLUSTERING ===\n")
-cat("Resolution:", cluster_resolution, "\n")
-cat("Clusters:  ", length(unique(Idents(pbmc_harmony))), "\n")
 table(Idents(pbmc_harmony))
 
 ggsave(
@@ -434,17 +427,16 @@ markers_pavement_cell %>% group_by(cluster) %>% slice_max(n = 3, order_by = avg_
 # ── Step 4: Define corrections (fill after inspecting) ───────────────────────
 
 correcciones <- list(
-
-  # Meristemoid = list(
-  #   obj = meristemoid_umap,
-  #   mapa = c(
-  #     "0" = "Stomatal Line",
-  #     "1" = "Stomatal Line",
-  #     "2" = "Pavement Cell",
-  #     "3" = "Stomatal Line",
-  #     "4" = "Stomatal Line"
-  #   )
-  # ),
+   Meristemoid = list(
+     obj = meristemoid_umap,
+     mapa = c(
+       "0" = "Stomatal Line",
+       "1" = "Stomatal Line",
+       "2" = "Pavement Cell",
+       "3" = "Stomatal Line",
+       "4" = "Stomatal Line"
+     )
+   ),
 
   PavementCell = list(
     obj = pavement_cell_umap,
