@@ -1,0 +1,36 @@
+# =============================================================================
+# load_libraries.R — Required packages for the scRNA-seq pipeline
+# =============================================================================
+# Usage: source("load_libraries.R")
+# =============================================================================
+
+library(clustree)
+library(hdf5r)
+library(Matrix)
+library(Seurat)
+library(DoubletFinder)
+library(harmony)
+library(ggplot2)
+library(patchwork)
+library(dplyr)
+library(tibble)
+library(knitr)
+library(kableExtra)
+library(monocle3)
+library(gridExtra)
+library(grid)
+library(cowplot)
+library(DESeq2)
+library(SeuratWrappers)
+library(VennDiagram)
+library(ggvenn)
+library(eulerr)
+library(UpSetR)
+library(tidyverse)
+library(SeuratDisk)
+library(scater)
+library(SingleCellExperiment)
+library(zellkonverter)
+library(SummarizedExperiment)
+
+message("All libraries loaded successfully.")
