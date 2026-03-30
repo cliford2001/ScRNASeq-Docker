@@ -294,6 +294,40 @@ ScRNASeq-Docker/
 
 ---
 
+## Troubleshooting
+
+### `permission denied` when running `docker pull` or `docker run`
+
+**Error:**
+```
+permission denied while trying to connect to the Docker daemon socket at
+unix:///var/run/docker.sock
+```
+
+**Cause:** Your user is not in the `docker` group. By default, only `root` can
+communicate with the Docker daemon.
+
+**Fix:** Run this once (requires admin/sudo on that machine):
+
+```bash
+sudo usermod -aG docker $USER
+```
+
+Then **log out and log back in** for the change to take effect. After that,
+Docker works without `sudo` for that user permanently.
+
+If you cannot log out (e.g., remote server), use this as a temporary workaround
+for the current session only:
+
+```bash
+newgrp docker
+```
+
+> **Note:** This is an OS-level permission issue, not a problem with the Docker
+> image. The image is public and requires no authentication to pull.
+
+---
+
 ## Author
 
 Developed by [@cliford2001](https://github.com/cliford2001)
