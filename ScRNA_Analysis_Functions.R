@@ -18,7 +18,9 @@
 #  2. PREPROCESSING AND DOUBLET DETECTION
 #     - preprocesar_y_doubletfinder
 #     - doubletfinder_pipeline
-#     - process_sample
+#     - load_sample          (load + annotate only, no filtering)
+#     - filter_sample        (filter + DoubletFinder on annotated object)
+#     - process_sample       (shortcut: load_sample + filter_sample)
 #
 #  3. BULK / PSEUDOBULK UTILITIES
 #     - normalizar_bulk_pseudobulk
@@ -331,59 +333,113 @@ doubletfinder_pipeline <- function(obj,
 }
 
 
-#' Per-sample Processing Pipeline
+#' Load and Annotate a Single Sample
 #'
-#' Loads a CellBender h5 file, computes organelle percentages, applies QC
-#' filters, runs DoubletFinder, renames cells, and assigns a condition label.
+#' Loads a CellBender h5 file and computes mitochondrial / chloroplast
+#' percentages. No filtering or doublet detection — use this to inspect raw
+#' QC metrics before deciding thresholds.
 #'
-#' @param sample_info   Named list with fields: file, label, condition.
-#' @param min_features  Minimum nFeature_RNA.
-#' @param max_features  Maximum nFeature_RNA.
-#' @param min_counts    Minimum nCount_RNA.
-#' @param max_counts    Maximum nCount_RNA.
-#' @param max_mt        Maximum mitochondrial percent.
-#' @param max_cp        Maximum chloroplast percent.
-#' @return Filtered Seurat object with condition metadata.
+#' @param sample_info Named list with fields: file, label, condition.
+#' @param mt_pattern  Regex for mitochondrial genes (e.g. "^MT-", "^ATMG").
+#' @param cp_pattern  Regex for chloroplast genes (e.g. "^ATCG"); NULL to skip.
+#' @return Seurat object with percent.mt (and percent.cp) in metadata.
 #' @export
-process_sample <- function(sample_info,
-                           min_features      = 0,
-                           max_features      = Inf,
-                           min_counts        = 0,
-                           max_counts        = Inf,
-                           max_mt            = 100,
-                           max_cp            = 100,
-                           mt_pattern        = "^ATMG",
-                           cp_pattern        = "^ATCG",
-                           run_doubletfinder = TRUE) {
+load_sample <- function(sample_info,
+                        mt_pattern = "^ATMG",
+                        cp_pattern = "^ATCG") {
 
   obj <- load_cellbender_filtered_h5(sample_info$file, sample_info$label)
 
-  # Compute organelle percentages
   obj[["percent.mt"]] <- PercentageFeatureSet(obj, pattern = mt_pattern)
   if (!is.null(cp_pattern))
     obj[["percent.cp"]] <- PercentageFeatureSet(obj, pattern = cp_pattern)
 
-  # Apply QC filters
-  filter_expr <- quote(
-    nFeature_RNA > min_features &
-    nFeature_RNA < max_features &
-    nCount_RNA   > min_counts   &
-    nCount_RNA   < max_counts   &
-    percent.mt   < max_mt
-  )
-  if (!is.null(cp_pattern))
-    filter_expr <- bquote(.(filter_expr) & percent.cp < max_cp)
-
-  obj <- subset(obj, subset = eval(filter_expr))
-
-  # Doublet detection (skip for pre-filter QC visualisation)
-  if (run_doubletfinder)
-    obj <- doubletfinder_pipeline(obj, etiqueta = sample_info$label)
-
-  # Rename cells and assign condition metadata
   obj <- RenameCells(obj, add.cell.id = sample_info$condition)
   obj$condition <- sample_info$condition
 
+  return(obj)
+}
+
+
+#' Filter and Run DoubletFinder on an Annotated Sample
+#'
+#' Applies QC thresholds to an already-annotated Seurat object (output of
+#' load_sample) and optionally runs DoubletFinder.
+#'
+#' @param obj             Seurat object with percent.mt (and percent.cp).
+#' @param min_features    Minimum nFeature_RNA.
+#' @param max_features    Maximum nFeature_RNA.
+#' @param min_counts      Minimum nCount_RNA.
+#' @param max_counts      Maximum nCount_RNA.
+#' @param max_mt          Maximum mitochondrial percent.
+#' @param max_cp          Maximum chloroplast percent (ignored if percent.cp absent).
+#' @param run_doubletfinder Whether to run DoubletFinder (default TRUE).
+#' @return Filtered Seurat object.
+#' @export
+filter_sample <- function(obj,
+                          min_features      = 200,
+                          max_features      = Inf,
+                          min_counts        = 0,
+                          max_counts        = Inf,
+                          max_mt            = 5,
+                          max_cp            = 100,
+                          run_doubletfinder = TRUE) {
+
+  has_cp <- "percent.cp" %in% colnames(obj@meta.data)
+
+  if (has_cp) {
+    obj <- subset(obj, subset =
+                    nFeature_RNA > min_features &
+                    nFeature_RNA < max_features &
+                    nCount_RNA   > min_counts   &
+                    nCount_RNA   < max_counts   &
+                    percent.mt   < max_mt       &
+                    percent.cp   < max_cp)
+  } else {
+    obj <- subset(obj, subset =
+                    nFeature_RNA > min_features &
+                    nFeature_RNA < max_features &
+                    nCount_RNA   > min_counts   &
+                    nCount_RNA   < max_counts   &
+                    percent.mt   < max_mt)
+  }
+
+  if (run_doubletfinder)
+    obj <- doubletfinder_pipeline(obj, etiqueta = Project(obj))
+
+  return(obj)
+}
+
+
+#' Load, Annotate, Filter and Run DoubletFinder (full pipeline shortcut)
+#'
+#' Convenience wrapper that calls load_sample() then filter_sample().
+#' Useful when you do not need to inspect raw QC plots before filtering.
+#'
+#' @inheritParams load_sample
+#' @inheritParams filter_sample
+#' @return Filtered Seurat object.
+#' @export
+process_sample <- function(sample_info,
+                           mt_pattern        = "^ATMG",
+                           cp_pattern        = "^ATCG",
+                           min_features      = 200,
+                           max_features      = Inf,
+                           min_counts        = 0,
+                           max_counts        = Inf,
+                           max_mt            = 5,
+                           max_cp            = 100,
+                           run_doubletfinder = TRUE) {
+
+  obj <- load_sample(sample_info, mt_pattern = mt_pattern, cp_pattern = cp_pattern)
+  obj <- filter_sample(obj,
+                       min_features      = min_features,
+                       max_features      = max_features,
+                       min_counts        = min_counts,
+                       max_counts        = max_counts,
+                       max_mt            = max_mt,
+                       max_cp            = max_cp,
+                       run_doubletfinder = run_doubletfinder)
   return(obj)
 }
 

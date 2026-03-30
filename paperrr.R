@@ -57,21 +57,22 @@ output_dir <- "metodologia"
 
 
 # =============================================================================
-# QC — PRE-FILTER
+# QC — LOAD AND ANNOTATE (no filtering yet)
 # =============================================================================
 # Organism patterns:
 #   Arabidopsis : mt_pattern = "^ATMG",  cp_pattern = "^ATCG"
 #   Human       : mt_pattern = "^MT-",   cp_pattern = NULL
 #   Mouse       : mt_pattern = "^mt-",   cp_pattern = NULL
-#
-# run_doubletfinder = FALSE here: we only want raw QC metrics for the plot,
-# DoubletFinder runs once in the post-filter step below.
 
-seurat_list_raw <- lapply(samples, process_sample,
-                          mt_pattern        = "^ATMG",
-                          cp_pattern        = "^ATCG",
-                          run_doubletfinder = FALSE)
+seurat_list_raw <- lapply(samples, load_sample,
+                          mt_pattern = "^ATMG",
+                          cp_pattern = "^ATCG")
 names(seurat_list_raw) <- sapply(samples, `[[`, "label")
+
+
+# =============================================================================
+# QC — PRE-FILTER PLOT (raw, no thresholds applied)
+# =============================================================================
 
 plots_pre <- imap(seurat_list_raw, ~ plot_qc_violin_grid(.x, .y, colors[[.y]]))
 
@@ -86,15 +87,19 @@ ggsave(
 
 
 # =============================================================================
-# QC — FILTERING AND POST-FILTER CHECK
+# QC — FILTER AND DOUBLETFINDER
 # =============================================================================
+# Adjust thresholds based on the pre-filter plots above.
 
-seurat_list <- lapply(samples, process_sample,
+seurat_list <- lapply(seurat_list_raw, filter_sample,
                       min_features = 200,
-                      max_mt       = 5,
-                      mt_pattern   = "^ATMG",
-                      cp_pattern   = "^ATCG")
+                      max_mt       = 5)
 names(seurat_list) <- sapply(samples, `[[`, "label")
+
+
+# =============================================================================
+# QC — POST-FILTER PLOT
+# =============================================================================
 
 plots_post <- imap(seurat_list, ~ plot_qc_violin_grid(.x, .y, colors[[.y]]))
 
