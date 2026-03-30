@@ -919,15 +919,17 @@ annotate_by_reference <- function(seurat_obj,
 #' Subsets to a specific annotation, re-runs PCA/UMAP/clustering at the
 #' given resolution.
 #'
-#' @param obj        Seurat object with annotation_agrupada metadata.
-#' @param tipo       Cell type(s) to subset.
+#' @param obj        Seurat object.
+#' @param tipo       Cell type(s) to subset (must match values in annot_col).
+#' @param annot_col  Metadata column holding cell-type labels.
 #' @param resolution Clustering resolution.
 #' @param dims       Dimensions for UMAP and neighbor finding.
 #' @return Seurat object with cluster_subtipo metadata.
 #' @export
-subclustar_tipo <- function(obj, tipo, resolution = 0.3, dims = 1:20) {
+subclustar_tipo <- function(obj, tipo, annot_col = "annotation_agrupada",
+                            resolution = 0.3, dims = 1:20) {
 
-  sub <- subset(obj, subset = annotation_agrupada %in% tipo)
+  sub <- subset(obj, cells = colnames(obj)[obj@meta.data[[annot_col]] %in% tipo])
   sub <- sub %>%
     RunPCA() %>%
     RunUMAP(dims = dims) %>%
@@ -947,22 +949,27 @@ subclustar_tipo <- function(obj, tipo, resolution = 0.3, dims = 1:20) {
 #' Assign Pseudo-replicates
 #'
 #' Randomly assigns cells within each condition to pseudo-replicate groups.
+#' Conditions are auto-detected from orig.ident_uni unless explicitly provided.
 #'
 #' @param obj         Seurat object with orig.ident_uni metadata.
-#' @param condiciones Character vector of condition names to include.
+#' @param condiciones Character vector of condition names to include. NULL
+#'   (default) uses all conditions present in the data.
 #' @param n_reps      Number of pseudo-replicates per condition.
 #' @param seed        Random seed for reproducibility.
 #' @return Seurat object with a replicate metadata column, or NULL if fewer
 #'   than 2 conditions are present.
 #' @export
 asignar_pseudoreplicados <- function(obj,
-                                     condiciones = c("0N", "0.5N", "5N"),
+                                     condiciones = NULL,
                                      n_reps      = 3,
                                      seed        = 1807) {
 
   set.seed(seed)
 
-  condiciones_presentes <- intersect(unique(obj$orig.ident_uni), condiciones)
+  # Auto-detect conditions from data if not provided
+  all_conds <- unique(obj$orig.ident_uni)
+  condiciones_presentes <- if (!is.null(condiciones)) intersect(all_conds, condiciones) else all_conds
+
   if (length(condiciones_presentes) < 2) return(NULL)
 
   obj$replicate <- NA
@@ -1110,26 +1117,29 @@ procesar_deseq2_resultado <- function(file_path,
   df          <- read_csv(file_path, show_col_types = FALSE)
   comparacion <- gsub("^DESeq2_(.*)\\.csv$", "\\1", basename(file_path))
 
+  # First column is always the gene ID (written as rownames by write.csv)
+  gene_col <- colnames(df)[1]
+
   df_class <- df %>%
     mutate(
-      AGI          = `...1`,
+      gene_id       = .data[[gene_col]],
       clasificacion = case_when(
         padj <= padj_cut & log2FoldChange >  lfc_cut ~  1,
         padj <= padj_cut & log2FoldChange < -lfc_cut ~ -1,
         TRUE ~ 0
       )
     ) %>%
-    dplyr::select(AGI, clasificacion) %>%
-    setNames(c("AGI", comparacion))
+    dplyr::select(gene_id, clasificacion) %>%
+    setNames(c("gene_id", comparacion))
 
   df_logfc <- df %>%
     mutate(
-      AGI   = `...1`,
-      logfc = ifelse(padj <= padj_cut & abs(log2FoldChange) > lfc_cut,
-                     log2FoldChange, NA_real_)
+      gene_id = .data[[gene_col]],
+      logfc   = ifelse(padj <= padj_cut & abs(log2FoldChange) > lfc_cut,
+                       log2FoldChange, NA_real_)
     ) %>%
-    dplyr::select(AGI, logfc) %>%
-    setNames(c("AGI", comparacion))
+    dplyr::select(gene_id, logfc) %>%
+    setNames(c("gene_id", comparacion))
 
   df_filt <- df %>% filter(padj <= padj_cut, abs(log2FoldChange) > lfc_cut)
   write_csv(df_filt, file.path(output_dir, paste0(comparacion, "_filtrado.csv")))

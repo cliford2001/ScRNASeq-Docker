@@ -1,11 +1,18 @@
-plot_integrated_clusters <- function(srat) {
-  library(Seurat)
-  library(patchwork)
-  library(ggplot2)
-  library(reshape2)
-  library(RColorBrewer)
+# =============================================================================
+# custom_seurat.R — Custom Seurat plot utilities
+# =============================================================================
 
-  # Usa la identidad activa (Idents) como agrupador principal
+#' Cell Count Bar Chart per Cluster and Sample
+#'
+#' Produces a two-panel figure: (left) fraction of cells per dataset within
+#' each identity/cluster; (right) total cell count per cluster on a log10 scale
+#' with count labels.
+#'
+#' @param srat Seurat object. Uses active Idents() as the grouping variable.
+#' @return A patchwork ggplot object.
+#' @export
+plot_integrated_clusters <- function(srat) {
+
   count_table <- table(Idents(srat), srat@meta.data$orig.ident)
   count_mtx   <- as.data.frame.matrix(count_table)
   count_mtx$identity <- rownames(count_mtx)
@@ -14,34 +21,13 @@ plot_integrated_clusters <- function(srat) {
 
   cluster_size <- aggregate(value ~ identity, data = melt_mtx, FUN = sum)
 
-  # Orden descendente por tamaño
-  sorted_labels <- cluster_size$identity[order(cluster_size$value, decreasing = TRUE)]
+  sorted_labels        <- cluster_size$identity[order(cluster_size$value, decreasing = TRUE)]
   cluster_size$identity <- factor(cluster_size$identity, levels = sorted_labels)
-  melt_mtx$identity <- factor(melt_mtx$identity, levels = sorted_labels)
+  melt_mtx$identity    <- factor(melt_mtx$identity,     levels = sorted_labels)
 
   colnames(melt_mtx)[2] <- "dataset"
 
-  p1 <- ggplot(cluster_size, aes(y = identity, x = value)) +
-    geom_bar(position = "dodge", stat = "identity", fill = "grey60") +
-    theme_bw() +
-    scale_x_log10() +
-    xlab("Cells per identity (log10 scale)") +
-    ylab("")
-
-p3 <- ggplot(cluster_size, aes(y = identity, x = value)) +
-  geom_bar(stat = "identity", fill = "grey60") +
-  geom_text(aes(label = value), 
-          position = position_identity(), 
-          hjust = 1.1,
-	  size = 8,
-          color = "blue") +
-  scale_x_log10() +
-  xlab("Cells per identity (log10 scale)") +
-  ylab("") +
-  theme_bw() 
-
-
-  p2 <- ggplot(melt_mtx, aes(x = identity, y = value, fill = dataset)) +
+  p_fraction <- ggplot(melt_mtx, aes(x = identity, y = value, fill = dataset)) +
     geom_bar(position = "fill", stat = "identity") +
     theme_bw() + coord_flip() +
     scale_fill_brewer(palette = "Set2") +
@@ -49,5 +35,15 @@ p3 <- ggplot(cluster_size, aes(y = identity, x = value)) +
     xlab("Identity") +
     theme(legend.position = "top")
 
-  p2 + p3 + plot_layout(widths = c(3, 1))
+  p_count <- ggplot(cluster_size, aes(y = identity, x = value)) +
+    geom_bar(stat = "identity", fill = "grey60") +
+    geom_text(aes(label = value),
+              position = position_identity(),
+              hjust = 1.1, size = 8, color = "blue") +
+    scale_x_log10() +
+    xlab("Cells per identity (log10 scale)") +
+    ylab("") +
+    theme_bw()
+
+  p_fraction + p_count + plot_layout(widths = c(3, 1))
 }

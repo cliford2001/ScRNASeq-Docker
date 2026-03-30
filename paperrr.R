@@ -648,18 +648,18 @@ for (comp in comparaciones) {
   }
 
   listas     <- lapply(csv_files, procesar_deseq2_resultado, output_dir = diff_dir)
-  tabla_class <- Reduce(function(x, y) full_join(x, y, by = "AGI"), lapply(listas, `[[`, "class"))
-  tabla_logfc <- Reduce(function(x, y) full_join(x, y, by = "AGI"), lapply(listas, `[[`, "logfc"))
+  tabla_class <- Reduce(function(x, y) full_join(x, y, by = "gene_id"), lapply(listas, `[[`, "class"))
+  tabla_logfc <- Reduce(function(x, y) full_join(x, y, by = "gene_id"), lapply(listas, `[[`, "logfc"))
 
-  tabla_class <- tabla_class %>% filter(apply(select(., -AGI) != 0, 1, any))
-  tabla_logfc <- tabla_logfc %>% filter(AGI %in% tabla_class$AGI)
+  tabla_class <- tabla_class %>% filter(apply(select(., -gene_id) != 0, 1, any))
+  tabla_logfc <- tabla_logfc %>% filter(gene_id %in% tabla_class$gene_id)
 
   write_tsv(tabla_class, file.path(diff_dir, "tabla_diferenciales.tsv"))
   write_tsv(tabla_logfc, file.path(diff_dir, "tabla_log2FC.tsv"))
 
   # ── Heatmap ──────────────────────────────────────────────────────────────────
 
-  matriz <- as.matrix(column_to_rownames(tabla_logfc, "AGI"))
+  matriz <- as.matrix(column_to_rownames(tabla_logfc, "gene_id"))
   matriz[is.na(matriz)] <- 0
 
   if (nrow(matriz) > 1) {

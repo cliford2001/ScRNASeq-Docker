@@ -32,6 +32,7 @@ library(Matrix)
 library(tidyverse)
 library(dplyr)
 library(tibble)
+library(reshape2)
 
 # ── Visualisation ─────────────────────────────────────────────────────────────
 library(ggplot2)
