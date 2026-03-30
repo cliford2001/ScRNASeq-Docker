@@ -1119,7 +1119,7 @@ correr_deseq2 <- function(counts_mat, comparaciones, output_dir) {
 #' @param lfc_cut    Log2 fold-change cutoff.
 #' @return A ggplot object.
 #' @export
-hacer_volcano <- function(file, output_dir, padj_cut = 0.05, lfc_cut = 1) {
+hacer_volcano <- function(file, padj_cut = 0.05, lfc_cut = 1) {
 
   nombre_base <- tools::file_path_sans_ext(basename(file))
   titulo      <- gsub("DESeq2_", "", nombre_base)
