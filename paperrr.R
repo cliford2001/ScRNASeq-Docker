@@ -474,6 +474,73 @@ ggsave(
 
 
 # =============================================================================
+# EXPORT TO H5AD (SCANPY / scFates / Palantir)
+# =============================================================================
+# Exports the curated Seurat object and each cell-type subset to .h5ad format.
+# The deep-clean inside exportar_para_scanpy handles misc/tools/DF slots that
+# commonly break the SCE conversion.
+
+dir.create("results/objs", recursive = TRUE, showWarnings = FALSE)
+
+# ── Full curated object ───────────────────────────────────────────────────────
+
+exportar_para_scanpy(
+  seurat_obj = pbmc_harmony,
+  outfile    = "results/objs/pbmc_harmony_curated.h5ad"
+)
+
+# ── Per-cell-type subsets (optional: comment out if not needed) ───────────────
+# Useful for trajectory analysis on a single lineage.
+
+# Example: export one specific cell type
+# exportar_para_scanpy(
+#   seurat_obj = subset(pbmc_harmony, subset = celltype_reference_curated == "Guard Cell"),
+#   outfile    = "results/objs/GuardCell.h5ad"
+# )
+
+
+# =============================================================================
+# DOTPLOT — MARKER GENES BY CELL TYPE
+# =============================================================================
+# Reads marker genes from the bibliography table and generates a DotPlot with
+# a near-diagonal expression pattern, validating cell-type annotations.
+
+marks <- read.table("recursos/biblio_marks.txt", header = TRUE, sep = "\t", quote = "")
+
+# ── Define the desired cell-type display order ────────────────────────────────
+# Types not listed here appear at the end of the Y-axis.
+
+cell_order_dotplot <- c(
+  "Pavement Cell",
+  "Stomatal lineage",
+  "Guard Cell",
+  "Mesophyll",
+  "Bundle Sheath",
+  "Phloem Parenchyma",
+  "Cambium",
+  "Xylem",
+  "Companion Cell",
+  "Hydathode",
+  "Cell Cycle: G1-S",
+  "Cell Cycle: G2-M"
+)
+
+# ── Build and save ────────────────────────────────────────────────────────────
+
+fig_dotplot <- hacer_dotplot_marcadores(
+  seurat_obj      = pbmc_harmony,
+  marks           = marks,
+  annot_col       = "celltype_reference_curated",
+  cell_order      = cell_order_dotplot,
+  clusters_remove = c("Sieve Element", "Myrosin Idioblast"),  # adjust as needed
+  rename_map      = c("Meristemoid" = "Stomatal lineage"),
+  outfile         = file.path(output_dir, "dotplot_marcadores.pdf"),
+  width           = 20,
+  height          = 10
+)
+
+
+# =============================================================================
 # CELL TYPE SUBSETS
 # =============================================================================
 

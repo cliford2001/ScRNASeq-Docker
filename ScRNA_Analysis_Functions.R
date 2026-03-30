@@ -46,6 +46,7 @@
 #     - hacer_volcano
 #     - procesar_deseq2_resultado
 #     - hacer_heatmap
+#     - hacer_dotplot_marcadores
 #
 #  7. GO ENRICHMENT
 #     - correr_enriquecimiento_go
@@ -644,6 +645,22 @@ exportar_para_scanpy <- function(seurat_obj,
   stopifnot(inherits(seurat_obj, "Seurat"))
   if (!dir.exists(dirname(outfile))) dir.create(dirname(outfile), recursive = TRUE)
 
+  # ── Deep clean before conversion ─────────────────────────────────────────────
+  # These slots often contain non-serialisable objects that break h5ad export.
+  message("Cleaning Seurat object before conversion...")
+  seurat_obj@misc  <- list()
+  seurat_obj@tools <- list()
+
+  cols_df <- grep("DF.classifications", colnames(seurat_obj@meta.data), value = TRUE)
+  if (length(cols_df) > 0) seurat_obj@meta.data[, cols_df] <- NULL
+
+  seurat_obj[[assay_name]]@meta.data <- data.frame(row.names = rownames(seurat_obj))
+
+  for (rd in names(seurat_obj@reductions)) {
+    seurat_obj@reductions[[rd]]@misc <- list()
+  }
+
+  # ── Convert to SCE ────────────────────────────────────────────────────────────
   message("Converting Seurat -> SCE...")
   sce <- as.SingleCellExperiment(seurat_obj, assay = assay_name)
 
@@ -655,10 +672,12 @@ exportar_para_scanpy <- function(seurat_obj,
   }
   stopifnot(!anyDuplicated(colnames(sce)))
 
+  # ── Assays ────────────────────────────────────────────────────────────────────
   message("Extracting counts and logcounts...")
   assay(sce, "counts")    <- Seurat::GetAssayData(seurat_obj, assay = assay_name, slot = "counts")
   assay(sce, "logcounts") <- Seurat::GetAssayData(seurat_obj, assay = assay_name, slot = "data")
 
+  # ── Cell metadata ─────────────────────────────────────────────────────────────
   if (ncol(colData(sce)) == 0) {
     colData(sce) <- S4Vectors::DataFrame(row.names = colnames(sce))
   }
@@ -667,6 +686,7 @@ exportar_para_scanpy <- function(seurat_obj,
     seurat_obj@meta.data[colnames(sce), , drop = FALSE]
   )
 
+  # ── Reductions ────────────────────────────────────────────────────────────────
   message("Exporting reductions...")
   reds <- Seurat::Reductions(seurat_obj)
   for (red in use_reduc) {
@@ -1171,6 +1191,107 @@ hacer_heatmap <- function(matriz,
            fontsize_col    = 20,
            fontsize        = 22,
            main            = sprintf("Heatmap (%d genes)", nrow(matriz)))
+}
+
+
+#' Marker Gene DotPlot with Custom Cell-Type Order
+#'
+#' Builds a DotPlot where cell types (Y-axis) and marker genes (X-axis, coord-
+#' flipped) follow user-defined orders, producing a near-diagonal expression
+#' pattern useful for cell-type validation figures.
+#'
+#' @param seurat_obj        Seurat object with annotations in `annot_col`.
+#' @param marks             Data frame with columns `gene` and `cell.types`.
+#' @param annot_col         Metadata column holding cell-type labels.
+#' @param cell_order        Character vector: desired order of cell types
+#'                          (top to bottom). Types not listed appear at the end.
+#' @param clusters_remove   Cell-type labels to exclude (default NULL).
+#' @param rename_map        Named character vector for renaming cell types before
+#'                          plotting, e.g. c("Meristemoid" = "Stomatal lineage").
+#' @param outfile           PDF output path (NULL = no save).
+#' @param width             PDF width in inches.
+#' @param height            PDF height in inches.
+#' @param dot_scale         Dot size scaling factor.
+#' @param base_size         Base font size.
+#' @return A ggplot object.
+#' @export
+hacer_dotplot_marcadores <- function(seurat_obj,
+                                     marks,
+                                     annot_col       = "celltype_reference_curated",
+                                     cell_order      = NULL,
+                                     clusters_remove = NULL,
+                                     rename_map      = NULL,
+                                     outfile         = NULL,
+                                     width           = 20,
+                                     height          = 10,
+                                     dot_scale       = 12,
+                                     base_size       = 18) {
+
+  obj <- seurat_obj
+
+  # ── Rename cell types if requested ───────────────────────────────────────────
+  if (!is.null(rename_map)) {
+    for (old_name in names(rename_map)) {
+      obj@meta.data[[annot_col]][obj@meta.data[[annot_col]] == old_name] <- rename_map[[old_name]]
+    }
+    if (!is.null(marks) && "cell.types" %in% colnames(marks)) {
+      for (old_name in names(rename_map)) {
+        marks$cell.types[marks$cell.types == old_name] <- rename_map[[old_name]]
+      }
+    }
+  }
+
+  # ── Remove unwanted clusters ──────────────────────────────────────────────────
+  if (!is.null(clusters_remove)) {
+    obj <- subset(obj, subset = !!sym(annot_col) %in% clusters_remove, invert = TRUE)
+  }
+
+  # ── Build ordered factor ──────────────────────────────────────────────────────
+  all_types <- unique(obj@meta.data[[annot_col]])
+  if (is.null(cell_order)) {
+    ordered_levels <- all_types
+  } else {
+    remaining      <- setdiff(all_types, cell_order)
+    ordered_levels <- c(cell_order, remaining)
+  }
+
+  obj@meta.data[["annotation_orden"]] <- factor(
+    obj@meta.data[[annot_col]],
+    levels = ordered_levels
+  )
+  Idents(obj) <- "annotation_orden"
+
+  # ── Filter genes present in the object ───────────────────────────────────────
+  genes_use <- unique(intersect(marks$gene, rownames(obj)))
+  if (length(genes_use) == 0) stop("No marker genes found in the Seurat object.")
+
+  # ── Build DotPlot ─────────────────────────────────────────────────────────────
+  figure <- DotPlot(
+    obj,
+    features = genes_use,
+    dot.scale = dot_scale,
+    cols      = c("yellow", "darkblue")
+  ) +
+    coord_flip() +
+    theme_minimal(base_size = base_size) +
+    theme(
+      axis.text.x  = element_text(angle = 45, hjust = 1, size = base_size - 4),
+      axis.text.y  = element_text(size = base_size - 4, face = "italic"),
+      axis.title   = element_blank(),
+      panel.border = element_rect(color = "black", fill = NA),
+      legend.position = "right"
+    )
+
+  figure$layers[[1]]$aes_params$alpha <- 1   # solid dots
+
+  # ── Save ──────────────────────────────────────────────────────────────────────
+  if (!is.null(outfile)) {
+    if (!dir.exists(dirname(outfile))) dir.create(dirname(outfile), recursive = TRUE)
+    ggsave(outfile, figure, width = width, height = height, dpi = 500)
+    message("DotPlot saved: ", outfile)
+  }
+
+  invisible(figure)
 }
 
 
