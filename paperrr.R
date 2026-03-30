@@ -63,10 +63,14 @@ output_dir <- "metodologia"
 #   Arabidopsis : mt_pattern = "^ATMG",  cp_pattern = "^ATCG"
 #   Human       : mt_pattern = "^MT-",   cp_pattern = NULL
 #   Mouse       : mt_pattern = "^mt-",   cp_pattern = NULL
+#
+# run_doubletfinder = FALSE here: we only want raw QC metrics for the plot,
+# DoubletFinder runs once in the post-filter step below.
 
 seurat_list_raw <- lapply(samples, process_sample,
-                          mt_pattern = "^ATMG",
-                          cp_pattern = "^ATCG")
+                          mt_pattern        = "^ATMG",
+                          cp_pattern        = "^ATCG",
+                          run_doubletfinder = FALSE)
 names(seurat_list_raw) <- sapply(samples, `[[`, "label")
 
 plots_pre <- imap(seurat_list_raw, ~ plot_qc_violin_grid(.x, .y, colors[[.y]]))

@@ -346,40 +346,39 @@ doubletfinder_pipeline <- function(obj,
 #' @return Filtered Seurat object with condition metadata.
 #' @export
 process_sample <- function(sample_info,
-                           min_features = 0,
-                           max_features = Inf,
-                           min_counts   = 0,
-                           max_counts   = Inf,
-                           max_mt       = 100,
-                           max_cp       = 100,
-                           mt_pattern   = "^ATMG",
-                           cp_pattern   = "^ATCG") {
+                           min_features      = 0,
+                           max_features      = Inf,
+                           min_counts        = 0,
+                           max_counts        = Inf,
+                           max_mt            = 100,
+                           max_cp            = 100,
+                           mt_pattern        = "^ATMG",
+                           cp_pattern        = "^ATCG",
+                           run_doubletfinder = TRUE) {
 
   obj <- load_cellbender_filtered_h5(sample_info$file, sample_info$label)
 
   # Compute organelle percentages
   obj[["percent.mt"]] <- PercentageFeatureSet(obj, pattern = mt_pattern)
-
-  if (!is.null(cp_pattern)) {
+  if (!is.null(cp_pattern))
     obj[["percent.cp"]] <- PercentageFeatureSet(obj, pattern = cp_pattern)
-    obj <- subset(obj, subset =
-                    nFeature_RNA > min_features &
-                    nFeature_RNA < max_features &
-                    nCount_RNA   > min_counts   &
-                    nCount_RNA   < max_counts   &
-                    percent.mt   < max_mt       &
-                    percent.cp   < max_cp)
-  } else {
-    obj <- subset(obj, subset =
-                    nFeature_RNA > min_features &
-                    nFeature_RNA < max_features &
-                    nCount_RNA   > min_counts   &
-                    nCount_RNA   < max_counts   &
-                    percent.mt   < max_mt)
-  }
 
-  # Doublet detection
-  obj <- doubletfinder_pipeline(obj, etiqueta = sample_info$label)
+  # Apply QC filters
+  filter_expr <- quote(
+    nFeature_RNA > min_features &
+    nFeature_RNA < max_features &
+    nCount_RNA   > min_counts   &
+    nCount_RNA   < max_counts   &
+    percent.mt   < max_mt
+  )
+  if (!is.null(cp_pattern))
+    filter_expr <- bquote(.(filter_expr) & percent.cp < max_cp)
+
+  obj <- subset(obj, subset = eval(filter_expr))
+
+  # Doublet detection (skip for pre-filter QC visualisation)
+  if (run_doubletfinder)
+    obj <- doubletfinder_pipeline(obj, etiqueta = sample_info$label)
 
   # Rename cells and assign condition metadata
   obj <- RenameCells(obj, add.cell.id = sample_info$condition)
