@@ -4,33 +4,55 @@
 # Usage: source("load_libraries.R")
 # =============================================================================
 
+# ── Core Seurat ecosystem ─────────────────────────────────────────────────────
+library(Seurat)
+library(SeuratDisk)
+library(SeuratWrappers)
+
+# ── Single-cell utilities ─────────────────────────────────────────────────────
+library(harmony)
+library(DoubletFinder)
 library(clustree)
+library(monocle3)
+library(scater)
+library(SingleCellExperiment)
+library(SummarizedExperiment)
+library(zellkonverter)
+
+# ── Differential expression and GO enrichment ─────────────────────────────────
+library(DESeq2)
+library(clusterProfiler)
+library(org.At.tair.db)   # Arabidopsis — swap for org.Hs.eg.db / org.Mm.eg.db as needed
+
+# ── File I/O ──────────────────────────────────────────────────────────────────
 library(hdf5r)
 library(Matrix)
-library(Seurat)
-library(DoubletFinder)
-library(harmony)
-library(ggplot2)
-library(patchwork)
+
+# ── Data wrangling ────────────────────────────────────────────────────────────
+library(tidyverse)
 library(dplyr)
 library(tibble)
-library(knitr)
-library(kableExtra)
-library(monocle3)
+
+# ── Visualisation ─────────────────────────────────────────────────────────────
+library(ggplot2)
+library(ggrepel)
+library(ggpubr)
+library(patchwork)
+library(cowplot)
 library(gridExtra)
 library(grid)
-library(cowplot)
-library(DESeq2)
-library(SeuratWrappers)
+library(pheatmap)
+library(RColorBrewer)
 library(VennDiagram)
 library(ggvenn)
 library(eulerr)
 library(UpSetR)
-library(tidyverse)
-library(SeuratDisk)
-library(scater)
-library(SingleCellExperiment)
-library(zellkonverter)
-library(SummarizedExperiment)
+
+# ── Clustering helpers ────────────────────────────────────────────────────────
+library(dynamicTreeCut)
+
+# ── Reporting ─────────────────────────────────────────────────────────────────
+library(knitr)
+library(kableExtra)
 
 message("All libraries loaded successfully.")

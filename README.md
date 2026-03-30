@@ -4,6 +4,8 @@ Reproducible Docker environment for **Single-Cell RNA-seq analysis** with R 4.5 
 
 Includes: Seurat 5, monocle3, DESeq2, harmony, CellRanger 9.0.1, CellBender, scanpy, and more.
 
+The pipeline scripts are **organism-agnostic** — swap a few parameters to run on Arabidopsis, human, mouse, or any other species (see [Adapting to Other Organisms](#adapting-to-other-organisms)).
+
 ---
 
 ## Table of Contents
@@ -12,6 +14,8 @@ Includes: Seurat 5, monocle3, DESeq2, harmony, CellRanger 9.0.1, CellBender, sca
 - [Installing Docker](#installing-docker)
 - [Quick Start](#quick-start)
 - [Interactive Use](#interactive-use)
+- [Pipeline Overview](#pipeline-overview)
+- [Adapting to Other Organisms](#adapting-to-other-organisms)
 - [Included Packages](#included-packages)
 - [CellRanger & CellBender](#cellranger--cellbender)
 - [Build from Scratch](#build-from-scratch)
@@ -136,6 +140,85 @@ docker run --rm -v ${PWD}:/workspace mvergara19/scrnaseq_docker:latest python3 /
 
 ---
 
+## Pipeline Overview
+
+The R pipeline (`paperrr.R`) runs the following steps in order:
+
+1. **QC pre-filter** — violin plots of nFeature, nCount, percent.mt, percent.cp
+2. **QC filtering** — remove low-quality cells (min features, max mitochondrial %)
+3. **Merge & preprocessing** — normalize, find variable features, scale, PCA, UMAP
+4. **Harmony batch correction** — integrate samples by `orig.ident`
+5. **Elbow plot** — k-means WSS to guide dimension choice
+6. **Clustree resolution sweep** — test resolutions 0.05 – 1.0
+7. **Final clustering** — selected resolution (default 0.3)
+8. **Cell count plots** — cells per cluster per sample
+9. **Global pseudobulk** — replicate correlation heatmap
+10. **Marker genes** — `FindAllMarkers` + bibliography-based annotation
+11. **Reference annotation** — transfer labels from a reference Seurat object
+12. **Annotated clustree** — resolution sweep overlaid with cell-type labels
+13. **Gene expression visualisation** — VlnPlot / FeaturePlot per gene and cell type
+14. **Cell type grouping** — merge fine types into broader categories
+15. **Interactive curation** — subclustering and manual reassignment (run interactively)
+16. **Pseudoreplicates & pseudobulk per cell type** — one matrix per cell type
+17. **DESeq2** — all pairwise comparisons, one subdirectory per comparison
+18. **Volcano plots** — one PDF per comparison, two plots per page
+19. **Differential table & heatmap** — log2FC matrix, hierarchical clustering
+20. **GO enrichment** — clusterProfiler enrichGO, dot plots, pruned terms
+
+All major plots are saved as **PDF files** under `results/` or the configured `output_dir`.
+
+---
+
+## Adapting to Other Organisms
+
+Three parameters control the organism-specific parts of the pipeline:
+
+### Mitochondrial / chloroplast gene patterns (`process_sample`)
+
+```r
+# Arabidopsis thaliana (default)
+mt_pattern = "^ATMG"
+cp_pattern  = "^ATCG"
+
+# Human
+mt_pattern = "^MT-"
+cp_pattern  = NULL
+
+# Mouse
+mt_pattern = "^mt-"
+cp_pattern  = NULL
+```
+
+### GO enrichment database (`paperrr.R` — GO ENRICHMENT section)
+
+```r
+# Arabidopsis thaliana (default)
+orgdb   <- org.At.tair.db
+keytype <- "TAIR"
+
+# Human
+orgdb   <- org.Hs.eg.db
+keytype <- "ENSEMBL"   # or "SYMBOL"
+
+# Mouse
+orgdb   <- org.Mm.eg.db
+keytype <- "ENSEMBL"   # or "SYMBOL"
+```
+
+Also update the `universo` background gene list to match your organism.
+
+### DESeq2 comparisons
+
+Edit the `comparaciones` list in `paperrr.R` to match your condition names:
+
+```r
+comparaciones <- list(
+  list(conds = c("Control", "Treatment"), tag = "ctrl_vs_treat")
+)
+```
+
+---
+
 ## Included Packages
 
 ### R 4.5
@@ -147,16 +230,23 @@ docker run --rm -v ${PWD}:/workspace mvergara19/scrnaseq_docker:latest python3 /
 | SeuratWrappers | 0.4.0 | Integrations with external methods |
 | monocle3 | 1.4.26 | Trajectory analysis |
 | DESeq2 | 1.50.2 | Differential expression |
+| clusterProfiler | — | GO and pathway enrichment |
+| org.At.tair.db | — | Arabidopsis thaliana annotation database |
 | scater | 1.38.1 | QC and visualization (Bioconductor) |
 | SingleCellExperiment | 1.32.0 | Bioconductor single-cell data structure |
 | SummarizedExperiment | 1.40.0 | Bioconductor experiment container |
-| zellkonverter | 1.20.1 | SCE ↔ AnnData conversion |
+| zellkonverter | 1.20.1 | SCE <-> AnnData conversion |
 | harmony | 1.2.4 | Dataset integration / batch correction |
 | DoubletFinder | 2.0.6 | Doublet detection |
 | clustree | 0.5.1 | Clustering resolution visualization |
+| dynamicTreeCut | — | Dynamic dendrogram-based cluster cutting |
 | hdf5r | 1.3.12 | HDF5 file I/O |
 | Matrix | 1.7-5 | Sparse matrix support |
 | ggplot2 | 4.0.2 | Data visualization |
+| ggrepel | — | Non-overlapping text labels |
+| ggpubr | — | Publication-ready ggplot2 figures |
+| pheatmap | — | Pretty heatmaps |
+| RColorBrewer | — | Color palettes |
 | patchwork | 1.3.2 | Composing plots |
 | cowplot | 1.2.0 | Publication-ready figures |
 | gridExtra | 2.3 | Plot grids |
@@ -287,9 +377,28 @@ adata = sc.read_h5ad("/workspace/my_data.h5ad")
 
 ```
 ScRNASeq-Docker/
-├── Dockerfile          # Full image definition
-├── docker-compose.yml  # docker compose configuration
-└── workspace/          # Default mount point for your data
+├── Dockerfile                      # Full image definition
+├── docker-compose.yml              # docker compose configuration
+├── load_libraries.R                # All library() calls (sourced by paperrr.R)
+├── paperrr.R                       # Main analysis pipeline
+├── metodologia/
+│   ├── ScRNA_Analysis_Functions.R  # Reusable helper functions
+│   └── custom_seurat.R             # Custom Seurat utilities
+└── workspace/                      # Default mount point for your data
+```
+
+### Pipeline output layout
+
+```
+results/
+├── pseudobulk_replicas/            # Pseudobulk matrices per cell type
+├── deseq2/
+│   ├── 05_5/                       # DESeq2 CSVs: 0.5N vs 5N
+│   ├── 0_5/                        # DESeq2 CSVs: 0N vs 5N
+│   └── 0_05/                       # DESeq2 CSVs: 0N vs 0.5N
+├── volcano_plots/                  # One PDF per comparison
+├── diff/                           # Differential gene tables and heatmaps
+└── Enrichment/                     # GO enrichment dot plots
 ```
 
 ---
