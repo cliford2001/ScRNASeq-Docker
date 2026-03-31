@@ -2,6 +2,8 @@
 title: "Single-Cell RNA-seq Analysis Pipeline"
 subtitle: "From Raw Reads to Differential Expression and GO Enrichment"
 date: "`r Sys.Date()`"
+params:
+  show_figures: true
 output:
   pdf_document:
     toc: true
@@ -16,6 +18,8 @@ fontsize: 11pt
 ```{r setup, include=FALSE}
 knitr::opts_chunk$set(echo = FALSE, warning = FALSE, message = FALSE,
                       error = TRUE, fig.align = "center", out.width = "100%")
+if (!params$show_figures)
+  knitr::opts_hooks$set(fig.cap = function(o) { o$eval <- FALSE; o$include <- FALSE; o })
 ```
 
 \newpage
