@@ -28,7 +28,9 @@ samples <- list(
 colors <- c("0N" = "#66c2a5", "0.5N_R1" = "#fc8d62", "0.5N_R2" = "#fc8d62",
             "5N_R1" = "#8da0cb", "5N_R2" = "#8da0cb")
 
-output_dir <- "metodologia"
+output_dir       <- "metodologia"
+resolutions_test <- c(0.15, 0.30, 0.50, 0.8, 1.0)
+marcadores       <- read.table("recursos/biblio_marks.txt", header = TRUE, sep = "\t", quote = "")
 
 
 # ── Plot-saving helpers ────────────────────────────────────────────────────────
@@ -92,9 +94,8 @@ save_pdf(DimPlot(pbmc_harmony, group.by = "orig.ident", cols = colors), "umap_pr
 # HARMONY BATCH CORRECTION
 # =============================================================================
 
-dims_use         <- 1:30
-k_param          <- 30
-resolutions_test <- c(0.05, 0.15, 0.30, 0.40, 0.50, 0.60, 0.7, 0.8, 0.9, 1.0)
+dims_use <- 1:30
+k_param  <- 30
 
 pbmc_harmony <- pbmc_harmony %>% RunHarmony("orig.ident", plot_convergence = FALSE)
 
@@ -118,7 +119,6 @@ save_pdf(elbow_plot, "elbow_plot.pdf", w = 8, h = 6)
 # =============================================================================
 # CLUSTREE — RESOLUTION SWEEP
 # =============================================================================
-resolutions_test <- c(0.15, 0.30, 0.50, 0.8, 1.0)
 
 clu <- pbmc_harmony %>%
   RunUMAP(reduction = "harmony", dims = dims_use, verbose = FALSE) %>%
@@ -256,7 +256,6 @@ save_pdf(
 #   4. Apply corrections to the global object
 
 Idents(pbmc_harmony) <- "annotation_agrupada"
-marcadores <- read.table("recursos/biblio_marks.txt", header = TRUE, sep = "\t", quote = "")
 
 # ── 1. Subcluster ─────────────────────────────────────────────────────────────
 # Add or remove cell types as needed for your dataset.
@@ -331,8 +330,6 @@ exportar_para_scanpy(pbmc_harmony, "results/objs/pbmc_harmony_curated.h5ad")
 # DOTPLOT — MARKER GENES BY CELL TYPE
 # =============================================================================
 
-marks <- read.table("recursos/biblio_marks.txt", header = TRUE, sep = "\t", quote = "")
-
 cell_order_dotplot <- c(
   "Pavement Cell", "Stomatal lineage", "Guard Cell", "Mesophyll", "Bundle Sheath",
   "Phloem Parenchyma", "Cambium", "Xylem", "Companion Cell",
@@ -340,7 +337,7 @@ cell_order_dotplot <- c(
 )
 
 hacer_dotplot_marcadores(
-  pbmc_harmony, marks,
+  pbmc_harmony, marcadores,
   annot_col       = "celltype_reference_curated",
   cell_order      = cell_order_dotplot,
   clusters_remove = c("Sieve Element", "Myrosin Idioblast"),
@@ -486,6 +483,6 @@ for (comp in comparaciones) {
   pdf(file.path(enr_dir, paste0("GO_enrichment_", tag, ".pdf")), width = 18, height = 18)
   tryCatch({ print(graficar_go_balones(go_total));        print(graficar_go_balones(go_simple))
              print(graficar_go_balones(go_total_podado)); print(graficar_go_balones(go_simple_podado)) },
-           silent = TRUE)
+           error = function(e) message("GO plot error: ", e$message))
   dev.off()
 }
