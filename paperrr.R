@@ -8,6 +8,7 @@
 source("metodologia/ScRNASeq-Docker/load_libraries.R")
 source("metodologia/ScRNASeq-Docker/custom_seurat.R")
 source("metodologia/ScRNASeq-Docker/ScRNA_Analysis_Functions.R")
+set.seed(1807)
 
 options(Seurat.allow.s4 = FALSE)
 setwd("/home/mvergara/projects2/eleo/ScRNA/")
@@ -29,26 +30,6 @@ colors <- c("0N" = "#66c2a5", "0.5N_R1" = "#fc8d62", "0.5N_R2" = "#fc8d62",
             "5N_R1" = "#8da0cb", "5N_R2" = "#8da0cb")
 
 output_dir       <- "metodologia"
-resolutions_test <- c(0.15, 0.30, 0.50, 0.8, 1.0)
-marcadores       <- read.table("recursos/biblio_marks.txt", header = TRUE, sep = "\t", quote = "")
-
-
-# ── Plot-saving helpers ────────────────────────────────────────────────────────
-# save_pdf(plot, "name.pdf")             — UMAP / FeaturePlot  (10 × 8)
-# save_vln(plot, "name.pdf")             — VlnPlot single gene  (14 × 6)
-# save_vln(plot, "name.pdf", n = k)      — VlnPlot k genes      (14 × 6k)
-# save_qc(plot_list, "name.pdf")         — stacked QC grid
-
-save_pdf <- function(plot, file, w = 10, h = 8)
-  ggsave(file.path(output_dir, file), plot, width = w, height = h,
-         dpi = 300, limitsize = FALSE)
-
-save_vln <- function(plot, file, n = 1)
-  save_pdf(plot, file, w = 14, h = 6 * n)
-
-save_qc <- function(plot_list, file)
-  ggsave(file.path(output_dir, file), wrap_plots(plot_list, ncol = 1),
-         width = 14, height = 6 * length(plot_list), dpi = 300, bg = "white")
 
 
 # =============================================================================
@@ -75,14 +56,13 @@ names(seurat_list) <- sapply(samples, `[[`, "label")
 plots_post <- imap(seurat_list, ~ plot_qc_violin_grid(.x, .y, colors[[.y]]))
 save_qc(plots_post, "qc_postfilter.pdf")
 
-
 # =============================================================================
 # MERGE AND PREPROCESSING
 # =============================================================================
 
 pbmc_harmony <- reduce(seurat_list, merge) %>%
   NormalizeData(verbose = FALSE) %>%
-  FindVariableFeatures(nfeatures = 2000, verbose = FALSE) %>%
+  FindVariableFeatures(selection.method = "vst", nfeatures = 2000, verbose = FALSE) %>%  # Sin pbmc_harmony, con %>%
   ScaleData(verbose = FALSE) %>%
   RunPCA(npcs = 30, verbose = FALSE) %>%
   RunUMAP(reduction = "pca", dims = 1:30, verbose = FALSE)
@@ -95,6 +75,10 @@ table(pbmc_harmony$orig.ident)
 save_pdf(DimPlot(pbmc_harmony, group.by = "orig.ident", cols = colors), "umap_preharmony.pdf")  # 10×8
 
 
+pbmc_harmony.bkp <- pbmc_harmony
+#pbmc_harmony <- pbmc_harmony.bkp
+
+
 # =============================================================================
 # HARMONY BATCH CORRECTION
 # =============================================================================
@@ -103,7 +87,6 @@ dims_use <- 1:30
 k_param  <- 30
 
 pbmc_harmony <- pbmc_harmony %>% RunHarmony("orig.ident", plot_convergence = FALSE)
-
 
 # =============================================================================
 # ELBOW PLOT (K-MEANS WSS)
@@ -124,6 +107,7 @@ save_pdf(elbow_plot, "elbow_plot.pdf", w = 8, h = 6)
 # =============================================================================
 # CLUSTREE — RESOLUTION SWEEP
 # =============================================================================
+resolutions_test <- c(0.15, 0.30, 0.50, 0.8, 1.0)
 
 clu <- pbmc_harmony %>%
   RunUMAP(reduction = "harmony", dims = dims_use, verbose = FALSE) %>%
@@ -152,46 +136,63 @@ save_pdf(DimPlot(pbmc_harmony, group.by = "orig.ident", cols = colors), "umap_po
 
 
 # =============================================================================
-# CELL COUNT PER CLUSTER
+# UMAP PER CLUSTER
 # =============================================================================
-
-Idents(pbmc_harmony) <- "orig.ident"
-save_pdf(plot_integrated_clusters(pbmc_harmony), "conteocelulas.pdf", w = 14, h = 10)
 
 colors_clusters <- sample(colors(distinct = TRUE), length(unique(pbmc_harmony$seurat_clusters)))
 Idents(pbmc_harmony) <- "seurat_clusters"
-
 save_pdf(DimPlot(pbmc_harmony, group.by = "seurat_clusters", cols = colors_clusters), "umap_seuratclusters.pdf")
-save_pdf(plot_integrated_clusters(pbmc_harmony), "conteocelulas_seurat.pdf", w = 14, h = 10)
 
-
-# =============================================================================
-# PSEUDOBULK (GLOBAL)
-# =============================================================================
-
-pseudobulk <- generate_pseudobulk(pbmc_harmony, group_by = "orig.ident")
-
-save_pdf(plot_replicate_correlation(pseudobulk$by_sample), "pseudobulk_correlation.pdf", w = 8, h = 8)
 
 
 # =============================================================================
 # MARKER GENES AND ANNOTATION
 # =============================================================================
-
 markers      <- find_markers(pbmc_harmony,
                              output_file = file.path(output_dir, "FindAllMarkers.tsv"))
 
+
+#Explciar que bibliomarks es un archivo de marcadores conocidos buscados por bibliografía, 
+#En este formato, etc, etc
 pbmc_harmony <- annotate_by_markers(pbmc_harmony, markers,
                                     reference_file = file.path(output_dir, "biblio_marks.txt"))
 
+# =============================================================================
+# DOTPLOT — MARKER GENES BY CELL TYPE
+# =============================================================================
+
+cell_order_dotplot <- c(
+  "Pavement Cell", "Stomatal lineage", "Guard Cell", "Mesophyll", "Bundle Sheath",
+  "Phloem Parenchyma", "Cambium", "Xylem", "Companion Cell",
+  "Hydathode", "Cell Cycle: G1-S", "Cell Cycle: G2-M"
+)
+
+hacer_dotplot_marcadores(
+  pbmc_harmony, marcadores,
+  annot_col       = "celltype_reference_curated",
+  cell_order      = cell_order_dotplot,
+  clusters_remove = c("Sieve Element", "Myrosin Idioblast"),
+  outfile         = file.path(output_dir, "dotplot_marcadores.pdf"),
+  width = 20, height = 10
+)
+
+
+#anotacion queda anotada en pbmc_harmony$celltyoe
+
+#Explicar que el.RDS es proveniente del archivo de libre uso que ha dejado una publicacion para esta poder usado como referencia 
+#destacar que es necesario que sea de tipo RDS como objeto de Seurat para poder ser utilizado
 esp          <- readRDS(file.path(output_dir, "GSE273033_seuratObj_for_publication.rds"))
 pbmc_harmony <- annotate_by_reference(pbmc_harmony, reference_obj = esp, reference_col = "annotation")
+#anotacion queda anotada en pbmc_harmony$celltyope_reference
+
+
 
 
 # =============================================================================
 # CLUSTREE — ANNOTATED
 # =============================================================================
-
+# Esto si bien es repetitivo a clustertree antiror esto sirve para volver a dar un vistazo a posibles nuevos comportamients
+# de anotación a distintos cluster 
 Mode <- function(x) { ux <- unique(x); ux[which.max(tabulate(match(x, ux)))] }
 
 clu <- pbmc_harmony %>%
@@ -299,7 +300,8 @@ reassign <- list(
     "1" = "Pavement Cell",
     "2" = "Pavement Cell",
     "3" = "Mesophyll",
-    "4" = "Pavement Cell"
+    "4" = "Pavement Cell",
+    "others" = "Pavement Cell"
   )
 )
 
@@ -327,25 +329,14 @@ exportar_para_scanpy(pbmc_harmony, "results/objs/pbmc_harmony_curated.h5ad")
 #                      "results/objs/GuardCell.h5ad")
 
 
-# =============================================================================
-# DOTPLOT — MARKER GENES BY CELL TYPE
-# =============================================================================
 
-cell_order_dotplot <- c(
-  "Pavement Cell", "Stomatal lineage", "Guard Cell", "Mesophyll", "Bundle Sheath",
-  "Phloem Parenchyma", "Cambium", "Xylem", "Companion Cell",
-  "Hydathode", "Cell Cycle: G1-S", "Cell Cycle: G2-M"
-)
 
-hacer_dotplot_marcadores(
-  pbmc_harmony, marcadores,
-  annot_col       = "celltype_reference_curated",
-  cell_order      = cell_order_dotplot,
-  clusters_remove = c("Sieve Element", "Myrosin Idioblast"),
-  outfile         = file.path(output_dir, "dotplot_marcadores.pdf"),
-  width = 20, height = 10
-)
 
+
+
+
+
+############ Parte 2
 
 # =============================================================================
 # CELL TYPE SUBSETS
@@ -386,7 +377,8 @@ for (tag in sapply(comparaciones, `[[`, "tag"))
   dir.create(file.path("results/deseq2", tag), recursive = TRUE, showWarnings = FALSE)
 
 for (tipo in names(pseudobulk_list))
-  correr_deseq2(as.matrix(pseudobulk_list[[tipo]]), comparaciones, output_dir = "results/deseq2")
+  correr_deseq2(as.matrix(pseudobulk_list[[tipo]]), comparaciones,
+                output_dir = "results/deseq2", tipo = tipo)
 
 
 # =============================================================================
@@ -487,3 +479,23 @@ for (comp in comparaciones) {
            error = function(e) message("GO plot error: ", e$message))
   dev.off()
 }
+
+
+
+
+
+
+
+
+
+
+
+
+
+# =============================================================================
+# PSEUDOBULK (GLOBAL)
+# =============================================================================
+
+pseudobulk <- generate_pseudobulk(pbmc_harmony, group_by = "orig.ident")
+
+save_pdf(plot_replicate_correlation(pseudobulk$by_sample), "pseudobulk_correlation.pdf", w = 8, h = 8)

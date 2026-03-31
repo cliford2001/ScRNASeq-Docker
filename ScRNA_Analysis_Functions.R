@@ -1078,7 +1078,7 @@ hacer_pseudobulk <- function(obj) {
 #'   output_dir/tag/DESeq2_tag.csv.
 #' @return Invisible NULL (side effect: writes CSV files).
 #' @export
-correr_deseq2 <- function(counts_mat, comparaciones, output_dir) {
+correr_deseq2 <- function(counts_mat, comparaciones, output_dir, tipo = NULL) {
 
   rep_names <- colnames(counts_mat)
   condition <- gsub("-rep[0-9]+$", "", sub("^g", "", rep_names))
@@ -1103,9 +1103,10 @@ correr_deseq2 <- function(counts_mat, comparaciones, output_dir) {
     conds <- comp$conds
     tag   <- comp$tag
     if (!all(conds %in% available)) next
-    res <- results(dds, contrast = c("condition", conds[2], conds[1]))
+    res    <- results(dds, contrast = c("condition", conds[2], conds[1]))
+    prefix <- if (!is.null(tipo)) paste0("DESeq2_", tipo, "_") else "DESeq2_"
     write.csv(as.data.frame(res),
-              file = file.path(output_dir, tag, paste0("DESeq2_", tag, ".csv")))
+              file = file.path(output_dir, tag, paste0(prefix, tag, ".csv")))
   }
 }
 
@@ -1549,6 +1550,23 @@ graficar_go_balones <- function(resuGO) {
     theme(axis.text.x = element_text(angle = 45, hjust = 1),
           axis.title  = element_blank())
 }
+
+# ── Plot-saving helpers ────────────────────────────────────────────────────────
+# save_pdf(plot, "name.pdf")             — UMAP / FeaturePlot  (10 × 8)
+# save_vln(plot, "name.pdf")             — VlnPlot single gene  (14 × 6)
+# save_vln(plot, "name.pdf", n = k)      — VlnPlot k genes      (14 × 6k)
+# save_qc(plot_list, "name.pdf")         — stacked QC grid
+
+save_pdf <- function(plot, file, w = 10, h = 8)
+  ggsave(file.path(output_dir, file), plot, width = w, height = h,
+         dpi = 300, limitsize = FALSE)
+
+save_vln <- function(plot, file, n = 1)
+  save_pdf(plot, file, w = 14, h = 6 * n)
+
+save_qc <- function(plot_list, file)
+  ggsave(file.path(output_dir, file), wrap_plots(plot_list, ncol = 1),
+         width = 14, height = 6 * length(plot_list), dpi = 300, bg = "white")
 
 
 # =============================================================================
