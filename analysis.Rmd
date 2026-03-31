@@ -177,7 +177,39 @@ The corrected output (`Sample_cellbender_output_filtered.h5`) is the recommended
 
 \newpage
 
-# Step 4: Quality Control
+# Step 4: Pipeline Configuration
+
+All experiment-specific parameters are defined once at the top of `paperrr.R`. The `samples` list points to each CellBender output file and assigns a label and condition to each sample. The `colors` vector maps sample labels to colours used in all plots. The `output_dir` sets the destination for all output files.
+
+```{r config-code, echo=TRUE, eval=FALSE}
+source("load_libraries.R")
+source("custom_seurat.R")
+source("ScRNA_Analysis_Functions.R")
+
+setwd("/path/to/your/project/")
+
+samples <- list(
+  list(file = "cellbender/Sample_0N_cellbender_filtered.h5",
+       label = "0N",      condition = "0N"),
+  list(file = "cellbender/Sample_05N_R1_cellbender_filtered.h5",
+       label = "0.5N_R1", condition = "0.5N"),
+  list(file = "cellbender/Sample_5N_R1_cellbender_filtered.h5",
+       label = "5N_R1",   condition = "5N")
+)
+
+colors <- c("0N" = "#66c2a5", "0.5N_R1" = "#fc8d62", "5N_R1" = "#8da0cb")
+
+output_dir       <- "results"
+resolutions_test <- c(0.15, 0.30, 0.50, 0.8, 1.0)
+marcadores       <- read.table("biblio_marks.txt", header = TRUE,
+                                sep = "\t", quote = "")
+```
+
+---
+
+\newpage
+
+# Step 5: Quality Control
 
 Quality control (QC) identifies and removes low-quality cells before downstream analysis. Three metrics are computed per cell:
 
@@ -187,26 +219,39 @@ Quality control (QC) identifies and removes low-quality cells before downstream 
 
 ## Pre-filter assessment
 
-Violin plots of these metrics across all samples are generated before any filtering. These plots guide the choice of appropriate thresholds.
+Samples are loaded and mitochondrial/chloroplast genes are annotated. Violin plots are generated before any filtering to guide threshold selection.
+
+```{r qc-load-code, echo=TRUE, eval=FALSE}
+# Load and annotate (no filtering yet)
+# mt_pattern / cp_pattern:  Arabidopsis = "^ATMG" / "^ATCG"
+#                           Human = "^MT-" / NULL  |  Mouse = "^mt-" / NULL
+seurat_list_raw <- lapply(samples, load_sample,
+                          mt_pattern = "^ATMG", cp_pattern = "^ATCG")
+names(seurat_list_raw) <- sapply(samples, `[[`, "label")
+
+plots_pre <- imap(seurat_list_raw, ~ plot_qc_violin_grid(.x, .y, colors[[.y]]))
+save_qc(plots_pre, "qc_prefilter.pdf")
+```
 
 ```{r qc-pre, fig.cap="Pre-filter QC metrics. Each panel shows one sample. Violin plots display the distribution of detected genes (nFeature\\_RNA), total UMI count (nCount\\_RNA), and mitochondrial/chloroplast gene fractions before any filtering."}
 knitr::include_graphics("../qc_prefilter.pdf")
 ```
 
-## Filtering parameters
+## Filtering and doublet detection
 
-Based on the pre-filter distributions, thresholds are applied:
+Based on the pre-filter distributions, thresholds are applied. DoubletFinder is then run per sample to identify and remove co-encapsulated cell pairs.
 
-- **Minimum genes per cell**: 200 (removes empty droplets)
-- **Maximum mitochondrial %**: 5% (removes damaged cells; adjust per organism and tissue)
+```{r qc-filter-code, echo=TRUE, eval=FALSE}
+# Filter cells and run DoubletFinder per sample
+seurat_list <- lapply(seurat_list_raw, filter_sample,
+                      min_features = 200, max_mt = 5)
+names(seurat_list) <- sapply(samples, `[[`, "label")
 
-Additionally, DoubletFinder is applied to each sample individually to detect co-encapsulated cell pairs (doublets), which are removed before merging.
+plots_post <- imap(seurat_list, ~ plot_qc_violin_grid(.x, .y, colors[[.y]]))
+save_qc(plots_post, "qc_postfilter.pdf")
+```
 
-## Post-filter confirmation
-
-After filtering, the same violin plots are regenerated to confirm that low-quality cells have been removed and the distributions are clean.
-
-```{r qc-post, fig.cap="Post-filter QC metrics. The same violin layout as above, after applying the minimum-feature and maximum-mitochondrial-percent thresholds and removing DoubletFinder-predicted doublets."}
+```{r qc-post, fig.cap="Post-filter QC metrics. Same layout as above, after applying thresholds and removing DoubletFinder-predicted doublets."}
 knitr::include_graphics("../qc_postfilter.pdf")
 ```
 
@@ -214,17 +259,25 @@ knitr::include_graphics("../qc_postfilter.pdf")
 
 \newpage
 
-# Step 5: Data Merging, Normalisation, and Preprocessing
+# Step 6: Data Merging, Normalisation, and Preprocessing
 
-After quality control, all samples are merged into a single Seurat object. The following preprocessing steps are applied in sequence:
+After quality control, all samples are merged into a single Seurat object and preprocessed through normalisation, variable feature selection, scaling, PCA, and UMAP.
 
-1. **Log-normalisation** --- counts are normalised to 10,000 UMIs per cell and log-transformed to stabilise variance.
-2. **Highly variable features** --- the 2,000 most variable genes are selected for dimensionality reduction.
-3. **Scaling** --- expression values are centred and scaled so that highly expressed genes do not dominate PCA.
-4. **PCA** --- the top 30 principal components are computed from the variable features.
-5. **UMAP** --- a two-dimensional embedding is computed from PCA space for visualisation.
+```{r preprocess-code, echo=TRUE, eval=FALSE}
+pbmc_harmony <- reduce(seurat_list, merge) %>%
+  NormalizeData(verbose = FALSE) %>%
+  FindVariableFeatures(nfeatures = 2000, verbose = FALSE) %>%
+  ScaleData(verbose = FALSE) %>%
+  RunPCA(npcs = 30, verbose = FALSE) %>%
+  RunUMAP(reduction = "pca", dims = 1:30, verbose = FALSE)
 
-The UMAP below shows all cells before batch correction, coloured by sample. Separation of cells by sample (rather than by biology) confirms the presence of batch effects that must be corrected.
+pbmc_harmony$orig.ident_uni <- pbmc_harmony$condition
+
+save_pdf(DimPlot(pbmc_harmony, group.by = "orig.ident", cols = colors),
+         "umap_preharmony.pdf")
+```
+
+The UMAP below shows all cells before batch correction, coloured by sample. Separation of cells by sample confirms the presence of batch effects that must be corrected.
 
 ```{r umap-pre, fig.cap="UMAP before Harmony batch correction, coloured by sample identity. Samples separate into distinct groups, reflecting technical batch effects."}
 knitr::include_graphics("../umap_preharmony.pdf")
@@ -234,15 +287,37 @@ knitr::include_graphics("../umap_preharmony.pdf")
 
 \newpage
 
-# Step 6: Batch Correction (Harmony)
+# Step 7: Batch Correction (Harmony) and Dimension Selection
 
-Harmony iteratively adjusts the PCA embedding to remove sample-specific shifts while preserving biological signal. It integrates all samples by their `orig.ident` label and produces a corrected `harmony` reduction used for all downstream graph construction and UMAP embedding.
+Harmony iteratively adjusts the PCA embedding to remove sample-specific shifts while preserving biological signal.
 
-## Choosing the number of dimensions
+```{r harmony-code, echo=TRUE, eval=FALSE}
+dims_use <- 1:30
+k_param  <- 30
 
-Before clustering, the number of significant principal components is assessed using a k-means within-cluster sum-of-squares (WSS) elbow plot. The optimal number of dimensions corresponds to the point where the curve flattens, indicating diminishing returns from additional components.
+pbmc_harmony <- pbmc_harmony %>%
+  RunHarmony("orig.ident", plot_convergence = FALSE)
+```
 
-```{r elbow, fig.cap="Elbow plot (k-means WSS) for dimension selection. The inflection point suggests that 30 dimensions capture the majority of meaningful biological variance.", out.width="70%"}
+## Elbow plot
+
+The number of informative PCA dimensions is assessed using a k-means WSS elbow plot. The optimal value corresponds to the inflection point of the curve.
+
+```{r elbow-code, echo=TRUE, eval=FALSE}
+k_range  <- 2:40
+pca_data <- Embeddings(pbmc_harmony, "pca")[, dims_use]
+wss      <- sapply(k_range, function(k)
+  kmeans(pca_data, centers = k, nstart = 10)$tot.withinss)
+
+elbow_plot <- ggplot(data.frame(k = k_range, wss = wss), aes(k, wss)) +
+  geom_line() + geom_point() +
+  labs(x = "Number of clusters (k)", y = "Within-cluster sum of squares") +
+  theme_minimal()
+
+save_pdf(elbow_plot, "elbow_plot.pdf", w = 8, h = 6)
+```
+
+```{r elbow, fig.cap="Elbow plot (k-means WSS). The inflection point guides the choice of how many PCA dimensions to use downstream.", out.width="70%"}
 knitr::include_graphics("../elbow_plot.pdf")
 ```
 
@@ -250,11 +325,23 @@ knitr::include_graphics("../elbow_plot.pdf")
 
 \newpage
 
-# Step 7: Clustering Resolution Selection (Clustree)
+# Step 8: Clustering Resolution Selection (Clustree)
 
-Seurat's graph-based clustering (Leiden algorithm) requires a resolution parameter that controls the granularity of the output. To select a stable resolution, clustering is run across a range of values (0.15, 0.30, 0.50, 0.80, 1.00) and visualised as a tree with the `clustree` package. Each node represents a cluster at a given resolution; edges indicate the fraction of cells flowing from one cluster to another as resolution increases. A stable resolution produces wide, consistent edges without excessive fragmentation.
+Clustering is run across a range of resolutions and visualised as a tree to select a stable partition.
 
-```{r clustree, fig.cap="Clustree resolution sweep. Nodes represent clusters at each resolution; edge width is proportional to the number of cells carried over. A resolution of 0.3 was selected based on the stability of the partition."}
+```{r clustree-code, echo=TRUE, eval=FALSE}
+clu <- pbmc_harmony %>%
+  RunUMAP(reduction = "harmony", dims = dims_use, verbose = FALSE) %>%
+  FindNeighbors(reduction = "harmony", dims = dims_use,
+                k.param = k_param, verbose = FALSE)
+
+for (res in resolutions_test)
+  clu <- FindClusters(clu, resolution = res, algorithm = 4, verbose = FALSE)
+
+save_pdf(clustree(clu, prefix = "RNA_snn_res."), "clustree.pdf", w = 14, h = 14)
+```
+
+```{r clustree, fig.cap="Clustree resolution sweep. Edge width is proportional to the fraction of cells carried over between resolutions. A resolution of 0.3 was selected."}
 knitr::include_graphics("../clustree.pdf")
 ```
 
@@ -262,11 +349,28 @@ knitr::include_graphics("../clustree.pdf")
 
 \newpage
 
-# Step 8: Final Clustering
+# Step 9: Final Clustering
 
-Based on the clustree output, a resolution of 0.3 is applied for the final clustering. The resulting partition is visualised on the post-Harmony UMAP, coloured first by sample identity (to verify batch correction) and then by cluster identity.
+The chosen resolution is applied for the final clustering and results are visualised on the Harmony-corrected UMAP.
 
-```{r umap-post, fig.cap="UMAP after Harmony batch correction, coloured by sample identity. Samples are now well mixed within each cluster, confirming successful batch correction."}
+```{r final-cluster-code, echo=TRUE, eval=FALSE}
+cluster_resolution <- 0.3
+
+pbmc_harmony <- pbmc_harmony %>%
+  RunUMAP(reduction = "harmony", dims = dims_use, verbose = FALSE) %>%
+  FindNeighbors(reduction = "harmony", dims = dims_use,
+                k.param = k_param, verbose = FALSE) %>%
+  FindClusters(resolution = cluster_resolution, algorithm = 4, verbose = FALSE)
+
+save_pdf(DimPlot(pbmc_harmony, group.by = "orig.ident", cols = colors),
+         "umap_postharmony.pdf")
+save_pdf(DimPlot(pbmc_harmony, group.by = "seurat_clusters",
+                 cols = sample(colors(distinct = TRUE),
+                               length(unique(pbmc_harmony$seurat_clusters)))),
+         "umap_seuratclusters.pdf")
+```
+
+```{r umap-post, fig.cap="UMAP after Harmony batch correction, coloured by sample identity. Samples are now well mixed, confirming successful batch correction."}
 knitr::include_graphics("../umap_postharmony.pdf")
 ```
 
@@ -278,11 +382,21 @@ knitr::include_graphics("../umap_seuratclusters.pdf")
 
 \newpage
 
-# Step 9: Cell Count per Cluster
+# Step 10: Cell Count per Cluster
 
-Bar charts summarise the composition of each cluster. The left panel shows the fraction of cells contributed by each sample (useful for identifying sample-specific clusters), and the right panel shows the total cell count per cluster on a log10 scale.
+Bar charts summarise the composition of each cluster by sample and by cluster identity.
 
-```{r cellcount-sample, fig.cap="Cell count by sample identity. Left: fraction of cells from each sample per cluster. Right: total cells per cluster (log10 scale)."}
+```{r cellcount-code, echo=TRUE, eval=FALSE}
+Idents(pbmc_harmony) <- "orig.ident"
+save_pdf(plot_integrated_clusters(pbmc_harmony), "conteocelulas.pdf",
+         w = 14, h = 10)
+
+Idents(pbmc_harmony) <- "seurat_clusters"
+save_pdf(plot_integrated_clusters(pbmc_harmony), "conteocelulas_seurat.pdf",
+         w = 14, h = 10)
+```
+
+```{r cellcount-sample, fig.cap="Cell count by sample identity. Left: fraction per sample within each cluster. Right: total cells per cluster (log10 scale)."}
 knitr::include_graphics("../conteocelulas.pdf")
 ```
 
@@ -294,11 +408,18 @@ knitr::include_graphics("../conteocelulas_seurat.pdf")
 
 \newpage
 
-# Step 10: Global Pseudobulk Replicate Correlation
+# Step 11: Global Pseudobulk Replicate Correlation
 
-A global quality check is performed by aggregating all cells per sample into a pseudobulk count vector and computing Pearson correlations between samples. Replicates from the same condition should cluster together with high correlation (r > 0.95). Outlier samples correlating poorly with their replicates may indicate technical problems.
+All cells per sample are aggregated into a pseudobulk count vector and Pearson correlations between samples are computed. Replicates from the same condition should cluster together with r > 0.95.
 
-```{r pseudobulk-corr, fig.cap="Pearson correlation heatmap of global pseudobulk profiles. Biological replicates within the same condition are expected to cluster together with high correlation.", out.width="70%"}
+```{r pseudobulk-global-code, echo=TRUE, eval=FALSE}
+pseudobulk <- generate_pseudobulk(pbmc_harmony, group_by = "orig.ident")
+
+save_pdf(plot_replicate_correlation(pseudobulk$by_sample),
+         "pseudobulk_correlation.pdf", w = 8, h = 8)
+```
+
+```{r pseudobulk-corr, fig.cap="Pearson correlation heatmap of global pseudobulk profiles. Replicates within the same condition should cluster together.", out.width="70%"}
 knitr::include_graphics("../pseudobulk_correlation.pdf")
 ```
 
@@ -306,21 +427,54 @@ knitr::include_graphics("../pseudobulk_correlation.pdf")
 
 \newpage
 
-# Step 11: Marker Gene Identification and Cell-Type Annotation
+# Step 12: Marker Gene Identification and Cell-Type Annotation
 
-## Marker genes
+## Marker genes and literature-based annotation
 
-For each cluster, genes significantly overexpressed relative to all other clusters are identified using a Wilcoxon rank-sum test (Seurat's `FindAllMarkers`), retaining genes expressed in at least 25% of cells with a log2 fold change above 0.25. The top markers per cluster are cross-referenced against curated cell-type gene signatures from the literature.
+Differentially expressed genes per cluster are identified with a Wilcoxon test and cross-referenced against curated cell-type signatures from the literature.
+
+```{r markers-code, echo=TRUE, eval=FALSE}
+markers <- find_markers(pbmc_harmony,
+                        output_file = file.path(output_dir, "FindAllMarkers.tsv"))
+
+pbmc_harmony <- annotate_by_markers(pbmc_harmony, markers,
+                   reference_file = file.path(output_dir, "biblio_marks.txt"))
+```
 
 ## Reference-based annotation
 
-Cell-type labels are also transferred from a published reference Seurat object using Seurat's `FindTransferAnchors` / `TransferData` workflow. This approach is robust when a high-quality reference atlas is available for the organism.
+Cell-type labels are transferred from a published reference Seurat object.
+
+```{r ref-annot-code, echo=TRUE, eval=FALSE}
+esp <- readRDS(file.path(output_dir, "reference_seurat.rds"))
+pbmc_harmony <- annotate_by_reference(pbmc_harmony,
+                                      reference_obj = esp,
+                                      reference_col = "annotation")
+```
 
 ## Annotated clustree
 
-The resolution sweep from Step 7 is repeated on the annotated object, overlaying the most frequent cell-type label at each cluster node to confirm that the chosen resolution separates biologically distinct cell types.
+The resolution sweep is repeated overlaying cell-type labels to confirm that the chosen resolution separates biologically distinct populations.
 
-```{r clustree-annot, fig.cap="Annotated clustree. Node labels show the most frequent transferred cell-type label within each cluster at each resolution."}
+```{r annot-clustree-code, echo=TRUE, eval=FALSE}
+Mode <- function(x) { ux <- unique(x); ux[which.max(tabulate(match(x, ux)))] }
+
+clu <- pbmc_harmony %>%
+  RunUMAP(reduction = "harmony", dims = dims_use, verbose = FALSE) %>%
+  FindNeighbors(reduction = "harmony", dims = dims_use,
+                k.param = k_param, verbose = FALSE)
+
+for (res in resolutions_test)
+  clu <- FindClusters(clu, resolution = res, algorithm = 4, verbose = FALSE)
+
+save_pdf(
+  clustree(clu, prefix = "RNA_snn_res.",
+           node_label = "celltype_reference", node_label_aggr = "Mode"),
+  "clustree_annotated.pdf", w = 14, h = 14
+)
+```
+
+```{r clustree-annot, fig.cap="Annotated clustree. Node labels show the most frequent transferred cell-type label at each resolution."}
 knitr::include_graphics("../clustree_annotated.pdf")
 ```
 
@@ -328,9 +482,31 @@ knitr::include_graphics("../clustree_annotated.pdf")
 
 \newpage
 
-# Step 12: Gene Expression Visualisation
+# Step 13: Gene Expression Visualisation
 
-Individual genes or gene sets can be inspected with violin plots (expression distribution per cell type) and feature plots (expression projected onto the UMAP). These can be generated globally across all cell types or restricted to a single cell type of interest.
+Individual genes or gene sets can be inspected with violin plots and feature plots, globally or restricted to a single cell type.
+
+```{r gex-code, echo=TRUE, eval=FALSE}
+pbmc_harmony     <- JoinLayers(pbmc_harmony)   # required in Seurat 5 after merge
+Idents(pbmc_harmony) <- "celltype_reference"
+
+gene              <- "AT5G26000"               # replace with your gene of interest
+genes_of_interest <- c("AT5G26000", "AT5G54250")
+celltype          <- "Guard Cell"
+sub_obj           <- subset(pbmc_harmony, idents = celltype)
+
+# Single gene — all cell types
+save_vln(VlnPlot(pbmc_harmony, features = gene),    "vln_gene_all.pdf")
+save_pdf(FeaturePlot(pbmc_harmony, features = gene), "feature_gene_all.pdf")
+
+# Gene set — all cell types
+save_vln(VlnPlot(pbmc_harmony, features = genes_of_interest),
+         "vln_geneset_all.pdf", n = length(genes_of_interest))
+
+# Single gene — one cell type
+save_vln(VlnPlot(sub_obj, features = gene),    "vln_gene_celltype.pdf")
+save_pdf(FeaturePlot(sub_obj, features = gene), "feature_gene_celltype.pdf")
+```
 
 ```{r vln-gene, fig.cap="Violin plot of AT5G26000 expression across all annotated cell types."}
 knitr::include_graphics("../vln_gene_all.pdf")
@@ -344,19 +520,72 @@ knitr::include_graphics("../feature_gene_all.pdf")
 
 \newpage
 
-# Step 13: Cell-Type Grouping and Manual Curation
+# Step 14: Cell-Type Grouping and Manual Curation
 
 ## Grouping fine annotations
 
-Fine-grained cell-type labels are collapsed into broader biological categories via a configurable mapping table. For example, companion cells, cambium, phloem parenchyma, xylem, and sieve elements are grouped under "Vascular Cell" for comparisons that do not require fine-grained resolution.
+Fine-grained labels are collapsed into broader biological categories via a named character vector.
 
-```{r umap-grouped, fig.cap="UMAP coloured by grouped cell-type annotations. Biologically related types have been merged into broader categories."}
+```{r grouping-code, echo=TRUE, eval=FALSE}
+grouping <- c(
+  "Companion Cell"    = "Vascular Cell",
+  "Cambium"           = "Vascular Cell",
+  "Phloem Parenchyma" = "Vascular Cell",
+  "Xylem"             = "Vascular Cell",
+  "Sieve Element"     = "Vascular Cell",
+  "Meristemoid"       = "Stomatal Line"
+)
+
+pbmc_harmony$annotation_agrupada <- recode(pbmc_harmony$celltype_reference,
+                                           !!!grouping)
+
+save_pdf(DimPlot(pbmc_harmony, group.by = "annotation_agrupada",
+                 label = TRUE, repel = TRUE, raster = FALSE),
+         "umap_annotated.pdf")
+```
+
+```{r umap-grouped, fig.cap="UMAP coloured by grouped cell-type annotations."}
 knitr::include_graphics("../umap_annotated.pdf")
 ```
 
 ## Manual subclustering and curation
 
-Heterogeneous clusters are subclustered interactively. Each subpopulation is inspected with marker gene feature plots and `FindAllMarkers`, and its subclusters are reassigned to the appropriate labels. This step requires biological knowledge of the system and is performed manually.
+Heterogeneous populations are subclustered and reassigned via an explicit mapping table.
+
+```{r curation-code, echo=TRUE, eval=FALSE}
+Idents(pbmc_harmony) <- "annotation_agrupada"
+
+# 1. Subcluster heterogeneous types
+meristemoid_umap   <- subclustar_tipo(pbmc_harmony, "Stomatal Line")
+pavement_cell_umap <- subclustar_tipo(pbmc_harmony, "Pavement Cell")
+
+# 2. Inspect with DimPlot / FeaturePlot (interactive step)
+
+# 3. Reassignment table — fill in after inspection
+reassign <- list(
+  meristemoid_umap = c(
+    "0" = "Stomatal Line", "1" = "Stomatal Line",
+    "2" = "Pavement Cell", "3" = "Stomatal Line", "4" = "Stomatal Line"
+  ),
+  pavement_cell_umap = c(
+    "0" = "Pavement Cell", "1" = "Pavement Cell",
+    "2" = "Pavement Cell", "3" = "Mesophyll",    "4" = "Pavement Cell"
+  )
+)
+
+# 4. Apply corrections
+pbmc_harmony$celltype_reference_curated <- pbmc_harmony$annotation_agrupada
+
+for (obj_name in names(reassign)) {
+  obj <- get(obj_name)
+  pbmc_harmony$celltype_reference_curated[colnames(obj)] <-
+    reassign[[obj_name]][obj$cluster_subtipo]
+}
+
+save_pdf(DimPlot(pbmc_harmony, group.by = "celltype_reference_curated",
+                 label = TRUE, repel = TRUE, raster = FALSE),
+         "umap_curada.pdf")
+```
 
 ```{r umap-curated, fig.cap="UMAP after manual curation. Each colour represents a curated cell-type label following subclustering and reassignment."}
 knitr::include_graphics("../umap_curada.pdf")
@@ -366,11 +595,28 @@ knitr::include_graphics("../umap_curada.pdf")
 
 \newpage
 
-# Step 14: Marker Gene Dot Plot
+# Step 15: Marker Gene Dot Plot
 
-A dot plot summarises marker gene expression across all curated cell types simultaneously. Colour intensity encodes average normalised expression; dot size encodes the percentage of cells expressing the gene above zero. This visualisation facilitates rapid assessment of cell-type specificity for each marker.
+A dot plot summarises marker gene expression across all curated cell types. Colour encodes average expression; dot size encodes the fraction of expressing cells.
 
-```{r dotplot, fig.cap="Dot plot of curated cell-type marker genes. Rows correspond to cell types; columns correspond to marker genes. Dot size = fraction of expressing cells; colour = average expression."}
+```{r dotplot-code, echo=TRUE, eval=FALSE}
+cell_order_dotplot <- c(
+  "Pavement Cell", "Stomatal lineage", "Guard Cell", "Mesophyll",
+  "Bundle Sheath", "Phloem Parenchyma", "Cambium", "Xylem",
+  "Companion Cell", "Hydathode", "Cell Cycle: G1-S", "Cell Cycle: G2-M"
+)
+
+hacer_dotplot_marcadores(
+  pbmc_harmony, marcadores,
+  annot_col       = "celltype_reference_curated",
+  cell_order      = cell_order_dotplot,
+  clusters_remove = c("Sieve Element", "Myrosin Idioblast"),
+  outfile         = file.path(output_dir, "dotplot_marcadores.pdf"),
+  width = 20, height = 10
+)
+```
+
+```{r dotplot, fig.cap="Dot plot of curated cell-type marker genes. Dot size = fraction of expressing cells; colour = average expression."}
 knitr::include_graphics("../dotplot_marcadores.pdf")
 ```
 
@@ -378,12 +624,12 @@ knitr::include_graphics("../dotplot_marcadores.pdf")
 
 \newpage
 
-# Step 15: Export to Python (h5ad)
+# Step 16: Export to Python (h5ad)
 
-The curated Seurat object is exported to the AnnData format (`.h5ad`) for compatibility with the Python single-cell ecosystem (scanpy, scFates, palantir). All cell metadata, dimensionality reductions, and normalised counts are preserved.
+The curated Seurat object is exported to AnnData format for downstream Python analysis (scanpy, scFates, palantir).
 
-```bash
-# Export full object
+```{r h5ad-code, echo=TRUE, eval=FALSE}
+# Export full curated object
 exportar_para_scanpy(pbmc_harmony, "results/objs/pbmc_harmony_curated.h5ad")
 
 # Export a single cell type
@@ -397,45 +643,151 @@ exportar_para_scanpy(
 
 \newpage
 
-# Step 16: Pseudobulk per Cell Type and DESeq2 Differential Expression
+# Step 17: Pseudobulk per Cell Type and DESeq2 Differential Expression
 
 ## Pseudobulk aggregation
 
-Cells are split by curated cell type and pseudo-replicates are assigned within each type by randomly partitioning cells from the same condition. Counts are then summed across cells within each pseudo-replicate, producing a count matrix analogous to bulk RNA-seq. This aggregation is necessary to avoid the inflated statistical power that results from treating each cell as an independent replicate.
+Cells are split by curated cell type, pseudo-replicates are assigned, and counts are summed per replicate.
+
+```{r pseudobulk-ct-code, echo=TRUE, eval=FALSE}
+celular_subsets <- setNames(
+  lapply(unique(pbmc_harmony$celltype_reference_curated),
+         function(t) subset(pbmc_harmony,
+                            subset = celltype_reference_curated == t)),
+  gsub("[^[:alnum:]_]", "_", unique(pbmc_harmony$celltype_reference_curated))
+)
+
+celular_subsets_replicados <- Filter(Negate(is.null),
+                                     lapply(celular_subsets,
+                                            asignar_pseudoreplicados))
+pseudobulk_list <- lapply(celular_subsets_replicados, hacer_pseudobulk)
+
+dir.create("results/pseudobulk_replicas", recursive = TRUE,
+           showWarnings = FALSE)
+for (tipo in names(pseudobulk_list))
+  write.csv(pseudobulk_list[[tipo]],
+            file.path("results/pseudobulk_replicas",
+                      paste0("Pseudobulk_", tipo, ".csv")),
+            row.names = TRUE)
+```
 
 ## DESeq2 analysis
 
-Pseudobulk count matrices are analysed with DESeq2, which fits a negative binomial model and applies empirical Bayes shrinkage of fold change estimates. All pairwise comparisons between conditions are run automatically and results are saved as CSV files (one per cell type per comparison), filtered at FDR < 5%.
+All pairwise condition comparisons are run automatically. Edit the `comparaciones` list to match your condition names.
 
-## Volcano plots
+```{r deseq2-code, echo=TRUE, eval=FALSE}
+comparaciones <- list(
+  list(conds = c("0.5N", "5N"), tag = "05_5"),
+  list(conds = c("0N",   "5N"), tag = "0_5"),
+  list(conds = c("0N", "0.5N"), tag = "0_05")
+)
 
-Volcano plots visualise the DESeq2 output for each comparison. Each point represents one gene; the x-axis shows log2 fold change and the y-axis shows $-\log_{10}$(adjusted p-value). Significant and strongly changed genes (FDR < 0.05, |log2FC| > 1) are highlighted and labelled. Two cell types are displayed per page.
+for (tag in sapply(comparaciones, `[[`, "tag"))
+  dir.create(file.path("results/deseq2", tag), recursive = TRUE,
+             showWarnings = FALSE)
 
-## Differential expression heatmap
+for (tipo in names(pseudobulk_list))
+  correr_deseq2(as.matrix(pseudobulk_list[[tipo]]), comparaciones,
+                output_dir = "results/deseq2")
+```
 
-A log2 fold change matrix (genes × cell types) is constructed by aggregating results across all cell types for a given comparison and visualised as a hierarchical clustering heatmap. This reveals co-regulated gene sets across multiple cell types and highlights cell-type-specific responses.
+## Volcano plots and differential heatmaps
+
+```{r volcano-code, echo=TRUE, eval=FALSE}
+dir.create("results/volcano_plots", showWarnings = FALSE)
+
+for (comp in comparaciones) {
+  tag       <- comp$tag
+  csv_files <- list.files(file.path("results/deseq2", tag),
+                          pattern = "\\.csv$", full.names = TRUE)
+  if (!length(csv_files)) next
+
+  pdf(file.path("results/volcano_plots",
+                paste0("VolcanoPlots_", tag, ".pdf")), width = 12, height = 6)
+  plots <- list()
+  for (f in csv_files) {
+    plots <- c(plots, list(hacer_volcano(f)))
+    if (length(plots) == 2) { grid.arrange(grobs = plots, ncol = 2); plots <- list() }
+  }
+  if (length(plots)) grid.arrange(grobs = plots, ncol = 1)
+  dev.off()
+}
+
+for (comp in comparaciones) {
+  tag      <- comp$tag
+  diff_dir <- file.path("results/diff", tag)
+  dir.create(diff_dir, recursive = TRUE, showWarnings = FALSE)
+
+  listas      <- lapply(list.files(file.path("results/deseq2", tag),
+                                   pattern = "\\.csv$", full.names = TRUE),
+                        procesar_deseq2_resultado, output_dir = diff_dir)
+  tabla_logfc <- Reduce(function(x, y) full_join(x, y, by = "gene_id"),
+                        lapply(listas, `[[`, "logfc"))
+  matriz      <- as.matrix(column_to_rownames(tabla_logfc, "gene_id"))
+  matriz[is.na(matriz)] <- 0
+
+  if (nrow(matriz) > 1) {
+    pdf(file.path(diff_dir, paste0("heatmap_", tag, ".pdf")),
+        width = 14, height = 18)
+    tryCatch(hacer_heatmap(matriz),
+             error = function(e) message("Heatmap error: ", e$message))
+    dev.off()
+  }
+}
+```
 
 ---
 
 \newpage
 
-# Step 17: GO Enrichment Analysis
+# Step 18: GO Enrichment Analysis
 
-Gene Ontology (GO) enrichment analysis is performed on the differentially expressed genes from each comparison using `clusterProfiler`. Both the full and redundancy-reduced (via `simplify`) GO term sets are tested. Results are filtered to terms with adjusted p-value < 0.05 and visualised as dot plots showing the top enriched terms per cell type.
+GO enrichment is performed per comparison using `clusterProfiler`. Both full and simplified term sets are tested and visualised as dot plots.
 
-A pruning step further reduces GO term redundancy by retaining only terms above a minimum depth level in the GO hierarchy (default: level 6), ensuring that results represent specific biological processes rather than overly broad parent terms.
+```{r go-code, echo=TRUE, eval=FALSE}
+# Organism:  Arabidopsis = org.At.tair.db / "TAIR"
+#            Human       = org.Hs.eg.db   / "ENSEMBL"
+#            Mouse       = org.Mm.eg.db   / "ENSEMBL"
+orgdb      <- org.At.tair.db
+keytype    <- "TAIR"
+universo   <- keys(orgdb, keytype = keytype)
+espacio    <- "BP"    # "BP" | "MF" | "CC"
+qval       <- 0.05
+nivel_poda <- 6
 
-## Organism configuration
+dir.create("results/Enrichment", showWarnings = FALSE)
 
-The GO analysis is organism-specific. Change the following two parameters in `paperrr.R` to adapt to a different species:
+for (comp in comparaciones) {
+  tag        <- comp$tag
+  enr_dir    <- file.path("results/Enrichment", tag)
+  tabla_path <- file.path("results/diff", tag, "tabla_diferenciales.tsv")
+  dir.create(enr_dir, recursive = TRUE, showWarnings = FALSE)
+  if (!file.exists(tabla_path)) next
 
-| Organism | `orgdb` | `keytype` |
-|---|---|---|
-| *Arabidopsis thaliana* | `org.At.tair.db` | `"TAIR"` |
-| Human | `org.Hs.eg.db` | `"ENSEMBL"` |
-| Mouse | `org.Mm.eg.db` | `"ENSEMBL"` |
+  tabla     <- read.table(tabla_path, header = TRUE, row.names = 1, sep = "\t")
+  go_total  <- correr_enriquecimiento_go(tabla, universo, espacio,
+                  orgdb = orgdb, keytype = keytype, simplificar = FALSE,
+                  output_dir = enr_dir)
+  go_simple <- correr_enriquecimiento_go(tabla, universo, espacio,
+                  orgdb = orgdb, keytype = keytype, simplificar = TRUE,
+                  output_dir = enr_dir)
 
-The background gene universe is derived automatically from the selected database using `keys(orgdb, keytype)`.
+  go_total_podado  <- podar_go(go_total,  nivel_poda, espacio, qval,
+                               simplificar = FALSE)
+  go_simple_podado <- podar_go(go_simple, nivel_poda, espacio, qval,
+                               simplificar = TRUE)
+
+  pdf(file.path(enr_dir, paste0("GO_enrichment_", tag, ".pdf")),
+      width = 18, height = 18)
+  tryCatch({
+    print(graficar_go_balones(go_total))
+    print(graficar_go_balones(go_simple))
+    print(graficar_go_balones(go_total_podado))
+    print(graficar_go_balones(go_simple_podado))
+  }, error = function(e) message("GO plot error: ", e$message))
+  dev.off()
+}
+```
 
 ---
 
@@ -455,17 +807,20 @@ Three parameters in `paperrr.R` control the organism-specific parts of the analy
 
 **GO enrichment database** (GO ENRICHMENT section):
 
-```r
+```{r organism-code, echo=TRUE, eval=FALSE}
 # Arabidopsis
 orgdb <- org.At.tair.db;  keytype <- "TAIR"
 
 # Human
 orgdb <- org.Hs.eg.db;    keytype <- "ENSEMBL"
+
+# Mouse
+orgdb <- org.Mm.eg.db;    keytype <- "ENSEMBL"
 ```
 
 **DESeq2 comparisons** --- edit the `comparaciones` list to match your condition names:
 
-```r
+```{r comparisons-code, echo=TRUE, eval=FALSE}
 comparaciones <- list(
   list(conds = c("Control", "Treatment"), tag = "ctrl_vs_treat"),
   list(conds = c("Control", "HighDose"),  tag = "ctrl_vs_high")
