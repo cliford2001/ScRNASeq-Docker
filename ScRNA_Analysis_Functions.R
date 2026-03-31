@@ -1078,7 +1078,7 @@ hacer_pseudobulk <- function(obj) {
 #'   output_dir/tag/DESeq2_tag.csv.
 #' @return Invisible NULL (side effect: writes CSV files).
 #' @export
-correr_deseq2 <- function(counts_mat, comparaciones, output_dir) {
+correr_deseq2 <- function(counts_mat, comparaciones, output_dir, tipo = NULL) {
 
   rep_names <- colnames(counts_mat)
   condition <- gsub("-rep[0-9]+$", "", sub("^g", "", rep_names))
@@ -1103,9 +1103,10 @@ correr_deseq2 <- function(counts_mat, comparaciones, output_dir) {
     conds <- comp$conds
     tag   <- comp$tag
     if (!all(conds %in% available)) next
-    res <- results(dds, contrast = c("condition", conds[2], conds[1]))
+    res    <- results(dds, contrast = c("condition", conds[2], conds[1]))
+    prefix <- if (!is.null(tipo)) paste0("DESeq2_", tipo, "_") else "DESeq2_"
     write.csv(as.data.frame(res),
-              file = file.path(output_dir, tag, paste0("DESeq2_", tag, ".csv")))
+              file = file.path(output_dir, tag, paste0(prefix, tag, ".csv")))
   }
 }
 

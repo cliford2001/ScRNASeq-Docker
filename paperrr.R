@@ -386,7 +386,8 @@ for (tag in sapply(comparaciones, `[[`, "tag"))
   dir.create(file.path("results/deseq2", tag), recursive = TRUE, showWarnings = FALSE)
 
 for (tipo in names(pseudobulk_list))
-  correr_deseq2(as.matrix(pseudobulk_list[[tipo]]), comparaciones, output_dir = "results/deseq2")
+  correr_deseq2(as.matrix(pseudobulk_list[[tipo]]), comparaciones,
+                output_dir = "results/deseq2", tipo = tipo)
 
 
 # =============================================================================
