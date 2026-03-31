@@ -34,12 +34,17 @@ marcadores       <- read.table("recursos/biblio_marks.txt", header = TRUE, sep =
 
 
 # ── Plot-saving helpers ────────────────────────────────────────────────────────
-# save_pdf(plot, "name.pdf")          — standard single plot
-# save_qc(plot_list, "name.pdf")      — stacked QC violin grid
+# save_pdf(plot, "name.pdf")             — UMAP / FeaturePlot  (10 × 8)
+# save_vln(plot, "name.pdf")             — VlnPlot single gene  (14 × 6)
+# save_vln(plot, "name.pdf", n = k)      — VlnPlot k genes      (14 × 6k)
+# save_qc(plot_list, "name.pdf")         — stacked QC grid
 
-save_pdf <- function(plot, file, w = 18, h = 18)
+save_pdf <- function(plot, file, w = 10, h = 8)
   ggsave(file.path(output_dir, file), plot, width = w, height = h,
-         dpi = 500, limitsize = FALSE)
+         dpi = 300, limitsize = FALSE)
+
+save_vln <- function(plot, file, n = 1)
+  save_pdf(plot, file, w = 14, h = 6 * n)
 
 save_qc <- function(plot_list, file)
   ggsave(file.path(output_dir, file), wrap_plots(plot_list, ncol = 1),
@@ -87,7 +92,7 @@ pbmc_harmony$orig.ident_uni <- pbmc_harmony$condition
 table(pbmc_harmony$condition)
 table(pbmc_harmony$orig.ident)
 
-save_pdf(DimPlot(pbmc_harmony, group.by = "orig.ident", cols = colors), "umap_preharmony.pdf")
+save_pdf(DimPlot(pbmc_harmony, group.by = "orig.ident", cols = colors), "umap_preharmony.pdf")  # 10×8
 
 
 # =============================================================================
@@ -151,13 +156,13 @@ save_pdf(DimPlot(pbmc_harmony, group.by = "orig.ident", cols = colors), "umap_po
 # =============================================================================
 
 Idents(pbmc_harmony) <- "orig.ident"
-save_pdf(plot_integrated_clusters(pbmc_harmony), "conteocelulas.pdf", w = 20, h = 20)
+save_pdf(plot_integrated_clusters(pbmc_harmony), "conteocelulas.pdf", w = 14, h = 10)
 
 colors_clusters <- sample(colors(distinct = TRUE), length(unique(pbmc_harmony$seurat_clusters)))
 Idents(pbmc_harmony) <- "seurat_clusters"
 
 save_pdf(DimPlot(pbmc_harmony, group.by = "seurat_clusters", cols = colors_clusters), "umap_seuratclusters.pdf")
-save_pdf(plot_integrated_clusters(pbmc_harmony), "conteocelulas_seurat.pdf", w = 20, h = 20)
+save_pdf(plot_integrated_clusters(pbmc_harmony), "conteocelulas_seurat.pdf", w = 14, h = 10)
 
 
 # =============================================================================
@@ -166,7 +171,7 @@ save_pdf(plot_integrated_clusters(pbmc_harmony), "conteocelulas_seurat.pdf", w =
 
 pseudobulk <- generate_pseudobulk(pbmc_harmony, group_by = "orig.ident")
 
-save_pdf(plot_replicate_correlation(pseudobulk$by_sample), "pseudobulk_correlation.pdf", w = 10, h = 10)
+save_pdf(plot_replicate_correlation(pseudobulk$by_sample), "pseudobulk_correlation.pdf", w = 8, h = 8)
 
 
 # =============================================================================
@@ -198,7 +203,7 @@ for (res in resolutions_test)
 
 save_pdf(
   clustree(clu, prefix = "RNA_snn_res.", node_label = "celltype_reference", node_label_aggr = "Mode"),
-  "clustree_annotated.pdf", w = 18, h = 18
+  "clustree_annotated.pdf", w = 14, h = 14
 )
 
 
@@ -215,15 +220,15 @@ genes_of_interest <- c("AT5G26000", "AT5G54250")
 celltype         <- "Guard Cell"   # exact label from annotation table
 sub_obj          <- subset(pbmc_harmony, idents = celltype)
 
-save_pdf(VlnPlot(pbmc_harmony, features = gene),          "vln_gene_all.pdf",     w = 14, h = 6)
-save_pdf(FeaturePlot(pbmc_harmony, features = gene),      "feature_gene_all.pdf", w = 10, h = 8)
-save_pdf(VlnPlot(pbmc_harmony, features = genes_of_interest), "vln_geneset_all.pdf", w = 14, h = 6 * length(genes_of_interest))
-save_pdf(FeaturePlot(pbmc_harmony, features = genes_of_interest), "feature_geneset_all.pdf", w = 10, h = 8 * length(genes_of_interest))
+save_vln(VlnPlot(pbmc_harmony, features = gene),                   "vln_gene_all.pdf")
+save_pdf(FeaturePlot(pbmc_harmony, features = gene),               "feature_gene_all.pdf")
+save_vln(VlnPlot(pbmc_harmony, features = genes_of_interest),      "vln_geneset_all.pdf",      n = length(genes_of_interest))
+save_pdf(FeaturePlot(pbmc_harmony, features = genes_of_interest),  "feature_geneset_all.pdf",  h = 8 * length(genes_of_interest))
 
-save_pdf(VlnPlot(sub_obj, features = gene),               "vln_gene_celltype.pdf",     w = 10, h = 6)
-save_pdf(FeaturePlot(sub_obj, features = gene),           "feature_gene_celltype.pdf", w = 10, h = 8)
-save_pdf(VlnPlot(sub_obj, features = genes_of_interest),  "vln_geneset_celltype.pdf",  w = 10, h = 6 * length(genes_of_interest))
-save_pdf(FeaturePlot(sub_obj, features = genes_of_interest), "feature_geneset_celltype.pdf", w = 10, h = 8 * length(genes_of_interest))
+save_vln(VlnPlot(sub_obj, features = gene),                        "vln_gene_celltype.pdf")
+save_pdf(FeaturePlot(sub_obj, features = gene),                    "feature_gene_celltype.pdf")
+save_vln(VlnPlot(sub_obj, features = genes_of_interest),           "vln_geneset_celltype.pdf", n = length(genes_of_interest))
+save_pdf(FeaturePlot(sub_obj, features = genes_of_interest),       "feature_geneset_celltype.pdf", h = 8 * length(genes_of_interest))
 
 
 # =============================================================================
@@ -239,10 +244,8 @@ grouping <- c(
 
 pbmc_harmony$annotation_agrupada <- recode(pbmc_harmony$celltype_reference, !!!grouping)
 
-save_pdf(
-  DimPlot(pbmc_harmony, group.by = "annotation_agrupada", label = TRUE, repel = TRUE, raster = FALSE),
-  "umap_annotated.pdf"
-)
+save_pdf(DimPlot(pbmc_harmony, group.by = "annotation_agrupada", label = TRUE, repel = TRUE, raster = FALSE),
+         "umap_annotated.pdf")
 
 
 # =============================================================================
@@ -309,10 +312,8 @@ for (obj_name in names(reassign)) {
   pbmc_harmony$celltype_reference_curated[colnames(obj)] <- reassign[[obj_name]][obj$cluster_subtipo]
 }
 
-save_pdf(
-  DimPlot(pbmc_harmony, group.by = "celltype_reference_curated", label = TRUE, repel = TRUE, raster = FALSE),
-  "umap_curada.pdf"
-)
+save_pdf(DimPlot(pbmc_harmony, group.by = "celltype_reference_curated", label = TRUE, repel = TRUE, raster = FALSE),
+         "umap_curada.pdf")
 
 
 # =============================================================================
