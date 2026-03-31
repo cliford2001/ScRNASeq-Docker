@@ -608,14 +608,14 @@ plot_replicate_correlation <- function(pseudobulk_mat,
 
   cor_mat <- cor(pseudobulk_mat, method = "pearson", use = "pairwise.complete.obs")
 
-  pheatmap(cor_mat,
-           display_numbers = TRUE,
-           number_format   = "%.2f",
-           color           = colorRampPalette(c("white", "steelblue"))(50),
-           main            = main,
-           border_color    = NA)
+  p <- pheatmap(cor_mat,
+                display_numbers = TRUE,
+                number_format   = "%.2f",
+                color           = colorRampPalette(c("white", "steelblue"))(50),
+                main            = main,
+                border_color    = NA)
 
-  invisible(cor_mat)
+  invisible(p)
 }
 
 
@@ -729,8 +729,8 @@ exportar_para_scanpy <- function(seurat_obj,
 
   # ── Assays ────────────────────────────────────────────────────────────────────
   message("Extracting counts and logcounts...")
-  assay(sce, "counts")    <- Seurat::GetAssayData(seurat_obj, assay = assay_name, slot = "counts")
-  assay(sce, "logcounts") <- Seurat::GetAssayData(seurat_obj, assay = assay_name, slot = "data")
+  assay(sce, "counts")    <- Seurat::GetAssayData(seurat_obj, assay = assay_name, layer = "counts")
+  assay(sce, "logcounts") <- Seurat::GetAssayData(seurat_obj, assay = assay_name, layer = "data")
 
   # ── Cell metadata ─────────────────────────────────────────────────────────────
   if (ncol(colData(sce)) == 0) {
@@ -1051,7 +1051,7 @@ hacer_pseudobulk <- function(obj) {
                                 group.by     = "replicate",
                                 assays       = "RNA",
                                 return.seurat = FALSE,
-                                slot         = "counts")
+                                layer        = "counts")
 
   counts          <- as.data.frame(pseudo$RNA)
   colnames(counts) <- sub("^g", "", colnames(counts))

@@ -81,7 +81,6 @@ pbmc_harmony <- reduce(seurat_list, merge) %>%
   RunUMAP(reduction = "pca", dims = 1:30, verbose = FALSE)
 
 pbmc_harmony$orig.ident_uni <- pbmc_harmony$condition
-pbmc_harmony.bkp             <- pbmc_harmony
 
 table(pbmc_harmony$condition)
 table(pbmc_harmony$orig.ident)
@@ -95,7 +94,6 @@ save_pdf(DimPlot(pbmc_harmony, group.by = "orig.ident", cols = colors), "umap_pr
 
 dims_use         <- 1:30
 k_param          <- 30
-k_range          <- 2:40
 resolutions_test <- c(0.05, 0.15, 0.30, 0.40, 0.50, 0.60, 0.7, 0.8, 0.9, 1.0)
 
 pbmc_harmony <- pbmc_harmony %>% RunHarmony("orig.ident", plot_convergence = FALSE)
@@ -168,8 +166,7 @@ save_pdf(plot_integrated_clusters(pbmc_harmony), "conteocelulas_seurat.pdf", w =
 
 pseudobulk <- generate_pseudobulk(pbmc_harmony, group_by = "orig.ident")
 
-plot_replicate_correlation(pseudobulk$by_sample)
-save_pdf(last_plot(), "pseudobulk_correlation.pdf", w = 10, h = 10)
+save_pdf(plot_replicate_correlation(pseudobulk$by_sample), "pseudobulk_correlation.pdf", w = 10, h = 10)
 
 
 # =============================================================================
@@ -249,17 +246,26 @@ save_pdf(
 
 
 # =============================================================================
-# CELL TYPE CURATION — INTERACTIVE (DO NOT AUTOMATE)
+# CELL TYPE CURATION — INTERACTIVE (run step by step, do not source all at once)
 # =============================================================================
+# This section is intentionally manual: cell types differ across experiments.
+# Workflow:
+#   1. Subcluster types that look heterogeneous in the UMAP
+#   2. Inspect the subclusters with DimPlot + FeaturePlot
+#   3. Fill in the reassignment table below
+#   4. Apply corrections to the global object
 
 Idents(pbmc_harmony) <- "annotation_agrupada"
 marcadores <- read.table("recursos/biblio_marks.txt", header = TRUE, sep = "\t", quote = "")
 
-# Step 1: subcluster
+# ── 1. Subcluster ─────────────────────────────────────────────────────────────
+# Add or remove cell types as needed for your dataset.
+
 meristemoid_umap   <- subclustar_tipo(pbmc_harmony, "Stomatal Line")
 pavement_cell_umap <- subclustar_tipo(pbmc_harmony, "Pavement Cell")
 
-# Step 2: inspect
+# ── 2. Inspect ────────────────────────────────────────────────────────────────
+
 DimPlot(meristemoid_umap,   group.by = "cluster_subtipo", label = TRUE, raster = FALSE)
 DimPlot(pavement_cell_umap, group.by = "cluster_subtipo", label = TRUE, raster = FALSE)
 
@@ -267,35 +273,41 @@ for (i in seq_len(nrow(marcadores)))
   print(FeaturePlot(pavement_cell_umap, features = marcadores$gene[i]) +
         ggtitle(paste(marcadores$cell.type[i], "-", marcadores$gene[i])))
 
-# Step 3: markers per subcluster
 FindAllMarkers(meristemoid_umap,   only.pos = TRUE, min.pct = 0.25, logfc.threshold = 0.25) %>%
   group_by(cluster) %>% slice_max(n = 3, order_by = avg_log2FC)
 
 FindAllMarkers(pavement_cell_umap, only.pos = TRUE, min.pct = 0.25, logfc.threshold = 0.25) %>%
   group_by(cluster) %>% slice_max(n = 3, order_by = avg_log2FC)
 
-# Step 4: define corrections after inspecting — fill the mapa vectors below
-correcciones <- list(
-  # CellType = list(obj = ..._umap, mapa = c("0" = "TypeA", "1" = "TypeB"))
-  Meristemoid = list(
-    obj  = meristemoid_umap,
-    mapa = c("0" = "Stomatal Line", "1" = "Stomatal Line",
-             "2" = "Pavement Cell", "3" = "Stomatal Line", "4" = "Stomatal Line")
+# ── 3. Reassignment table ─────────────────────────────────────────────────────
+# For each subclustered object, map cluster IDs to cell type names.
+# Cluster IDs come from $cluster_subtipo (values like "0", "1", "2", ...).
+# Add one entry per cell type you subclustered.
+
+reassign <- list(
+  meristemoid_umap = c(
+    "0" = "Stomatal Line",
+    "1" = "Stomatal Line",
+    "2" = "Pavement Cell",
+    "3" = "Stomatal Line",
+    "4" = "Stomatal Line"
   ),
-  PavementCell = list(
-    obj  = pavement_cell_umap,
-    mapa = c("0" = "Pavement Cell", "1" = "Pavement Cell",
-             "2" = "Pavement Cell", "3" = "Mesophyll", "4" = "Pavement Cell")
+  pavement_cell_umap = c(
+    "0" = "Pavement Cell",
+    "1" = "Pavement Cell",
+    "2" = "Pavement Cell",
+    "3" = "Mesophyll",
+    "4" = "Pavement Cell"
   )
 )
 
-# Step 5: apply
+# ── 4. Apply ──────────────────────────────────────────────────────────────────
+
 pbmc_harmony$celltype_reference_curated <- pbmc_harmony$annotation_agrupada
 
-for (tipo in names(correcciones)) {
-  obj_local <- correcciones[[tipo]]$obj
-  celdas    <- colnames(obj_local)
-  pbmc_harmony$celltype_reference_curated[celdas] <- correcciones[[tipo]]$mapa[obj_local$cluster_subtipo]
+for (obj_name in names(reassign)) {
+  obj   <- get(obj_name)
+  pbmc_harmony$celltype_reference_curated[colnames(obj)] <- reassign[[obj_name]][obj$cluster_subtipo]
 }
 
 save_pdf(
