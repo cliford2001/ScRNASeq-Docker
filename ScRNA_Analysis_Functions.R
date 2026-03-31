@@ -738,13 +738,10 @@ exportar_para_scanpy <- function(seurat_obj,
   assay(sce, "logcounts") <- Seurat::GetAssayData(seurat_obj, assay = assay_name, layer = "data")
 
   # ── Cell metadata ─────────────────────────────────────────────────────────────
-  if (ncol(colData(sce)) == 0) {
-    colData(sce) <- S4Vectors::DataFrame(row.names = colnames(sce))
-  }
-  colData(sce) <- cbind(
-    colData(sce),
-    seurat_obj@meta.data[colnames(sce), , drop = FALSE]
-  )
+  # as.SingleCellExperiment already transfers meta.data → colData.
+  # Deduplicate any repeated columns (can arise after multi-sample merge).
+  cd <- as.data.frame(colData(sce))
+  colData(sce) <- S4Vectors::DataFrame(cd[, !duplicated(names(cd)), drop = FALSE])
 
   # ── Reductions ────────────────────────────────────────────────────────────────
   message("Exporting reductions...")
