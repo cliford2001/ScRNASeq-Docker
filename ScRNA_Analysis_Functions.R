@@ -706,8 +706,13 @@ exportar_para_scanpy <- function(seurat_obj,
   seurat_obj@misc  <- list()
   seurat_obj@tools <- list()
 
-  cols_df <- grep("DF.classifications", colnames(seurat_obj@meta.data), value = TRUE)
+  cols_df   <- grep("DF.classifications|^pANN_|^doublet_class",
+                    colnames(seurat_obj@meta.data), value = TRUE)
   if (length(cols_df) > 0) seurat_obj@meta.data[, cols_df] <- NULL
+
+  # Deduplicate column names (can appear after multi-sample merge)
+  seurat_obj@meta.data <- seurat_obj@meta.data[
+    , !duplicated(names(seurat_obj@meta.data)), drop = FALSE]
 
   seurat_obj[[assay_name]]@meta.data <- data.frame(row.names = rownames(seurat_obj))
 
