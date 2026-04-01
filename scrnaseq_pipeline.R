@@ -85,21 +85,23 @@ options(Seurat.allow.s4 = FALSE)
 setwd(DATA_DIR)
 
 # ── Create per-step output directories ────────────────────────────────────────
-# Results are organised by analysis step so every output file has a clear home.
-dir_00 <- file.path(base_dir, "00_workflow");         dir.create(dir_00, recursive=TRUE, showWarnings=FALSE)
-dir_01 <- file.path(base_dir, "01_qc");               dir.create(dir_01, recursive=TRUE, showWarnings=FALSE)
-dir_02 <- file.path(base_dir, "02_filtering");        dir.create(dir_02, recursive=TRUE, showWarnings=FALSE)
-dir_03 <- file.path(base_dir, "03_integration");      dir.create(dir_03, recursive=TRUE, showWarnings=FALSE)
-dir_04 <- file.path(base_dir, "04_clustering");       dir.create(dir_04, recursive=TRUE, showWarnings=FALSE)
-dir_05 <- file.path(base_dir, "05_annotation");       dir.create(dir_05, recursive=TRUE, showWarnings=FALSE)
-dir_06 <- file.path(base_dir, "06_expression");       dir.create(dir_06, recursive=TRUE, showWarnings=FALSE)
-dir_07 <- file.path(base_dir, "07_curation");         dir.create(dir_07, recursive=TRUE, showWarnings=FALSE)
-dir_08 <- file.path(base_dir, "08_export");           dir.create(dir_08, recursive=TRUE, showWarnings=FALSE)
-dir_09 <- file.path(base_dir, "09_pseudobulk");       dir.create(dir_09, recursive=TRUE, showWarnings=FALSE)
-dir_10 <- file.path(base_dir, "10_deseq2");           dir.create(dir_10, recursive=TRUE, showWarnings=FALSE)
-dir_11 <- file.path(base_dir, "11_volcano");          dir.create(dir_11, recursive=TRUE, showWarnings=FALSE)
-dir_12 <- file.path(base_dir, "12_heatmaps");         dir.create(dir_12, recursive=TRUE, showWarnings=FALSE)
-dir_13 <- file.path(base_dir, "13_go");               dir.create(dir_13, recursive=TRUE, showWarnings=FALSE)
+# mkd() creates the folder and returns its path in one call.
+mkd <- function(name) { d <- file.path(base_dir, name); dir.create(d, recursive = TRUE, showWarnings = FALSE); d }
+
+dir_00 <- mkd("00_workflow")
+dir_01 <- mkd("01_qc")
+dir_02 <- mkd("02_filtering")
+dir_03 <- mkd("03_integration")
+dir_04 <- mkd("04_clustering")
+dir_05 <- mkd("05_annotation")
+dir_06 <- mkd("06_expression")
+dir_07 <- mkd("07_curation")
+dir_08 <- mkd("08_export")
+dir_09 <- mkd("09_pseudobulk")
+dir_10 <- mkd("10_deseq2")
+dir_11 <- mkd("11_volcano")
+dir_12 <- mkd("12_heatmaps")
+dir_13 <- mkd("13_go")
 
 # output_dir is the global variable used by save_pdf / save_qc / save_vln helpers.
 # It is reassigned at the start of each section to the appropriate step directory.
