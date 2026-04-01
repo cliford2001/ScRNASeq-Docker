@@ -1570,5 +1570,91 @@ save_qc <- function(plot_list, file)
 
 
 # =============================================================================
+# 8. PIPELINE WORKFLOW FIGURE
+# =============================================================================
+
+#' Plot Pipeline Workflow Overview
+#'
+#' Generates a visual diagram of the full scRNA-seq pipeline and saves it as a
+#' PDF. Useful as a quick reference for what each chapter covers.
+#'
+#' @param outfile Full path for the output PDF file.
+#' @return Invisible ggplot object. Side effect: writes PDF to disk.
+#' @export
+plot_pipeline_workflow <- function(outfile) {
+
+  top <- data.frame(
+    x     = 1:10,
+    y     = rep(2, 10),
+    label = c("FASTQ\nFiles", "CellRanger\nCount", "CellBender\n(optional)",
+              "Load &\nQC", "Filter +\nDoubletFinder",
+              "Merge &\nNormalize", "Harmony\nIntegration",
+              "Clustree +\nElbow plot", "Final\nClustering", "Annotate\n+ Export"),
+    group = c(rep("Pre-processing", 3), rep("Chapter 1", 7)),
+    stringsAsFactors = FALSE
+  )
+
+  bot <- data.frame(
+    x     = 9:5,
+    y     = rep(0, 5),
+    label = c("Cell-type\nSubsets", "Pseudobulk\n+ Replicates",
+              "DESeq2\nDE", "Volcano +\nHeatmap", "GO\nEnrichment"),
+    group = rep("Chapter 2", 5),
+    stringsAsFactors = FALSE
+  )
+
+  nodes <- rbind(top, bot)
+
+  group_colors <- c(
+    "Pre-processing" = "#d9d9d9",
+    "Chapter 1"      = "#b3cde3",
+    "Chapter 2"      = "#ccebc5"
+  )
+
+  edges_top <- data.frame(x1 = 1:9, y1 = rep(2, 9), x2 = 2:10, y2 = rep(2, 9))
+  edge_down <- data.frame(x1 = 10,  y1 = 2,          x2 = 9,    y2 = 0)
+  edges_bot <- data.frame(x1 = 9:6, y1 = rep(0, 4),  x2 = 8:5,  y2 = rep(0, 4))
+  edges     <- rbind(edges_top, edge_down, edges_bot)
+
+  w <- 0.85; h <- 0.50
+
+  p <- ggplot() +
+    annotate("rect", xmin = 0.4, xmax = 3.6, ymin = 1.4, ymax = 2.6,
+             fill = "#f5f5f5", color = "grey75", linetype = "dashed", linewidth = 0.4) +
+    annotate("text", x = 2,   y = 2.70,
+             label = "Pre-processing  (bash)", size = 3, color = "grey55", fontface = "italic") +
+    annotate("text", x = 6.5, y = 2.70,
+             label = "CHAPTER 1 \u2014 Single-Cell Analysis",
+             size = 3.5, color = "#1565c0", fontface = "bold") +
+    annotate("text", x = 7,   y = -0.70,
+             label = "CHAPTER 2 \u2014 Pseudobulk DE & GO Enrichment",
+             size = 3.5, color = "#2e7d32", fontface = "bold") +
+    geom_segment(data = edges,
+                 aes(x = x1, y = y1, xend = x2, yend = y2),
+                 arrow     = arrow(length = unit(0.22, "cm"), type = "closed"),
+                 linewidth = 0.55, color = "grey40", lineend = "round") +
+    geom_rect(data = nodes,
+              aes(xmin = x - w/2, xmax = x + w/2,
+                  ymin = y - h/2, ymax = y + h/2, fill = group),
+              color = "grey35", linewidth = 0.4) +
+    scale_fill_manual(values = group_colors, name = NULL,
+                      guide  = guide_legend(nrow = 1)) +
+    geom_text(data = nodes, aes(x = x, y = y, label = label),
+              size = 2.7, lineheight = 0.9) +
+    theme_void() +
+    theme(legend.position = "bottom",
+          legend.text      = element_text(size = 10),
+          plot.margin      = margin(20, 10, 20, 10)) +
+    coord_fixed(ratio = 1.5) +
+    xlim(0.3, 10.7) + ylim(-1.1, 3.1)
+
+  dir.create(dirname(outfile), recursive = TRUE, showWarnings = FALSE)
+  ggsave(outfile, p, width = 18, height = 7, dpi = 300)
+  message("Workflow figure saved: ", outfile)
+  invisible(p)
+}
+
+
+# =============================================================================
 # END OF FUNCTIONS
 # =============================================================================
