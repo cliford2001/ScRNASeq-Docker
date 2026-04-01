@@ -1,444 +1,683 @@
-# ScRNASeq Docker
+# ScRNASeq-Docker — Helper Function Library
 
-Reproducible Docker environment for **Single-Cell RNA-seq analysis** with R 4.5 and Python 3.
-
-This pipeline is **organism-agnostic**: it ships with defaults tuned for *Arabidopsis thaliana*, but running it on human, mouse, or any other species requires changing only a few parameters (see [Adapting to Other Organisms](#adapting-to-other-organisms)). The full workflow covers raw-count loading (CellBender output), QC, doublet detection, batch correction, clustering, cell-type annotation, pseudobulk differential expression, volcano plots, hierarchical heatmaps, and GO enrichment — all driven from a single main script (`paperrr.R`) and a reusable functions library (`ScRNA_Analysis_Functions.R`).
-
-Includes: Seurat 5, monocle3, DESeq2, harmony, CellRanger 9.0.1, CellBender, scanpy, and more.
+This repository contains the pipeline helper scripts used in the **Methods in Molecular Biology** protocol for single-cell RNA-seq analysis of *Arabidopsis thaliana* (readily extensible to other organisms). The library covers the complete analytical trajectory: CellBender-aware data loading, QC visualization, doublet detection, pseudobulk aggregation, differential expression with DESeq2, and GO enrichment — all orchestrated through a set of modular, well-documented R functions.
 
 ---
 
-## Table of Contents
+## Repository files
 
-- [Requirements](#requirements)
-- [Installing Docker](#installing-docker)
-- [Quick Start](#quick-start)
-- [Interactive Use](#interactive-use)
-- [Pipeline Overview](#pipeline-overview)
-- [Adapting to Other Organisms](#adapting-to-other-organisms)
-- [Included Packages](#included-packages)
-- [CellRanger & CellBender](#cellranger--cellbender)
-- [Build from Scratch](#build-from-scratch)
-- [Repository Structure](#repository-structure)
-- [Troubleshooting](#troubleshooting)
-- [Author](#author)
+| File | Purpose |
+|---|---|
+| `load_libraries.R` | Loads and, if necessary, installs all R package dependencies |
+| `ScRNA_Analysis_Functions.R` | Core helper function library (documented in full below) |
+| `custom_seurat.R` | Project-specific Seurat extensions and theme overrides |
+| `scrnaseq_pipeline.R` | Top-level pipeline script that calls the helper functions end-to-end |
+| `analysis.Rmd` / `analysis_code.pdf` | Reproducible analysis notebook and its rendered PDF for the protocol |
 
 ---
 
-## Requirements
+## Function reference
 
-- Docker installed (see below)
-- ~10 GB of free disk space
-
----
-
-## Installing Docker
-
-### Linux (Ubuntu/Debian)
-
-```bash
-sudo apt-get update
-sudo apt-get install -y docker.io
-sudo systemctl enable --now docker
-sudo usermod -aG docker $USER   # allows running Docker without sudo
-```
-> **Re-login** after running `usermod` for the change to take effect.
-> Verify: `docker --version`
-
-### Mac
-
-1. Download [Docker Desktop for Mac](https://www.docker.com/products/docker-desktop/)
-2. Open the `.dmg` and drag Docker to Applications
-3. Launch Docker Desktop from Applications
-4. Verify: open Terminal and run `docker --version`
-
-### Windows (PowerShell)
-
-1. Download [Docker Desktop for Windows](https://www.docker.com/products/docker-desktop/)
-2. Run the installer (requires WSL 2 — the installer will guide you)
-3. Launch Docker Desktop
-4. Verify: open PowerShell and run:
-```powershell
-docker --version
-```
+### 1. QC and Visualization
 
 ---
 
-## Quick Start
+#### `load_cellbender_filtered_h5()`
 
-### Linux / Mac
+Reads a filtered expression matrix from a CellBender HDF5 output file and returns a Seurat object containing the raw counts.
 
-```bash
-docker pull mvergara19/scrnaseq_docker:latest
-```
-
-### Windows (PowerShell)
-
-```powershell
-docker pull mvergara19/scrnaseq_docker:latest
-```
-
----
-
-## Interactive Use
-
-### Linux / Mac
-
-**Interactive R session:**
-```bash
-docker run --rm -it -v $(pwd):/workspace mvergara19/scrnaseq_docker:latest
-```
-
-**Interactive Python session:**
-```bash
-docker run --rm -it -v $(pwd):/workspace mvergara19/scrnaseq_docker:latest python3
-```
-
-**Bash shell:**
-```bash
-docker run --rm -it -v $(pwd):/workspace mvergara19/scrnaseq_docker:latest bash
-```
-
-**Run an R script:**
-```bash
-docker run --rm -v $(pwd):/workspace mvergara19/scrnaseq_docker:latest Rscript /workspace/my_script.R
-```
-
-**Run a Python script:**
-```bash
-docker run --rm -v $(pwd):/workspace mvergara19/scrnaseq_docker:latest python3 /workspace/my_script.py
-```
-
-### Windows (PowerShell)
-
-**Interactive R session:**
-```powershell
-docker run --rm -it -v ${PWD}:/workspace mvergara19/scrnaseq_docker:latest
-```
-
-**Interactive Python session:**
-```powershell
-docker run --rm -it -v ${PWD}:/workspace mvergara19/scrnaseq_docker:latest python3
-```
-
-**Bash shell:**
-```powershell
-docker run --rm -it -v ${PWD}:/workspace mvergara19/scrnaseq_docker:latest bash
-```
-
-**Run an R script:**
-```powershell
-docker run --rm -v ${PWD}:/workspace mvergara19/scrnaseq_docker:latest Rscript /workspace/my_script.R
-```
-
-**Run a Python script:**
-```powershell
-docker run --rm -v ${PWD}:/workspace mvergara19/scrnaseq_docker:latest python3 /workspace/my_script.py
-```
-
-> **Note:** The `-v` flag mounts your current folder into the container at `/workspace`.
-> Linux/Mac use `$(pwd)`, Windows PowerShell uses `${PWD}`.
-> Always run the command from the directory where your data is located.
-
----
-
-## Pipeline Overview
-
-The R pipeline (`paperrr.R`) runs the following steps in order:
-
-1. **QC pre-filter** — violin plots of nFeature, nCount, percent.mt, and percent.cp per sample
-2. **QC filtering** — remove low-quality cells based on minimum feature count and maximum mitochondrial %
-3. **Merge & preprocessing** — normalize (log), find variable features, scale data, PCA, initial UMAP
-4. **Harmony batch correction** — integrate all samples by `orig.ident` to remove batch effects
-5. **Elbow plot** — k-means WSS curve to guide the choice of significant PCA dimensions
-6. **Clustree resolution sweep** — run `FindClusters` across a range of resolutions and visualize stability
-7. **Final clustering** — apply the chosen resolution (default 0.3) with the Leiden algorithm
-8. **Cell count plots** — barplots of cells per cluster broken down by sample and condition
-9. **Global pseudobulk** — aggregate counts across all cells per sample; Pearson replicate-correlation heatmap
-10. **Marker genes** — `FindAllMarkers` with bibliography-based cell-type annotation
-11. **Reference annotation** — transfer cell-type labels from an external reference Seurat object
-12. **Annotated clustree** — resolution sweep overlaid with the transferred cell-type labels
-13. **Gene expression visualisation** — VlnPlot and FeaturePlot for individual genes and gene sets, both globally and within a selected cell type
-14. **Cell type grouping** — merge fine-grained annotations into broader categories via a configurable mapping table
-15. **Interactive curation** — manual subclustering and reassignment of heterogeneous cell types (run interactively, not sourced)
-16. **Export to h5ad** — convert the curated Seurat object to AnnData format for downstream Python/scanpy analysis
-17. **Dotplot** — marker-gene dot plot across all curated cell types
-18. **Pseudoreplicates & pseudobulk per cell type** — assign pseudo-replicates and aggregate counts; one CSV per cell type
-19. **DESeq2** — all pairwise condition comparisons, one results subdirectory per comparison
-20. **Volcano plots** — publication-ready volcano plots, two panels per page, one PDF per comparison
-21. **Differential table & heatmap** — log2FC matrix across all cell types; hierarchical clustering heatmap
-22. **GO enrichment** — clusterProfiler `enrichGO`, dot plots for raw and simplified terms, pruned GO trees
-
-All major plots are saved as **PDF files** under `results/` or the configured `output_dir`.
-
----
-
-## Adapting to Other Organisms
-
-Three parameters control the organism-specific parts of the pipeline.
-
-### Mitochondrial / chloroplast gene patterns (`load_sample`)
+| Parameter | Type | Description |
+|---|---|---|
+| `h5_path` | `character` | Path to the filtered `.h5` file produced by CellBender |
+| `project` | `character` | Project name stored in Seurat object metadata (default `"Sample"`) |
 
 ```r
-# Arabidopsis thaliana (default)
-mt_pattern = "^ATMG"
-cp_pattern  = "^ATCG"
-
-# Human
-mt_pattern = "^MT-"
-cp_pattern  = NULL
-
-# Mouse
-mt_pattern = "^mt-"
-cp_pattern  = NULL
+seu <- load_cellbender_filtered_h5("results/sample_filtered.h5", project = "Root_WT")
 ```
 
-### GO enrichment database (`paperrr.R` — GO ENRICHMENT section)
+---
+
+#### `plot_qc_violin_grid()`
+
+Produces a violin plot grid showing `nFeature_RNA`, `nCount_RNA`, `percent.mt`, and (if present) `percent.cp` for a single Seurat object, with the cell count in the plot title.
+
+| Parameter | Type | Description |
+|---|---|---|
+| `obj1` | `Seurat` | Seurat object to visualize |
+| `label` | `character` | Condition label displayed as the group and plot title |
+| `color` | `character` | Fill color for the violin plots |
 
 ```r
-# Arabidopsis thaliana (default)
-orgdb   <- org.At.tair.db
-keytype <- "TAIR"
-
-# Human
-orgdb   <- org.Hs.eg.db
-keytype <- "ENSEMBL"   # or "SYMBOL"
-
-# Mouse
-orgdb   <- org.Mm.eg.db
-keytype <- "ENSEMBL"   # or "SYMBOL"
+p <- plot_qc_violin_grid(seu, label = "WT_rep1", color = "#66c2a5")
 ```
 
-Also update the `universo` background gene list to match your organism.
+---
 
-### DESeq2 comparisons
+#### `resumen_nFeature_plot()`
 
-The `comparaciones` list in `paperrr.R` is fully configurable. Add or remove entries to match your condition names and the contrasts you need:
+Creates a boxplot of `nFeature_RNA` distributions across a list of Seurat objects, alongside printed quartile and quintile summary tables rendered as grid graphics.
+
+| Parameter | Type | Description |
+|---|---|---|
+| `obj_list` | `list` | List of Seurat objects |
+| `etiquetas` | `character` | Labels for each object (default: `"Group1"`, `"Group2"`, ...) |
+| `colores` | `character` | Named or positional color vector; auto-assigned from ColorBrewer if `NULL` |
 
 ```r
-comparaciones <- list(
-  list(conds = c("Control", "Treatment"), tag = "ctrl_vs_treat"),
-  list(conds = c("Control", "HighDose"),  tag = "ctrl_vs_high")
-)
-```
-
-Each `tag` becomes a subdirectory under `results/deseq2/`, `results/diff/`, and `results/Enrichment/`.
-
----
-
-## Included Packages
-
-### R 4.5
-
-| Package | Version | Description |
-|---|---|---|
-| Seurat | 5.4.0 | Single-cell analysis framework |
-| SeuratDisk | 0.0.0.9021 | Read/write h5seurat and h5ad formats |
-| SeuratWrappers | 0.4.0 | Integrations with external methods |
-| monocle3 | 1.4.26 | Trajectory analysis |
-| DESeq2 | 1.50.2 | Differential expression |
-| clusterProfiler | — | GO and pathway enrichment |
-| org.At.tair.db | — | Arabidopsis thaliana annotation database (swap for org.Hs.eg.db, org.Mm.eg.db, etc.) |
-| scater | 1.38.1 | QC and visualization (Bioconductor) |
-| SingleCellExperiment | 1.32.0 | Bioconductor single-cell data structure |
-| SummarizedExperiment | 1.40.0 | Bioconductor experiment container |
-| zellkonverter | 1.20.1 | SCE <-> AnnData conversion |
-| harmony | 1.2.4 | Dataset integration / batch correction |
-| DoubletFinder | 2.0.6 | Doublet detection |
-| clustree | 0.5.1 | Clustering resolution visualization |
-| dynamicTreeCut | — | Dynamic dendrogram-based cluster cutting |
-| hdf5r | 1.3.12 | HDF5 file I/O |
-| Matrix | 1.7-5 | Sparse matrix support |
-| ggplot2 | 4.0.2 | Data visualization |
-| ggrepel | — | Non-overlapping text labels |
-| ggpubr | — | Publication-ready ggplot2 figures |
-| pheatmap | — | Pretty heatmaps |
-| RColorBrewer | — | Color palettes |
-| patchwork | 1.3.2 | Composing plots |
-| cowplot | 1.2.0 | Publication-ready figures |
-| gridExtra | 2.3 | Plot grids |
-| reshape2 | — | Data reshaping (melt/cast) |
-| dplyr | 1.2.0 | Data manipulation |
-| tibble | 3.3.1 | Modern data frames |
-| tidyverse | 2.0.0 | Data analysis ecosystem |
-| knitr | 1.51 | Dynamic reports |
-| kableExtra | 1.4.0 | Enhanced tables in reports |
-| VennDiagram | 1.8.2 | Venn diagrams |
-| ggvenn | 0.1.19 | Venn diagrams with ggplot2 |
-| eulerr | 7.0.4 | Euler diagrams |
-| UpSetR | 1.4.0 | UpSet plots |
-
-### Python 3
-
-| Package | Version | Description |
-|---|---|---|
-| scanpy | 1.12 | Single-cell analysis in Python |
-| scFates | 1.2.3 | Trajectory analysis |
-| palantir | 1.4.4 | Cell differentiation and trajectories |
-| cellbender | 0.3.0 | Ambient RNA removal |
-| pandas | 2.3.3 | Data manipulation |
-| numpy | 2.4.3 | Numerical computing |
-| scipy | 1.17.1 | Scientific statistics |
-| scikit-learn | 1.8.0 | Machine learning |
-| matplotlib | 3.10.8 | Visualization |
-| seaborn | 0.13.2 | Statistical visualization |
-
-### Command-line tools
-
-| Tool | Version | Description |
-|---|---|---|
-| CellRanger | 9.0.1 | 10x Genomics read alignment and quantification |
-
----
-
-## CellRanger & CellBender
-
-### CellRanger
-
-CellRanger 9.0.1 is already included. Example usage:
-
-**Linux / Mac:**
-```bash
-docker run --rm -v $(pwd):/workspace mvergara19/scrnaseq_docker:latest \
-    cellranger count --id=sample_id --fastqs=/workspace/fastqs --sample=sample_name --transcriptome=/workspace/refdata
-```
-
-**Windows (PowerShell):**
-```powershell
-docker run --rm -v ${PWD}:/workspace mvergara19/scrnaseq_docker:latest `
-    cellranger count --id=sample_id --fastqs=/workspace/fastqs --sample=sample_name --transcriptome=/workspace/refdata
-```
-
-### CellBender
-
-CellBender is already included. Example usage:
-
-**Linux / Mac:**
-```bash
-docker run --rm -v $(pwd):/workspace mvergara19/scrnaseq_docker:latest \
-    cellbender remove-background --input /workspace/raw_feature_bc_matrix.h5 --output /workspace/output.h5
-```
-
-**Windows (PowerShell):**
-```powershell
-docker run --rm -v ${PWD}:/workspace mvergara19/scrnaseq_docker:latest `
-    cellbender remove-background --input /workspace/raw_feature_bc_matrix.h5 --output /workspace/output.h5
+resumen_nFeature_plot(list(wt, mut), etiquetas = c("WT", "Mutant"), colores = c("steelblue", "tomato"))
 ```
 
 ---
 
-## Build from Scratch
+### 2. Preprocessing and Doublet Detection
 
-You need a [GitHub personal access token](https://github.com/settings/tokens) to install packages from GitHub.
-You also need the `cellranger-9.0.1.tar.gz` file downloaded from [10x Genomics](https://www.10xgenomics.com/support/software/cell-ranger/downloads) placed in the same folder as the Dockerfile.
+---
 
-**Linux / Mac:**
+#### `preprocesar_y_doubletfinder()`
+
+Normalizes a Seurat object, finds variable features, scales, runs PCA, performs the DoubletFinder parameter sweep, and returns the object with doublet classifications added to metadata.
+
+| Parameter | Type | Description |
+|---|---|---|
+| `seurat_obj` | `Seurat` | Input Seurat object |
+| `pcs` | `integer` | PC range to use (e.g. `1:20`) |
+| `expected_doublet_rate` | `numeric` | Expected fraction of doublets (default `0.075`) |
+| `project_id` | `character` | Label for log messages (default `"sample"`) |
+
+```r
+seu <- preprocesar_y_doubletfinder(seu, pcs = 1:20, expected_doublet_rate = 0.08, project_id = "Root_WT")
+```
+
+---
+
+#### `doubletfinder_pipeline()`
+
+Comprehensive doublet detection pipeline that adds neighborhood graph construction and clustering before the DoubletFinder parameter sweep, with optional automatic filtering to singlets only.
+
+| Parameter | Type | Description |
+|---|---|---|
+| `obj` | `Seurat` | Input Seurat object |
+| `etiqueta` | `character` | Sample label for progress messages (default `"Sample"`) |
+| `PCs` | `integer` | PC range for all dimension-reduction steps (default `1:20`) |
+| `resolution` | `numeric` | Louvain/Leiden clustering resolution (default `0.5`) |
+| `return_singlets` | `logical` | If `TRUE`, subset to singlets before returning (default `TRUE`) |
+| `sct` | `logical` | Whether SCTransform normalization was used (default `FALSE`) |
+
+```r
+seu_clean <- doubletfinder_pipeline(seu, etiqueta = "Root_WT", PCs = 1:30, return_singlets = TRUE)
+```
+
+---
+
+#### `load_sample()`
+
+Loads a CellBender HDF5 file, computes mitochondrial and (optionally) chloroplast percentages, prefixes cell barcodes with the condition label, and returns the annotated object without applying any filters — useful for inspecting raw QC metrics before deciding thresholds.
+
+| Parameter | Type | Description |
+|---|---|---|
+| `sample_info` | `list` | Named list with fields `file` (path), `label` (project name), and `condition` (barcode prefix) |
+| `mt_pattern` | `character` | Regex matching mitochondrial gene IDs (default `"^ATMG"`) |
+| `cp_pattern` | `character` | Regex matching chloroplast gene IDs; `NULL` to skip (default `"^ATCG"`) |
+
+```r
+seu_raw <- load_sample(list(file = "sample.h5", label = "WT", condition = "WT"), mt_pattern = "^ATMG", cp_pattern = "^ATCG")
+```
+
+---
+
+#### `filter_sample()`
+
+Applies QC thresholds to an already-annotated Seurat object (output of `load_sample()`) and optionally runs the full DoubletFinder pipeline on the filtered cells.
+
+| Parameter | Type | Description |
+|---|---|---|
+| `obj` | `Seurat` | Annotated Seurat object (from `load_sample()`) |
+| `min_features` | `numeric` | Minimum `nFeature_RNA` (default `200`) |
+| `max_features` | `numeric` | Maximum `nFeature_RNA` (default `Inf`) |
+| `min_counts` | `numeric` | Minimum `nCount_RNA` (default `0`) |
+| `max_counts` | `numeric` | Maximum `nCount_RNA` (default `Inf`) |
+| `max_mt` | `numeric` | Maximum mitochondrial percent (default `5`) |
+| `max_cp` | `numeric` | Maximum chloroplast percent; ignored if `percent.cp` is absent (default `100`) |
+| `run_doubletfinder` | `logical` | Whether to run DoubletFinder after filtering (default `TRUE`) |
+
+```r
+seu_filt <- filter_sample(seu_raw, min_features = 300, max_features = 8000, max_mt = 5)
+```
+
+---
+
+#### `process_sample()`
+
+Convenience wrapper that calls `load_sample()` followed by `filter_sample()` in a single step; use this when you do not need to inspect raw QC plots before setting thresholds.
+
+| Parameter | Type | Description |
+|---|---|---|
+| `sample_info` | `list` | Named list with fields `file`, `label`, and `condition` (see `load_sample()`) |
+| `mt_pattern` | `character` | Mitochondrial gene regex (default `"^ATMG"`) |
+| `cp_pattern` | `character` | Chloroplast gene regex; `NULL` to skip (default `"^ATCG"`) |
+| `min_features` | `numeric` | Minimum `nFeature_RNA` (default `200`) |
+| `max_features` | `numeric` | Maximum `nFeature_RNA` (default `Inf`) |
+| `min_counts` | `numeric` | Minimum `nCount_RNA` (default `0`) |
+| `max_counts` | `numeric` | Maximum `nCount_RNA` (default `Inf`) |
+| `max_mt` | `numeric` | Maximum mitochondrial percent (default `5`) |
+| `max_cp` | `numeric` | Maximum chloroplast percent (default `100`) |
+| `run_doubletfinder` | `logical` | Whether to run DoubletFinder (default `TRUE`) |
+
+```r
+seu <- process_sample(list(file = "sample.h5", label = "WT", condition = "WT"), min_features = 300, max_mt = 5)
+```
+
+---
+
+### 3. Bulk / Pseudobulk Utilities
+
+---
+
+#### `normalizar_bulk_pseudobulk()`
+
+Applies DESeq2 size-factor normalization followed by log2 transformation to a pair of pseudobulk and bulk count vectors, restricting the analysis to their common gene set.
+
+| Parameter | Type | Description |
+|---|---|---|
+| `pseudobulk_counts` | `named numeric` | Named vector of pseudobulk raw counts (genes as names) |
+| `bulk_counts` | `named numeric` | Named vector of bulk RNA-seq raw counts (genes as names) |
+
+```r
+df_norm <- normalizar_bulk_pseudobulk(pseudo_vec, bulk_vec)
+```
+
+---
+
+#### `clasificar_residuos()`
+
+Fits a linear model of bulk expression on pseudobulk expression and classifies each gene as `"Upregulated"`, `"Downregulated"`, or `"Consistent"` based on whether its residual exceeds the specified threshold.
+
+| Parameter | Type | Description |
+|---|---|---|
+| `df` | `data.frame` | Data frame with columns `pseudobulk` and `bulk` (e.g. from `normalizar_bulk_pseudobulk()`) |
+| `umbral` | `numeric` | Absolute residual threshold for classification (default `5`) |
+
+```r
+df_classified <- clasificar_residuos(df_norm, umbral = 5)
+```
+
+---
+
+#### `generate_pseudobulk()`
+
+Aggregates single-cell counts by a metadata grouping variable to produce a pseudobulk count matrix; optionally merges per-sample columns into per-condition totals.
+
+| Parameter | Type | Description |
+|---|---|---|
+| `seurat_obj` | `Seurat` | Seurat object containing raw counts |
+| `group_by` | `character` | Metadata column name used to group cells (default `"orig.ident"`) |
+| `merge_replicates` | `logical` | If `TRUE`, return both per-sample and per-condition matrices (default `TRUE`) |
+
+```r
+pb <- generate_pseudobulk(seu, group_by = "orig.ident", merge_replicates = TRUE)
+# Access: pb$by_sample, pb$by_condition
+```
+
+---
+
+#### `plot_replicate_correlation()`
+
+Computes pairwise Pearson correlations across columns of a pseudobulk matrix and renders a `pheatmap` of the correlation matrix with numeric annotations.
+
+| Parameter | Type | Description |
+|---|---|---|
+| `pseudobulk_mat` | `matrix` | Numeric genes-by-samples matrix (e.g. from `generate_pseudobulk()` or `hacer_pseudobulk()`) |
+| `main` | `character` | Heatmap title (default `"Replicate Correlation"`) |
+
+```r
+plot_replicate_correlation(pb$by_sample, main = "QC: Replicate Correlation")
+```
+
+---
+
+### 4. Seurat Utilities
+
+---
+
+#### `unificar_nombres()`
+
+Removes numeric suffixes (e.g. `.1`, `_2`) from cluster identity level names, unifying duplicated cluster labels that can arise after merging Seurat objects.
+
+| Parameter | Type | Description |
+|---|---|---|
+| `obj` | `Seurat` | Seurat object whose active ident levels should be cleaned |
+
+```r
+seu <- unificar_nombres(seu)
+```
+
+---
+
+#### `mostrar_tabla()`
+
+Creates and renders a side-by-side cell-type count comparison table (filtered vs. CellBender annotations) using grid graphics.
+
+| Parameter | Type | Description |
+|---|---|---|
+| `filtered_vec` | `character` | Annotation vector from the filtered object |
+| `cellbender_vec` | `character` | Annotation vector from the CellBender object |
+| `titulo` | `character` | Table title (default `"Annotations"`) |
+
+```r
+mostrar_tabla(seu_filt$celltype, seu_raw$celltype, titulo = "Cell-type counts")
+```
+
+---
+
+#### `exportar_para_scanpy()`
+
+Converts a Seurat object to SingleCellExperiment and writes it as an `.h5ad` file compatible with Scanpy/AnnData; prefers `zellkonverter` but falls back to `SeuratDisk` if necessary.
+
+| Parameter | Type | Description |
+|---|---|---|
+| `seurat_obj` | `Seurat` | Seurat object to export |
+| `outfile` | `character` | Output file path (must end in `.h5ad`) |
+| `assay_name` | `character` | Assay to export (default `"RNA"`) |
+| `use_reduc` | `character` | Reductions to embed in the h5ad (default `c("pca","umap","harmony")`) |
+| `X_name` | `character` | Assay layer stored as `.X` in Scanpy (default `"logcounts"`) |
+| `overwrite` | `logical` | Overwrite an existing file (default `TRUE`) |
+
+```r
+exportar_para_scanpy(seu, outfile = "results/atlas.h5ad", use_reduc = c("pca", "umap"))
+```
+
+---
+
+#### `safe_vln()`
+
+Thin wrapper around `VlnPlot` that groups cells by `orig.ident`, suppresses individual points, and applies a custom fill palette — safe for use inside RMarkdown without interactive prompts.
+
+| Parameter | Type | Description |
+|---|---|---|
+| `obj` | `Seurat` | Seurat object |
+| `feature` | `character` | Gene name or metadata column to plot |
+| `colors` | `character` | Named or positional color palette |
+
+```r
+p <- safe_vln(seu, feature = "AT1G01060", colors = sample_colors)
+```
+
+---
+
+#### `unir_layers_counts()`
+
+Merges multiple sparse count matrices from different RNA assay layers into a single sparse matrix, handling the single-layer case without unnecessary copying.
+
+| Parameter | Type | Description |
+|---|---|---|
+| `obj` | `Seurat` | Seurat object containing the RNA assay |
+| `capas` | `character` | Character vector of layer names to merge |
+
+```r
+merged_mat <- unir_layers_counts(seu, capas = c("counts.WT", "counts.Mut"))
+```
+
+---
+
+### 5. Annotation
+
+---
+
+#### `find_markers()`
+
+Runs `FindAllMarkers` on Seurat clusters and writes results to a TSV cache file, loading from the cache on subsequent calls unless `force = TRUE`.
+
+| Parameter | Type | Description |
+|---|---|---|
+| `seurat_obj` | `Seurat` | Seurat object with `seurat_clusters` active identity |
+| `output_file` | `character` | Path for the TSV cache (default `"results/FindAllMarkers.tsv"`) |
+| `only_pos` | `logical` | Return only positive markers (default `TRUE`) |
+| `min_pct` | `numeric` | Minimum fraction of cells expressing the gene (default `0.25`) |
+| `logfc_threshold` | `numeric` | Log fold-change threshold (default `0.25`) |
+| `force` | `logical` | Recompute even if a cache file exists (default `FALSE`) |
+
+```r
+markers <- find_markers(seu, output_file = "results/FindAllMarkers.tsv", force = FALSE)
+```
+
+---
+
+#### `annotate_by_markers()`
+
+Crosses `FindAllMarkers` output with a two-column reference table (`gene | cell.types`) to assign the best-matching cell-type label to each cluster, then stores the result in the `celltype` metadata column.
+
+| Parameter | Type | Description |
+|---|---|---|
+| `seurat_obj` | `Seurat` | Seurat object |
+| `markers` | `data.frame` | Output of `find_markers()` |
+| `reference_file` | `character` | Path to the tab-separated reference table; a file chooser dialog is shown if `NULL` |
+
+```r
+seu <- annotate_by_markers(seu, markers, reference_file = "refs/cell_type_markers.tsv")
+```
+
+---
+
+#### `annotate_by_reference()`
+
+Transfers cell-type labels from a reference Seurat object to the query using `FindTransferAnchors` and `TransferData`, storing predictions in a `celltype_reference` metadata column.
+
+| Parameter | Type | Description |
+|---|---|---|
+| `seurat_obj` | `Seurat` | Query Seurat object |
+| `reference_obj` | `Seurat` | Reference Seurat object; a file chooser is shown if `NULL` |
+| `reference_col` | `character` | Metadata column in the reference holding cell-type labels; interactive selection if `NULL` |
+| `dims` | `integer` | Dimensions for anchor finding (default `1:30`) |
+
+```r
+seu <- annotate_by_reference(seu, reference_obj = ref_atlas, reference_col = "celltype", dims = 1:30)
+```
+
+---
+
+#### `subclustar_tipo()`
+
+Subsets a Seurat object to one or more named cell types, then re-runs PCA, UMAP, neighbor finding, and clustering at the specified resolution to reveal sub-populations within that compartment.
+
+| Parameter | Type | Description |
+|---|---|---|
+| `obj` | `Seurat` | Seurat object with cell-type annotations |
+| `tipo` | `character` | Cell type(s) to subset (must match values in `annot_col`) |
+| `annot_col` | `character` | Metadata column holding cell-type labels (default `"annotation_agrupada"`) |
+| `resolution` | `numeric` | Clustering resolution (default `0.3`) |
+| `dims` | `integer` | Dimensions for UMAP and neighbor finding (default `1:20`) |
+
+```r
+guard_sub <- subclustar_tipo(seu, tipo = "Guard Cell", annot_col = "celltype", resolution = 0.3)
+```
+
+---
+
+### 6. Pseudobulk, DESeq2, Volcano, Heatmap
+
+---
+
+#### `asignar_pseudoreplicados()`
+
+Randomly assigns cells within each condition to a specified number of pseudo-replicate groups, enabling DESeq2-based differential expression on experiments without biological replicates.
+
+| Parameter | Type | Description |
+|---|---|---|
+| `obj` | `Seurat` | Seurat object with an `orig.ident_uni` metadata column |
+| `condiciones` | `character` | Conditions to include; `NULL` uses all detected conditions |
+| `n_reps` | `integer` | Number of pseudo-replicates per condition (default `3`) |
+| `seed` | `integer` | Random seed for reproducibility (default `1807`) |
+
+```r
+seu <- asignar_pseudoreplicados(seu, condiciones = c("WT", "Mutant"), n_reps = 3, seed = 42)
+```
+
+---
+
+#### `hacer_pseudobulk()`
+
+Aggregates counts per pseudo-replicate group using `AggregateExpression` and returns a tidy data frame (genes as rows, replicates as columns) ready for DESeq2 input.
+
+| Parameter | Type | Description |
+|---|---|---|
+| `obj` | `Seurat` | Seurat object with a `replicate` metadata column (from `asignar_pseudoreplicados()`) |
+
+```r
+counts_mat <- hacer_pseudobulk(seu)
+```
+
+---
+
+#### `correr_deseq2()`
+
+Builds a DESeqDataSet from a pseudobulk count matrix, auto-detects condition levels from column names, runs DESeq2, and writes per-comparison result CSV files to disk.
+
+| Parameter | Type | Description |
+|---|---|---|
+| `counts_mat` | `matrix` | Integer genes-by-samples count matrix |
+| `comparaciones` | `list` | List of named lists, each with `conds` (length-2 character: reference then treatment) and `tag` (output label) |
+| `output_dir` | `character` | Root directory; results written to `output_dir/tag/DESeq2_tag.csv` |
+| `tipo` | `character` | Optional prefix added to output filenames (default `NULL`) |
+
+```r
+correr_deseq2(counts_mat,
+              comparaciones = list(list(conds = c("WT", "Mutant"), tag = "WT_vs_Mutant")),
+              output_dir = "results/DESeq2")
+```
+
+---
+
+#### `hacer_volcano()`
+
+Reads a DESeq2 CSV output file and produces a volcano plot colored by significance category (upregulated / downregulated / not significant) with user-defined fold-change and p-value cutoff lines.
+
+| Parameter | Type | Description |
+|---|---|---|
+| `file` | `character` | Path to the DESeq2 results CSV file |
+| `padj_cut` | `numeric` | Adjusted p-value significance cutoff (default `0.05`) |
+| `lfc_cut` | `numeric` | Log2 fold-change cutoff (default `1`) |
+
+```r
+p <- hacer_volcano("results/DESeq2/WT_vs_Mutant/DESeq2_WT_vs_Mutant.csv", padj_cut = 0.05, lfc_cut = 1)
+```
+
+---
+
+#### `procesar_deseq2_resultado()`
+
+Reads a DESeq2 CSV, classifies each gene as up (`1`), down (`-1`), or unchanged (`0`), extracts log fold-change values for significant genes, and writes a filtered significant-gene CSV to disk.
+
+| Parameter | Type | Description |
+|---|---|---|
+| `file_path` | `character` | Path to the DESeq2 results CSV file |
+| `output_dir` | `character` | Directory where the filtered CSV is written |
+| `padj_cut` | `numeric` | Adjusted p-value cutoff (default `0.05`) |
+| `lfc_cut` | `numeric` | Log2 fold-change cutoff (default `1`) |
+
+```r
+res <- procesar_deseq2_resultado("results/DESeq2/WT_vs_Mutant/DESeq2_WT_vs_Mutant.csv",
+                                  output_dir = "results/DESeq2/filtered")
+# Returns: res$class and res$logfc data frames
+```
+
+---
+
+#### `hacer_heatmap()`
+
+Renders a hierarchically clustered heatmap (rows clustered by Euclidean distance with dynamic tree cut, columns by PCA-based distance) with per-gene cluster color annotations and a blue-black-yellow log2FC color scale.
+
+| Parameter | Type | Description |
+|---|---|---|
+| `matriz` | `matrix` | Numeric genes-by-conditions matrix (e.g. log2FC values) |
+| `min_genes` | `integer` | Minimum cluster size for dynamic tree cut (default `1`) |
+| `deepSplit_val` | `integer` | `deepSplit` parameter for `cutreeDynamic` (default `0`) |
+| `breaks` | `numeric` | Two-element `c(min, max)` vector for the color scale (default `c(-5, 5)`) |
+
+```r
+hacer_heatmap(lfc_matrix, min_genes = 5, deepSplit_val = 1, breaks = c(-3, 3))
+```
+
+---
+
+#### `hacer_dotplot_marcadores()`
+
+Builds a coordinate-flipped `DotPlot` where cell types and marker genes follow user-defined orders, producing a near-diagonal expression pattern useful for cell-type validation figures; optionally saves the plot as a PDF.
+
+| Parameter | Type | Description |
+|---|---|---|
+| `seurat_obj` | `Seurat` | Seurat object with cell-type annotations |
+| `marks` | `data.frame` | Data frame with columns `gene` and `cell.types` |
+| `annot_col` | `character` | Metadata column holding cell-type labels (default `"celltype_reference_curated"`) |
+| `cell_order` | `character` | Desired top-to-bottom cell-type order; unlisted types appended at the end |
+| `clusters_remove` | `character` | Cell-type labels to exclude from the plot (default `NULL`) |
+| `rename_map` | `named character` | Optional mapping to rename cell types before plotting |
+| `outfile` | `character` | PDF output path; `NULL` skips saving (default `NULL`) |
+| `width` | `numeric` | PDF width in inches (default `20`) |
+| `height` | `numeric` | PDF height in inches (default `10`) |
+| `dot_scale` | `numeric` | Dot size scaling factor (default `12`) |
+| `base_size` | `numeric` | Base font size (default `18`) |
+
+```r
+p <- hacer_dotplot_marcadores(seu, marks = marker_df, annot_col = "celltype",
+                               cell_order = c("Epidermis", "Vasculature", "Mesophyll"),
+                               outfile = "figures/dotplot_markers.pdf")
+```
+
+---
+
+### 7. GO Enrichment
+
+---
+
+#### `correr_enriquecimiento_go()`
+
+Iterates over columns of a binary classification matrix, runs `clusterProfiler::enrichGO` for each set of upregulated genes, writes raw and gene-symbol-readable result tables to disk, and optionally simplifies redundant GO terms.
+
+| Parameter | Type | Description |
+|---|---|---|
+| `tabla` | `matrix` | Binary genes-by-comparisons matrix; rows with value `1` are tested |
+| `universo` | `character` | Background gene ID vector for enrichment testing |
+| `espacio` | `character` | GO namespace: `"BP"`, `"MF"`, or `"CC"` |
+| `orgdb` | `OrgDb` | OrgDb annotation object (default `org.At.tair.db`) |
+| `keytype` | `character` | Key type matching rownames of `tabla` (default `"TAIR"`) |
+| `qvalueCutoff` | `numeric` | Q-value significance cutoff (default `0.05`) |
+| `pvalueCutoff` | `numeric` | P-value significance cutoff (default `0.05`) |
+| `simplificar` | `logical` | If `TRUE`, remove redundant GO terms with `simplify()` (default `FALSE`) |
+| `umbral_simply` | `numeric` | Similarity cutoff passed to `simplify()` (default `0.7`) |
+| `output_dir` | `character` | Directory for output text files (default `"results/Enrichment"`) |
+
+```r
+go_results <- correr_enriquecimiento_go(class_matrix, universo = all_genes, espacio = "BP",
+                                         orgdb = org.At.tair.db, keytype = "TAIR",
+                                         output_dir = "results/GO")
+```
+
+---
+
+#### `podar_go()`
+
+Applies `gofilter` to each `enrichResult` in a named list to retain only GO terms at or below a specified ontology level, writing filtered tables to disk.
+
+| Parameter | Type | Description |
+|---|---|---|
+| `resuGO` | `list` | Named list of `enrichResult` objects (from `correr_enriquecimiento_go()`) |
+| `nivel` | `integer` | Maximum GO level to retain |
+| `espacio` | `character` | GO namespace string (used in output filenames) |
+| `qvalueCutoff` | `numeric` | Q-value cutoff (used in output filenames) |
+| `simplificar` | `logical` | Affects the output filename suffix (default `FALSE`) |
+| `output_dir` | `character` | Directory for output files (default `"results/Enrichment"`) |
+
+```r
+go_pruned <- podar_go(go_results, nivel = 4, espacio = "BP", qvalueCutoff = 0.05,
+                       output_dir = "results/GO/pruned")
+```
+
+---
+
+#### `graficar_go_balones()`
+
+Visualizes a named list of GO enrichment results as a balloon/bubble chart where bubble size encodes fold enrichment and fill color encodes -log10(q-value).
+
+| Parameter | Type | Description |
+|---|---|---|
+| `resuGO` | `list` | Named list of `enrichResult` objects (one per comparison) |
+
+```r
+p <- graficar_go_balones(go_pruned)
+print(p)
+```
+
+---
+
+### Save helpers
+
+Three lightweight wrappers around `ggsave` that apply standardized dimensions for common plot types. All write into `output_dir`, which must be defined in the calling environment.
+
+---
+
+#### `save_pdf()`
+
+Saves any ggplot (UMAP, FeaturePlot, etc.) as a PDF at 300 dpi with default dimensions of 10 x 8 inches.
+
+| Parameter | Type | Description |
+|---|---|---|
+| `plot` | `ggplot` | Plot object to save |
+| `file` | `character` | Filename appended to `output_dir` |
+| `w` | `numeric` | Width in inches (default `10`) |
+| `h` | `numeric` | Height in inches (default `8`) |
+
+```r
+save_pdf(umap_plot, "umap_clusters.pdf")
+```
+
+---
+
+#### `save_vln()`
+
+Saves a VlnPlot as a PDF via `save_pdf`, automatically scaling the height by the number of features plotted (14 x 6n inches).
+
+| Parameter | Type | Description |
+|---|---|---|
+| `plot` | `ggplot` | VlnPlot object to save |
+| `file` | `character` | Filename appended to `output_dir` |
+| `n` | `integer` | Number of genes/features in the plot (default `1`) |
+
+```r
+save_vln(vln_plot, "vln_markers.pdf", n = 3)
+```
+
+---
+
+#### `save_qc()`
+
+Stacks a list of QC plots into a single column with `patchwork::wrap_plots` and saves the result as a PDF at 300 dpi with width 14 and height 6 per panel.
+
+| Parameter | Type | Description |
+|---|---|---|
+| `plot_list` | `list` | List of ggplot objects to stack vertically |
+| `file` | `character` | Filename appended to `output_dir` |
+
+```r
+save_qc(list(p_wt, p_mut), "qc_violin_grid.pdf")
+```
+
+---
+
+## Quick start
+
 ```bash
-git clone https://github.com/cliford2001/ScRNASeq-Docker.git
+# 1. Clone the repository
+git clone https://github.com/your-org/ScRNASeq-Docker.git
 cd ScRNASeq-Docker
-# Place cellranger-9.0.1.tar.gz here
-docker build --build-arg GITHUB_PAT=your_token -t scrnaseq_docker:latest .
-```
 
-**Windows (PowerShell):**
-```powershell
-git clone https://github.com/cliford2001/ScRNASeq-Docker.git
-cd ScRNASeq-Docker
-# Place cellranger-9.0.1.tar.gz here
-docker build --build-arg GITHUB_PAT=your_token -t scrnaseq_docker:latest .
-```
+# 2. Build the Docker image (R + all dependencies pre-installed)
+docker build -t scrnaseq-docker .
 
-> The build takes approximately **45–60 minutes** on the first run due to C++ compilation (BPCells/monocle3).
+# 3. Launch an interactive R session with the project directory mounted
+docker run --rm -it \
+  -v "$(pwd)":/workspace \
+  -w /workspace \
+  scrnaseq-docker R
+
+# 4. Inside R: load all dependencies then source the function library
+source("load_libraries.R")
+source("ScRNA_Analysis_Functions.R")
+
+# 5. Optionally source the custom Seurat extensions and run the full pipeline
+source("custom_seurat.R")
+source("scrnaseq_pipeline.R")
+```
 
 ---
 
-## Repository Structure
+## Adapting to other organisms
 
-```
-ScRNASeq-Docker/
-├── Dockerfile                       # Full image definition
-├── docker-compose.yml               # docker compose configuration
-├── load_libraries.R                 # All library() calls (sourced by paperrr.R)
-├── paperrr.R                        # Main analysis pipeline (source this script)
-├── ScRNA_Analysis_Functions.R       # Reusable helper functions
-├── custom_seurat.R                  # Custom Seurat utilities
-└── workspace/                       # Default mount point for your data
-```
+Swap the organism-specific parameters below when applying this pipeline to species other than *Arabidopsis thaliana*. The `mt_pattern` and `cp_pattern` arguments are passed to `load_sample()` / `process_sample()`; the `orgdb` and `keytype` arguments are passed to `correr_enriquecimiento_go()`.
 
-### Pipeline output layout
+| Organism | `mt_pattern` | `cp_pattern` | `orgdb` | `keytype` |
+|---|---|---|---|---|
+| *Arabidopsis thaliana* | `"^ATMG"` | `"^ATCG"` | `org.At.tair.db` | `"TAIR"` |
+| *Homo sapiens* | `"^MT-"` | `NULL` | `org.Hs.eg.db` | `"ENSEMBL"` |
+| *Mus musculus* | `"^mt-"` | `NULL` | `org.Mm.eg.db` | `"ENSEMBL"` |
 
-```
-results/
-├── objs/                            # Exported h5ad objects (Seurat -> AnnData)
-├── pseudobulk_replicas/             # Pseudobulk count matrices per cell type (.csv)
-├── deseq2/
-│   ├── 05_5/                        # DESeq2 results: 0.5N vs 5N
-│   ├── 0_5/                         # DESeq2 results: 0N vs 5N
-│   └── 0_05/                        # DESeq2 results: 0N vs 0.5N
-├── volcano_plots/                   # Volcano plot PDFs, one per comparison
-├── diff/
-│   ├── 05_5/                        # Differential gene tables and heatmaps
-│   ├── 0_5/
-│   └── 0_05/
-└── Enrichment/
-    ├── 05_5/                        # GO enrichment dot plots
-    ├── 0_5/
-    └── 0_05/
-```
-
-Major QC and annotation PDFs (e.g. `qc_prefilter.pdf`, `umap_postharmony.pdf`, `clustree.pdf`, `dotplot_marcadores.pdf`) are written to the `output_dir` configured at the top of `paperrr.R`.
-
----
-
-## Troubleshooting
-
-### `permission denied` when running `docker pull` or `docker run`
-
-**Error:**
-```
-permission denied while trying to connect to the Docker daemon socket at
-unix:///var/run/docker.sock
-```
-
-**Cause:** Your user is not in the `docker` group. By default, only `root` can
-communicate with the Docker daemon.
-
-**Fix:** Run this once (requires admin/sudo on that machine):
-
-```bash
-sudo usermod -aG docker $USER
-```
-
-Then **log out and log back in** for the change to take effect. After that,
-Docker works without `sudo` for that user permanently.
-
-If you cannot log out (e.g., remote server), use this as a temporary workaround
-for the current session only:
-
-```bash
-newgrp docker
-```
-
-> **Note:** This is an OS-level permission issue, not a problem with the Docker
-> image. The image is public and requires no authentication to pull.
-
-### Seurat 5: `slot` argument error in `GetAssayData` / `AggregateExpression`
-
-**Error (example):**
-```
-Error in GetAssayData(..., slot = "counts") :
-  'slot' is deprecated; use 'layer' instead
-```
-
-**Cause:** Seurat 5 replaced the `slot` argument with `layer` across its API.
-
-**Fix:** This has already been corrected in `ScRNA_Analysis_Functions.R`.
-Both `exportar_para_scanpy` and `hacer_pseudobulk` now use `layer = "counts"` /
-`layer = "data"` instead of the old `slot` argument. If you encounter this error
-in custom code, apply the same substitution.
-
----
-
-## Author
-
-Developed by [@cliford2001](https://github.com/cliford2001)
+For rice (*Oryza sativa*) use `org.Os.eg.db` with `keytype = "GID"`, and set `mt_pattern` / `cp_pattern` to match your genome annotation's organelle gene naming convention. Also update the `universo` background gene vector in the GO enrichment step to reflect the full gene set of your target organism.
