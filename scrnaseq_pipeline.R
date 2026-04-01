@@ -32,12 +32,12 @@
 
 # Directory containing the pipeline helper scripts.
 # Inside the Docker container this is typically /workspace/ScRNASeq-Docker
-PIPELINE_DIR <- "/workspace/ScRNASeq-Docker"
+PIPELINE_DIR <- "~/projects2/eleo/ScRNA/metodologia/ScRNASeq-Docker/"
 
 # Root directory for your project data and results.
 # All result files will be written to DATA_DIR/results/<step>/
-DATA_DIR   <- "/workspace/ScRNA"
-base_dir   <- file.path(DATA_DIR, "results")
+DATA_DIR   <- "~/projects2/eleo/ScRNA/"
+base_dir   <- file.path(DATA_DIR, "metodologia/resultados")
 
 # ── Input format ──────────────────────────────────────────────────────────────
 # USE_CELLBENDER = TRUE  → load CellBender-filtered HDF5 files (recommended)
@@ -118,16 +118,13 @@ plot_pipeline_workflow(file.path(dir_00, "pipeline_workflow.pdf"))
 #   Human       : mt_pattern = "^MT-"   |  cp_pattern = NULL
 #   Mouse       : mt_pattern = "^mt-"   |  cp_pattern = NULL
 # └─────────────────────────────────────────────────────────────────────────────
-mt_pattern <- "^ATMG"
-cp_pattern <- "^ATCG"
-
 output_dir <- dir_01
 
 if (USE_CELLBENDER) {
   # Load CellBender-filtered HDF5 files (recommended)
   seurat_list_raw <- lapply(samples, load_sample,
-                            mt_pattern = mt_pattern,
-                            cp_pattern = cp_pattern)
+                            mt_pattern = "^ATMG",
+                            cp_pattern = "^ATCG")
 } else {
   # Load directly from CellRanger filtered_feature_bc_matrix/ directories.
   # Use this path if you skipped the CellBender step.
@@ -159,13 +156,11 @@ save_qc(plots_pre, "qc_prefilter.pdf")
 #   min_features : minimum number of detected genes per cell (default 200)
 #   max_mt       : maximum mitochondrial read percentage  (default 5 %)
 # └─────────────────────────────────────────────────────────────────────────────
-min_features <- 200
-max_mt       <- 5
-
 output_dir <- dir_02
 
 seurat_list <- lapply(seurat_list_raw, filter_sample,
-                      min_features = min_features, max_mt = max_mt)
+                      min_features= 200, max_mt = 5)
+
 names(seurat_list) <- sapply(samples, `[[`, "label")
 
 plots_post <- imap(seurat_list, ~ plot_qc_violin_grid(.x, .y, colors[[.y]]))
@@ -232,7 +227,6 @@ pbmc_harmony <- pbmc_harmony %>%
 #   cluster_resolution in Section 6.
 # └─────────────────────────────────────────────────────────────────────────────
 resolutions_test <- c(0.15, 0.30, 0.50, 0.8, 1.0)
-
 output_dir <- dir_04
 
 # ── 5a. Elbow plot ────────────────────────────────────────────────────────────
@@ -272,7 +266,6 @@ save_pdf(clustree(clu, prefix = "RNA_snn_res."), "clustree.pdf", w = 14, h = 14)
 #   cluster_resolution : Leiden resolution for final clustering (default 0.3)
 # └─────────────────────────────────────────────────────────────────────────────
 cluster_resolution <- 0.3
-
 output_dir <- dir_04
 
 pbmc_harmony <- pbmc_harmony %>%
@@ -318,10 +311,9 @@ save_pdf(cell_count_plot, "cell_count_per_sample.pdf", w = 8, h = 6)
 # Clusters that strongly express a known marker (e.g., AT5G26000 for Guard
 # Cell) should be labelled as that cell type in Section 8.
 # Dot size = fraction of expressing cells; color = mean expression level.
-
 output_dir <- dir_05
 
-marcadores <- read.table(file.path(base_dir, "biblio_marks.txt"),
+marcadores <- read.table(file.path(base_dir, "../biblio_marks.txt"),
                          header = TRUE, sep = "\t", quote = "")
 
 hacer_dotplot_marcadores(
@@ -353,13 +345,30 @@ markers <- find_markers(pbmc_harmony,
                         output_file = file.path(output_dir, "FindAllMarkers.tsv"))
 
 pbmc_harmony <- annotate_by_markers(pbmc_harmony, markers,
-                                    reference_file = file.path(base_dir, "biblio_marks.txt"))
+                                    reference_file = file.path(base_dir, "../biblio_marks.txt"))
+# Annotation stored in: pbmc_harmony$celltype
+
+hacer_dotplot_marcadores(
+  pbmc_harmony,
+  marcadores,
+  annot_col = "celltype", # Usamos la nueva columna de referencia
+  outfile   = file.path(output_dir, "dotplot_marcadores_anotacion_biblio.pdf"),
+  width = 20, height = 10
+)
 
 # ── 8b. Reference-based annotation ────────────────────────────────────────────
-esp          <- readRDS(file.path(base_dir, "GSE273033_seuratObj_for_publication.rds"))
+esp          <- readRDS(file.path(base_dir, "../GSE273033_seuratObj_for_publication.rds"))
 pbmc_harmony <- annotate_by_reference(pbmc_harmony,
                                       reference_obj = esp,
                                       reference_col = "annotation")
+
+hacer_dotplot_marcadores(
+  pbmc_harmony,
+  marcadores,
+  annot_col = "celltype_reference", # Usamos la nueva columna de referencia
+  outfile   = file.path(output_dir, "dotplot_marcadores_anotacion_referencia.pdf"),
+  width = 20, height = 10
+)
 # Annotation stored in: pbmc_harmony$celltype_reference
 
 
@@ -522,7 +531,8 @@ reassign <- list(
     "1" = "Stomatal Line",
     "2" = "Pavement Cell",
     "3" = "Stomatal Line",
-    "4" = "Stomatal Line"
+    "4" = "Stomatal Line",
+    "others" = "Cheese"
   ),
   pavement_cell_umap = c(
     "0"      = "Pavement Cell",
@@ -530,17 +540,30 @@ reassign <- list(
     "2"      = "Pavement Cell",
     "3"      = "Mesophyll",
     "4"      = "Pavement Cell",
-    "others" = "Pavement Cell"
+    "others" = "Testing"
   )
 )
 
-# ── Step 4. Apply corrections ─────────────────────────────────────────────────
+# ── Step 4. Apply corrections (CORREGIDO) ─────────────────────────────────────
 pbmc_harmony$celltype_reference_curated <- pbmc_harmony$annotation_agrupada
 
 for (obj_name in names(reassign)) {
   obj <- get(obj_name)
-  pbmc_harmony$celltype_reference_curated[colnames(obj)] <-
-    reassign[[obj_name]][obj$cluster_subtipo]
+  
+  # 1. Aseguramos que los clústeres se lean como texto
+  clústeres_actuales <- as.character(obj$cluster_subtipo)
+  
+  # 2. Hacemos el mapeo (los que no existan en tu lista reassign darán NA temporalmente)
+  nuevas_etiquetas <- reassign[[obj_name]][clústeres_actuales]
+  
+  # 3. Si definiste un "others" en tu lista, reemplazamos los NA por ese valor
+  if ("others" %in% names(reassign[[obj_name]])) {
+    valor_por_defecto <- reassign[[obj_name]]["others"]
+    nuevas_etiquetas[is.na(nuevas_etiquetas)] <- valor_por_defecto
+  }
+  
+  # 4. Asignamos al objeto principal
+  pbmc_harmony$celltype_reference_curated[colnames(obj)] <- nuevas_etiquetas
 }
 
 save_pdf(
@@ -567,6 +590,8 @@ exportar_para_scanpy(pbmc_harmony,
 #   subset(pbmc_harmony, subset = celltype_reference_curated == "Guard Cell"),
 #   file.path(output_dir, "GuardCell.h5ad")
 # )
+
+
 
 
 # =============================================================================
