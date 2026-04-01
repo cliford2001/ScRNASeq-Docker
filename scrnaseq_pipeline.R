@@ -593,37 +593,3 @@ exportar_para_scanpy(pbmc_harmony,
 
 
 
-
-# =============================================================================
-# ████████████████  PART 2 — PSEUDOBULK DE AND GO ENRICHMENT  █████████████████
-# =============================================================================
-# Edit the settings below, then run the single call at the end.
-
-# ┌─ Comparisons: c("reference", "treatment") ──────────────────────────────────
-comparaciones <- list(
-  list(conds = c("0.5N", "5N"),   tag = "05_5"),
-  list(conds = c("0N",   "5N"),   tag = "0_5"),
-  list(conds = c("0N",   "0.5N"), tag = "0_05")
-)
-
-# ┌─ Organism — uncomment the one that matches your data ───────────────────────
-orgdb   <- org.At.tair.db ; keytype <- "TAIR"       # Arabidopsis thaliana
-# orgdb <- org.Hs.eg.db   ; keytype <- "ENSEMBL"    # Homo sapiens
-# orgdb <- org.Mm.eg.db   ; keytype <- "ENSEMBL"    # Mus musculus
-
-run_pseudobulk_pipeline(
-  obj           = pbmc_harmony,
-  comparaciones = comparaciones,
-  orgdb         = orgdb,
-  keytype       = keytype,
-  dir_pseudobulk = dir_09,
-  dir_deseq2    = dir_10,
-  dir_volcano   = dir_11,
-  dir_heatmaps  = dir_12,
-  dir_go        = dir_13
-)
-
-
-# =============================================================================
-# END OF PIPELINE
-# =============================================================================
