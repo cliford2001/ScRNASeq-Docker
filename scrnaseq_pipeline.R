@@ -85,23 +85,7 @@ options(Seurat.allow.s4 = FALSE)
 setwd(DATA_DIR)
 
 # ── Create per-step output directories ────────────────────────────────────────
-# mkd() creates the folder and returns its path in one call.
-mkd <- function(name) { d <- file.path(base_dir, name); dir.create(d, recursive = TRUE, showWarnings = FALSE); d }
-
-dir_00 <- mkd("00_workflow")
-dir_01 <- mkd("01_qc")
-dir_02 <- mkd("02_filtering")
-dir_03 <- mkd("03_integration")
-dir_04 <- mkd("04_clustering")
-dir_05 <- mkd("05_annotation")
-dir_06 <- mkd("06_expression")
-dir_07 <- mkd("07_curation")
-dir_08 <- mkd("08_export")
-dir_09 <- mkd("09_pseudobulk")
-dir_10 <- mkd("10_deseq2")
-dir_11 <- mkd("11_volcano")
-dir_12 <- mkd("12_heatmaps")
-dir_13 <- mkd("13_go")
+list2env(create_pipeline_dirs(base_dir), envir = .GlobalEnv)
 
 # output_dir is the global variable used by save_pdf / save_qc / save_vln helpers.
 # It is reassigned at the start of each section to the appropriate step directory.
@@ -588,205 +572,31 @@ exportar_para_scanpy(pbmc_harmony,
 # =============================================================================
 # ████████████████  PART 2 — PSEUDOBULK DE AND GO ENRICHMENT  █████████████████
 # =============================================================================
+# Edit the settings below, then run the single call at the end.
 
-
-# =============================================================================
-# SECTION 14 — GLOBAL PSEUDOBULK AND REPLICATE CORRELATION
-# =============================================================================
-# Aggregates all cells per sample into a pseudobulk count vector and plots
-# a Pearson correlation heatmap. Replicates from the same condition should
-# cluster together with r > 0.95, confirming reproducibility before DE.
-
-output_dir <- dir_09
-
-pseudobulk <- generate_pseudobulk(pbmc_harmony, group_by = "orig.ident")
-
-save_pdf(plot_replicate_correlation(pseudobulk$by_sample),
-         "pseudobulk_correlation.pdf", w = 8, h = 8)
-
-
-# =============================================================================
-# SECTION 15 — PER-CELL-TYPE SUBSETS
-# =============================================================================
-# Splits the integrated object into one Seurat object per curated cell type
-# for independent pseudobulk differential expression analyses.
-
-output_dir <- dir_09
-
-celular_subsets <- setNames(
-  lapply(unique(pbmc_harmony$celltype_reference_curated),
-         function(t) subset(pbmc_harmony, subset = celltype_reference_curated == t)),
-  gsub("[^[:alnum:]_]", "_", unique(pbmc_harmony$celltype_reference_curated))
-)
-
-
-# =============================================================================
-# SECTION 16 — PSEUDO-REPLICATES AND PSEUDOBULK COUNT MATRICES
-# =============================================================================
-# Because this experiment lacks within-condition biological replicates, cells
-# are randomly assigned to n = 3 pseudo-replicates per condition. Counts are
-# then summed per pseudo-replicate to build the matrix required by DESeq2.
-# Cell types with fewer than 2 conditions are excluded automatically.
-
-output_dir <- dir_09
-
-celular_subsets_replicados <- Filter(Negate(is.null),
-                                     lapply(celular_subsets, asignar_pseudoreplicados))
-pseudobulk_list            <- lapply(celular_subsets_replicados, hacer_pseudobulk)
-
-dir.create(file.path(output_dir, "pseudobulk_replicas"), recursive = TRUE, showWarnings = FALSE)
-for (tipo in names(pseudobulk_list))
-  write.csv(pseudobulk_list[[tipo]],
-            file.path(output_dir, "pseudobulk_replicas", paste0("Pseudobulk_", tipo, ".csv")),
-            row.names = TRUE)
-
-
-# =============================================================================
-# SECTION 17 — DESEQ2 DIFFERENTIAL EXPRESSION
-# =============================================================================
-# Pairwise contrasts are run for all condition comparisons.
-# Results are written as CSV files under 10_deseq2/<tag>/
-#
-# ┌─ DEFINE YOUR COMPARISONS ───────────────────────────────────────────────────
-#   conds : c("reference_condition", "treatment_condition")
-#   tag   : short label used for output file names
-# └─────────────────────────────────────────────────────────────────────────────
+# ┌─ Comparisons: c("reference", "treatment") ──────────────────────────────────
 comparaciones <- list(
   list(conds = c("0.5N", "5N"),   tag = "05_5"),
   list(conds = c("0N",   "5N"),   tag = "0_5"),
   list(conds = c("0N",   "0.5N"), tag = "0_05")
 )
 
-output_dir <- dir_10
+# ┌─ Organism — uncomment the one that matches your data ───────────────────────
+orgdb   <- org.At.tair.db ; keytype <- "TAIR"       # Arabidopsis thaliana
+# orgdb <- org.Hs.eg.db   ; keytype <- "ENSEMBL"    # Homo sapiens
+# orgdb <- org.Mm.eg.db   ; keytype <- "ENSEMBL"    # Mus musculus
 
-for (tag in sapply(comparaciones, `[[`, "tag"))
-  dir.create(file.path(output_dir, tag), recursive = TRUE, showWarnings = FALSE)
-
-for (tipo in names(pseudobulk_list))
-  correr_deseq2(as.matrix(pseudobulk_list[[tipo]]), comparaciones,
-                output_dir = output_dir, tipo = tipo)
-
-
-# =============================================================================
-# SECTION 18 — VOLCANO PLOTS
-# =============================================================================
-# One volcano plot per cell type per comparison; two plots per PDF page.
-# Points are colored by significance (padj < 0.05, |log2FC| > 1).
-
-output_dir <- dir_11
-
-for (comp in comparaciones) {
-  tag       <- comp$tag
-  csv_files <- list.files(file.path(dir_10, tag),
-                          pattern = "\\.csv$", full.names = TRUE)
-  if (!length(csv_files)) { message("No CSV files found for comparison: ", tag); next }
-
-  pdf(file.path(output_dir, paste0("VolcanoPlots_", tag, ".pdf")),
-      width = 12, height = 6)
-  plots <- list()
-  for (f in csv_files) {
-    plots <- c(plots, list(hacer_volcano(f)))
-    if (length(plots) == 2) { grid.arrange(grobs = plots, ncol = 2); plots <- list() }
-  }
-  if (length(plots)) grid.arrange(grobs = plots, ncol = 1)
-  dev.off()
-}
-
-
-# =============================================================================
-# SECTION 19 — DIFFERENTIAL GENE TABLES AND HEATMAPS
-# =============================================================================
-# Genes are classified (up = 1 / down = -1 / unchanged = 0) and summarized
-# in cross-cell-type tables. A hierarchically clustered log2FC heatmap is
-# produced per comparison.
-
-output_dir <- dir_12
-
-for (comp in comparaciones) {
-  tag       <- comp$tag
-  csv_dir   <- file.path(dir_10, tag)
-  diff_dir  <- file.path(output_dir, tag)
-  csv_files <- list.files(csv_dir, pattern = "\\.csv$", full.names = TRUE)
-
-  dir.create(diff_dir, recursive = TRUE, showWarnings = FALSE)
-  if (!length(csv_files)) { message("No CSV files found for comparison: ", tag); next }
-
-  listas      <- lapply(csv_files, procesar_deseq2_resultado, output_dir = diff_dir)
-  tabla_class <- Reduce(function(x, y) full_join(x, y, by = "gene_id"), lapply(listas, `[[`, "class"))
-  tabla_logfc <- Reduce(function(x, y) full_join(x, y, by = "gene_id"), lapply(listas, `[[`, "logfc"))
-
-  tabla_class <- tabla_class %>% filter(apply(select(., -gene_id) != 0, 1, any))
-  tabla_logfc <- tabla_logfc %>% filter(gene_id %in% tabla_class$gene_id)
-
-  write_tsv(tabla_class, file.path(diff_dir, "tabla_diferenciales.tsv"))
-  write_tsv(tabla_logfc, file.path(diff_dir, "tabla_log2FC.tsv"))
-
-  matriz <- as.matrix(column_to_rownames(tabla_logfc, "gene_id"))
-  matriz[is.na(matriz)] <- 0
-
-  if (nrow(matriz) > 1) {
-    pdf(file.path(diff_dir, paste0("heatmap_", tag, ".pdf")), width = 14, height = 18)
-    tryCatch(hacer_heatmap(matriz), error = function(e) message("Heatmap error: ", e$message))
-    dev.off()
-  }
-}
-
-
-# =============================================================================
-# SECTION 20 — GO ENRICHMENT ANALYSIS
-# =============================================================================
-# Gene Ontology enrichment (clusterProfiler::enrichGO) is run per cell type
-# and comparison. Both full and semantically simplified term sets are
-# generated and visualized as balloon plots.
-#
-# ┌─ CHANGE FOR YOUR ORGANISM ──────────────────────────────────────────────────
-#   Arabidopsis thaliana : orgdb = org.At.tair.db, keytype = "TAIR"
-#   Homo sapiens         : orgdb = org.Hs.eg.db,   keytype = "ENSEMBL"
-#   Mus musculus         : orgdb = org.Mm.eg.db,   keytype = "ENSEMBL"
-# └─────────────────────────────────────────────────────────────────────────────
-orgdb      <- org.At.tair.db
-keytype    <- "TAIR"
-espacio    <- "BP"    # "BP" = Biological Process | "MF" = Molecular Function | "CC" = Cellular Component
-qval       <- 0.05
-nivel_poda <- 6       # Maximum GO hierarchy depth for term pruning
-
-output_dir <- dir_13
-
-universo <- keys(orgdb, keytype = keytype)
-
-for (comp in comparaciones) {
-  tag        <- comp$tag
-  diff_dir   <- file.path(dir_12, tag)
-  enr_dir    <- file.path(output_dir, tag)
-  tabla_path <- file.path(diff_dir, "tabla_diferenciales.tsv")
-
-  dir.create(enr_dir, recursive = TRUE, showWarnings = FALSE)
-  if (!file.exists(tabla_path)) { message("No differential table for: ", tag); next }
-
-  tabla <- read.table(tabla_path, header = TRUE, row.names = 1, sep = "\t")
-  tabla <- tabla[, colSums(tabla != 0) > 0, drop = FALSE]
-
-  go_total  <- correr_enriquecimiento_go(tabla, universo, espacio,
-                                         orgdb = orgdb, keytype = keytype,
-                                         simplificar = FALSE, output_dir = enr_dir)
-  go_simple <- correr_enriquecimiento_go(tabla, universo, espacio,
-                                         orgdb = orgdb, keytype = keytype,
-                                         simplificar = TRUE,  output_dir = enr_dir)
-
-  go_total_podado  <- podar_go(go_total,  nivel_poda, espacio, qval,
-                               simplificar = FALSE, output_dir = enr_dir)
-  go_simple_podado <- podar_go(go_simple, nivel_poda, espacio, qval,
-                               simplificar = TRUE,  output_dir = enr_dir)
-
-  pdf(file.path(enr_dir, paste0("GO_enrichment_", tag, ".pdf")), width = 18, height = 18)
-  tryCatch({
-    print(graficar_go_balones(go_total))
-    print(graficar_go_balones(go_simple))
-    print(graficar_go_balones(go_total_podado))
-    print(graficar_go_balones(go_simple_podado))
-  }, error = function(e) message("GO plot error: ", e$message))
-  dev.off()
-}
+run_pseudobulk_pipeline(
+  obj           = pbmc_harmony,
+  comparaciones = comparaciones,
+  orgdb         = orgdb,
+  keytype       = keytype,
+  dir_pseudobulk = dir_09,
+  dir_deseq2    = dir_10,
+  dir_volcano   = dir_11,
+  dir_heatmaps  = dir_12,
+  dir_go        = dir_13
+)
 
 
 # =============================================================================

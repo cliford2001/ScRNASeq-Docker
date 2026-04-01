@@ -1570,7 +1570,229 @@ save_qc <- function(plot_list, file)
 
 
 # =============================================================================
-# 8. PIPELINE WORKFLOW FIGURE
+# 8. PIPELINE SETUP HELPERS
+# =============================================================================
+
+#' Create All Pipeline Output Directories
+#'
+#' Creates the standard folder structure under base_dir and returns a named
+#' list of paths. Call list2env() on the result to assign dir_00…dir_13 in
+#' the global environment.
+#'
+#' @param base_dir Root results directory (e.g. file.path(DATA_DIR, "results")).
+#' @return Named list with dir_00 through dir_13.
+#' @export
+create_pipeline_dirs <- function(base_dir) {
+  mkd <- function(name) {
+    d <- file.path(base_dir, name)
+    dir.create(d, recursive = TRUE, showWarnings = FALSE)
+    d
+  }
+  list(
+    dir_00 = mkd("00_workflow"),
+    dir_01 = mkd("01_qc"),
+    dir_02 = mkd("02_filtering"),
+    dir_03 = mkd("03_integration"),
+    dir_04 = mkd("04_clustering"),
+    dir_05 = mkd("05_annotation"),
+    dir_06 = mkd("06_expression"),
+    dir_07 = mkd("07_curation"),
+    dir_08 = mkd("08_export"),
+    dir_09 = mkd("09_pseudobulk"),
+    dir_10 = mkd("10_deseq2"),
+    dir_11 = mkd("11_volcano"),
+    dir_12 = mkd("12_heatmaps"),
+    dir_13 = mkd("13_go")
+  )
+}
+
+
+# =============================================================================
+# 9. PSEUDOBULK DE & GO ENRICHMENT PIPELINE
+# =============================================================================
+
+#' Run the Full Pseudobulk DE and GO Enrichment Pipeline (Chapter 2)
+#'
+#' Executes sections 14–20 in one call:
+#'   1. Global pseudobulk replicate-correlation heatmap
+#'   2. Per-cell-type subsets
+#'   3. Pseudo-replicate assignment and pseudobulk count matrices
+#'   4. DESeq2 pairwise contrasts
+#'   5. Volcano plots
+#'   6. DE gene tables and log2FC heatmaps
+#'   7. GO enrichment (full + simplified, raw + level-pruned)
+#'
+#' Common OrgDb / keytype combinations:
+#'   Arabidopsis thaliana : orgdb = org.At.tair.db, keytype = "TAIR"
+#'   Homo sapiens         : orgdb = org.Hs.eg.db,   keytype = "ENSEMBL"
+#'   Mus musculus         : orgdb = org.Mm.eg.db,   keytype = "ENSEMBL"
+#'
+#' @param obj           Integrated Seurat object (post-harmony).
+#' @param comparaciones List of lists, each with conds = c("ref","treat") and tag.
+#' @param orgdb         OrgDb annotation object for GO enrichment.
+#' @param keytype       Key type matching gene IDs in the Seurat object.
+#' @param annot_col     Metadata column with curated cell-type labels.
+#' @param n_reps        Number of pseudo-replicates per condition (default 3).
+#' @param padj_cut      Adjusted p-value cutoff for DE and volcano (default 0.05).
+#' @param lfc_cut       Log2 fold-change cutoff (default 1).
+#' @param espacio       GO namespace: "BP", "MF", or "CC" (default "BP").
+#' @param qval          Q-value cutoff for GO enrichment (default 0.05).
+#' @param nivel_poda    Maximum GO hierarchy depth for term pruning (default 6).
+#' @param dir_pseudobulk Output directory for sections 14–16.
+#' @param dir_deseq2    Output directory for section 17.
+#' @param dir_volcano   Output directory for section 18.
+#' @param dir_heatmaps  Output directory for section 19.
+#' @param dir_go        Output directory for section 20.
+#' @return Invisible NULL. All outputs are written to disk.
+#' @export
+run_pseudobulk_pipeline <- function(obj,
+                                     comparaciones,
+                                     orgdb,
+                                     keytype,
+                                     annot_col      = "celltype_reference_curated",
+                                     n_reps         = 3,
+                                     padj_cut       = 0.05,
+                                     lfc_cut        = 1,
+                                     espacio        = "BP",
+                                     qval           = 0.05,
+                                     nivel_poda     = 6,
+                                     dir_pseudobulk,
+                                     dir_deseq2,
+                                     dir_volcano,
+                                     dir_heatmaps,
+                                     dir_go) {
+
+  # ── [1/6] Global pseudobulk correlation ──────────────────────────────────────
+  message("[1/6] Global pseudobulk replicate correlation...")
+  pseudobulk <- generate_pseudobulk(obj, group_by = "orig.ident")
+  ggsave(file.path(dir_pseudobulk, "pseudobulk_correlation.pdf"),
+         plot_replicate_correlation(pseudobulk$by_sample),
+         width = 8, height = 8, dpi = 300)
+
+  # ── [2/6] Per-cell-type subsets + pseudo-replicates ──────────────────────────
+  message("[2/6] Building cell-type subsets and pseudo-replicates...")
+  cell_types <- unique(obj@meta.data[[annot_col]])
+  celular_subsets <- setNames(
+    lapply(cell_types, function(t)
+      subset(obj, cells = colnames(obj)[obj@meta.data[[annot_col]] == t])),
+    gsub("[^[:alnum:]_]", "_", cell_types)
+  )
+
+  celular_subsets_replicados <- Filter(Negate(is.null),
+    lapply(celular_subsets, asignar_pseudoreplicados, n_reps = n_reps))
+  pseudobulk_list <- lapply(celular_subsets_replicados, hacer_pseudobulk)
+
+  rep_dir <- file.path(dir_pseudobulk, "pseudobulk_replicas")
+  dir.create(rep_dir, recursive = TRUE, showWarnings = FALSE)
+  for (tipo in names(pseudobulk_list))
+    write.csv(pseudobulk_list[[tipo]],
+              file.path(rep_dir, paste0("Pseudobulk_", tipo, ".csv")),
+              row.names = TRUE)
+
+  # ── [3/6] DESeq2 ─────────────────────────────────────────────────────────────
+  message("[3/6] Running DESeq2 differential expression...")
+  for (tag in sapply(comparaciones, `[[`, "tag"))
+    dir.create(file.path(dir_deseq2, tag), recursive = TRUE, showWarnings = FALSE)
+  for (tipo in names(pseudobulk_list))
+    correr_deseq2(as.matrix(pseudobulk_list[[tipo]]), comparaciones,
+                  output_dir = dir_deseq2, tipo = tipo)
+
+  # ── [4/6] Volcano plots ───────────────────────────────────────────────────────
+  message("[4/6] Generating volcano plots...")
+  for (comp in comparaciones) {
+    tag       <- comp$tag
+    csv_files <- list.files(file.path(dir_deseq2, tag),
+                            pattern = "\\.csv$", full.names = TRUE)
+    if (!length(csv_files)) { message("  No CSV for: ", tag); next }
+
+    pdf(file.path(dir_volcano, paste0("VolcanoPlots_", tag, ".pdf")),
+        width = 12, height = 6)
+    plots <- list()
+    for (f in csv_files) {
+      plots <- c(plots, list(hacer_volcano(f, padj_cut = padj_cut, lfc_cut = lfc_cut)))
+      if (length(plots) == 2) { grid.arrange(grobs = plots, ncol = 2); plots <- list() }
+    }
+    if (length(plots)) grid.arrange(grobs = plots, ncol = 1)
+    dev.off()
+  }
+
+  # ── [5/6] DE tables and heatmaps ─────────────────────────────────────────────
+  message("[5/6] Building DE tables and heatmaps...")
+  for (comp in comparaciones) {
+    tag       <- comp$tag
+    diff_dir  <- file.path(dir_heatmaps, tag)
+    csv_files <- list.files(file.path(dir_deseq2, tag),
+                            pattern = "\\.csv$", full.names = TRUE)
+
+    dir.create(diff_dir, recursive = TRUE, showWarnings = FALSE)
+    if (!length(csv_files)) { message("  No CSV for: ", tag); next }
+
+    listas      <- lapply(csv_files, procesar_deseq2_resultado,
+                          output_dir = diff_dir, padj_cut = padj_cut, lfc_cut = lfc_cut)
+    tabla_class <- Reduce(function(x, y) full_join(x, y, by = "gene_id"),
+                          lapply(listas, `[[`, "class"))
+    tabla_logfc <- Reduce(function(x, y) full_join(x, y, by = "gene_id"),
+                          lapply(listas, `[[`, "logfc"))
+
+    tabla_class <- tabla_class %>% filter(apply(select(., -gene_id) != 0, 1, any))
+    tabla_logfc <- tabla_logfc %>% filter(gene_id %in% tabla_class$gene_id)
+
+    write_tsv(tabla_class, file.path(diff_dir, "tabla_diferenciales.tsv"))
+    write_tsv(tabla_logfc, file.path(diff_dir, "tabla_log2FC.tsv"))
+
+    matriz <- as.matrix(column_to_rownames(tabla_logfc, "gene_id"))
+    matriz[is.na(matriz)] <- 0
+    if (nrow(matriz) > 1) {
+      pdf(file.path(diff_dir, paste0("heatmap_", tag, ".pdf")), width = 14, height = 18)
+      tryCatch(hacer_heatmap(matriz), error = function(e) message("Heatmap error: ", e$message))
+      dev.off()
+    }
+  }
+
+  # ── [6/6] GO enrichment ───────────────────────────────────────────────────────
+  message("[6/6] GO enrichment analysis...")
+  universo <- keys(orgdb, keytype = keytype)
+
+  for (comp in comparaciones) {
+    tag        <- comp$tag
+    enr_dir    <- file.path(dir_go, tag)
+    tabla_path <- file.path(dir_heatmaps, tag, "tabla_diferenciales.tsv")
+
+    dir.create(enr_dir, recursive = TRUE, showWarnings = FALSE)
+    if (!file.exists(tabla_path)) { message("  No differential table for: ", tag); next }
+
+    tabla <- read.table(tabla_path, header = TRUE, row.names = 1, sep = "\t")
+    tabla <- tabla[, colSums(tabla != 0) > 0, drop = FALSE]
+
+    go_total  <- correr_enriquecimiento_go(tabla, universo, espacio,
+                                           orgdb = orgdb, keytype = keytype,
+                                           simplificar = FALSE, output_dir = enr_dir)
+    go_simple <- correr_enriquecimiento_go(tabla, universo, espacio,
+                                           orgdb = orgdb, keytype = keytype,
+                                           simplificar = TRUE,  output_dir = enr_dir)
+
+    go_total_podado  <- podar_go(go_total,  nivel_poda, espacio, qval,
+                                 simplificar = FALSE, output_dir = enr_dir)
+    go_simple_podado <- podar_go(go_simple, nivel_poda, espacio, qval,
+                                 simplificar = TRUE,  output_dir = enr_dir)
+
+    pdf(file.path(enr_dir, paste0("GO_enrichment_", tag, ".pdf")), width = 18, height = 18)
+    tryCatch({
+      print(graficar_go_balones(go_total))
+      print(graficar_go_balones(go_simple))
+      print(graficar_go_balones(go_total_podado))
+      print(graficar_go_balones(go_simple_podado))
+    }, error = function(e) message("GO plot error: ", e$message))
+    dev.off()
+  }
+
+  message("Part 2 complete. All outputs saved.")
+  invisible(NULL)
+}
+
+
+# =============================================================================
+# 10. PIPELINE WORKFLOW FIGURE
 # =============================================================================
 
 #' Plot Pipeline Workflow Overview
