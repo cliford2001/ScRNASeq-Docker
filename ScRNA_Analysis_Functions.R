@@ -1053,7 +1053,7 @@ hacer_pseudobulk <- function(obj) {
                                 group.by     = "replicate",
                                 assays       = "RNA",
                                 return.seurat = FALSE,
-                                layer        = "counts")
+                                slot         = "counts")
 
   counts          <- as.data.frame(pseudo$RNA)
   colnames(counts) <- sub("^g", "", colnames(counts))
