@@ -1186,29 +1186,43 @@ guardar_tablas_pseudobulk <- function(obj_list,
 correr_deseq2 <- function(counts_mat, comparaciones, output_dir, tipo = NULL) {
 
   rep_names <- colnames(counts_mat)
-  condition <- gsub("-rep[0-9]+$", "", sub("^g", "", rep_names))
+  condition <- gsub("[_-]rep[0-9]+$", "", sub("^g", "", rep_names))
 
   if (length(unique(condition)) < 2) return(invisible(NULL))
-
-  # Auto-detect condition levels from the data
-  cond_levels <- unique(condition)
-
-  colData <- data.frame(
-    row.names = rep_names,
-    condition = factor(condition, levels = cond_levels)
-  )
-
-  dds       <- DESeqDataSetFromMatrix(countData = counts_mat,
-                                      colData   = colData,
-                                      design    = ~ condition)
-  dds       <- DESeq(dds)
-  available <- levels(colData$condition)[levels(colData$condition) %in% unique(condition)]
 
   for (comp in comparaciones) {
     conds <- comp$conds
     tag   <- comp$tag
-    if (!all(conds %in% available)) next
-    res    <- results(dds, contrast = c("condition", conds[2], conds[1]))
+    keep   <- condition %in% conds
+    if (!any(keep)) next
+
+    counts_sub <- counts_mat[, keep, drop = FALSE]
+    cond_sub   <- condition[keep]
+    rep_tab    <- table(cond_sub)
+
+    if (!all(conds %in% names(rep_tab))) {
+      message("Skipping ", tag, " for ", ifelse(is.null(tipo), "global", tipo),
+              ": missing condition(s).")
+      next
+    }
+
+    if (any(rep_tab[conds] < 2) || ncol(counts_sub) <= length(conds)) {
+      message("Skipping ", tag, " for ", ifelse(is.null(tipo), "global", tipo),
+              ": insufficient pseudo-replicates per condition.")
+      next
+    }
+
+    colData <- data.frame(
+      row.names = colnames(counts_sub),
+      condition = factor(cond_sub, levels = conds)
+    )
+
+    dds <- DESeqDataSetFromMatrix(countData = counts_sub,
+                                  colData   = colData,
+                                  design    = ~ condition)
+    dds <- DESeq(dds)
+    res <- results(dds, contrast = c("condition", conds[2], conds[1]))
+
     prefix <- if (!is.null(tipo)) paste0("DESeq2_", tipo, "_") else "DESeq2_"
     write.csv(as.data.frame(res),
               file = file.path(output_dir, tag, paste0(prefix, tag, ".csv")))
