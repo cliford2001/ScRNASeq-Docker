@@ -1058,9 +1058,22 @@ hacer_pseudobulk <- function(obj) {
   }
 
   obj <- subset(obj, cells = colnames(obj)[keep])
-  obj <- JoinLayers(obj)
 
-  counts <- GetAssayData(obj, assay = "RNA", slot = "counts")
+  assay_obj <- obj[["RNA"]]
+  assay_layers <- Layers(assay_obj)
+  count_layers <- grep("^counts", assay_layers, value = TRUE)
+
+  if ("counts" %in% assay_layers) {
+    counts <- GetAssayData(assay_obj, layer = "counts")
+  } else if (length(count_layers) == 1) {
+    counts <- GetAssayData(assay_obj, layer = count_layers)
+  } else if (length(count_layers) > 1) {
+    mats <- lapply(count_layers, function(x) GetAssayData(assay_obj, layer = x))
+    counts <- Reduce(RowMergeSparseMatrices, mats)
+  } else {
+    stop("No counts layer found in RNA assay.")
+  }
+
   rep_ids <- as.character(obj$replicate)
 
   if (ncol(counts) != length(rep_ids)) {
