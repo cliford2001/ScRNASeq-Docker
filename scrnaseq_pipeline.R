@@ -622,7 +622,8 @@ celular_subsets <- setNames(
 )
 
 message("Cell-type subsets created:")
-print(setNames(vapply(celular_subsets, ncol, integer(1)), names(celular_subsets)))
+print(setNames(vapply(celular_subsets, function(x) as.integer(ncol(x)), integer(1)),
+               names(celular_subsets)))
 
 
 # =============================================================================
@@ -749,4 +750,3 @@ diff_tables <- build_differential_tables(
   lfc_cut     = lfc_cut,
   prefix      = diff_prefix
 )
-
