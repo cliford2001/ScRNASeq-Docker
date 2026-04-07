@@ -592,6 +592,161 @@ exportar_para_scanpy(pbmc_harmony,
 # )
 
 
+# =============================================================================
+# ████████████████████████  PART 2 — PSEUDOBULK DE & GO  ██████████████████████
+# =============================================================================
 
 
+# =============================================================================
+# SECTION 14 — CELL-TYPE SUBSETS
+# =============================================================================
+# Creates one Seurat subset per curated cell type for downstream pseudobulk
+# analysis. Object names are sanitised so they can be used safely as list names
+# and output filenames.
+#
+# ┌─ SET THE ANNOTATION COLUMN TO USE FOR PART 2 ───────────────────────────────
+#   pseudobulk_annot_col : metadata column containing the final cell-type labels
+# └─────────────────────────────────────────────────────────────────────────────
+pseudobulk_annot_col <- "celltype_reference_curated"
+
+output_dir <- dir_09
+
+cell_types <- sort(unique(na.omit(pbmc_harmony@meta.data[[pseudobulk_annot_col]])))
+
+celular_subsets <- setNames(
+  lapply(cell_types, function(tipo) {
+    subset(pbmc_harmony,
+           cells = colnames(pbmc_harmony)[pbmc_harmony@meta.data[[pseudobulk_annot_col]] == tipo])
+  }),
+  gsub("[^[:alnum:]_]", "_", cell_types)
+)
+
+message("Cell-type subsets created:")
+print(setNames(vapply(celular_subsets, ncol, integer(1)), names(celular_subsets)))
+
+
+# =============================================================================
+# SECTION 15 — PSEUDO-REPLICATE ASSIGNMENT
+# =============================================================================
+# Assigns random pseudo-replicates within each condition for every cell type.
+# Only subsets containing at least two conditions are kept for Part 2.
+#
+# ┌─ PSEUDOBULK PARAMETERS ──────────────────────────────────────────────────────
+#   pseudobulk_conditions : optional condition subset to retain (NULL = all)
+#   n_pseudoreps          : number of pseudo-replicates per condition
+# └─────────────────────────────────────────────────────────────────────────────
+pseudobulk_conditions <- NULL
+n_pseudoreps          <- 3
+
+output_dir <- dir_09
+
+celular_subsets_replicados <- Filter(
+  Negate(is.null),
+  lapply(celular_subsets,
+         asignar_pseudoreplicados,
+         condiciones = pseudobulk_conditions,
+         n_reps      = n_pseudoreps,
+         seed        = 1807)
+)
+
+message("Cell types retained for pseudobulk:")
+print(names(celular_subsets_replicados))
+
+message("Cells per curated cell type:")
+print(table(pbmc_harmony@meta.data[[pseudobulk_annot_col]]))
+
+# Example QC checks for one subset:
+# table(celular_subsets_replicados[[1]]$replicate)
+# table(celular_subsets_replicados[[1]]$orig.ident)
+
+
+# =============================================================================
+# SECTION 16 — PSEUDOBULK TABLES AND DESEQ2
+# =============================================================================
+# Aggregates counts by pseudo-replicate for each cell type, saves the resulting
+# count tables, and runs DESeq2 for the user-defined pairwise contrasts.
+#
+# ┌─ DEFINE YOUR CONDITION CONTRASTS HERE ──────────────────────────────────────
+#   comparaciones : each entry must contain
+#                   conds = c("reference", "treatment")
+#                   tag   = output folder / file label
+# └─────────────────────────────────────────────────────────────────────────────
+comparaciones <- list(
+  list(conds = c("0.5N", "5N"), tag = "0.5N_vs_5N"),
+  list(conds = c("0N",   "5N"), tag = "0N_vs_5N")
+)
+
+output_dir <- dir_10
+
+pseudobulk_tables_dir <- file.path(dir_09, "pseudobulk_replicas")
+dir.create(pseudobulk_tables_dir, recursive = TRUE, showWarnings = FALSE)
+
+pseudobulk_list <- guardar_tablas_pseudobulk(
+  celular_subsets_replicados,
+  output_dir = pseudobulk_tables_dir
+)
+
+for (tag in sapply(comparaciones, `[[`, "tag")) {
+  dir.create(file.path(dir_10, tag), recursive = TRUE, showWarnings = FALSE)
+}
+
+for (tipo in names(pseudobulk_list)) {
+  message("Running DESeq2 for cell type: ", tipo)
+  correr_deseq2(
+    counts_mat    = as.matrix(pseudobulk_list[[tipo]]),
+    comparaciones = comparaciones,
+    output_dir    = dir_10,
+    tipo          = tipo
+  )
+}
+
+
+# =============================================================================
+# SECTION 17 — VOLCANO PLOTS
+# =============================================================================
+# Renders one PNG volcano plot per cell type for a selected contrast and also
+# combines them into a single PDF.
+#
+# ┌─ VOLCANO PARAMETERS ─────────────────────────────────────────────────────────
+#   volcano_tag : tag of the contrast to visualize (must match comparaciones)
+#   padj_cut    : adjusted p-value threshold
+#   lfc_cut     : absolute log2 fold-change threshold
+# └─────────────────────────────────────────────────────────────────────────────
+volcano_tag <- "0.5N_vs_5N"
+padj_cut    <- 0.05
+lfc_cut     <- 1
+
+output_dir <- dir_11
+
+render_volcano_plots(
+  results_dir = file.path(dir_10, volcano_tag),
+  output_dir  = file.path(dir_11, volcano_tag),
+  pdf_name    = paste0("VolcanoPlots_", volcano_tag, ".pdf"),
+  padj_cut    = padj_cut,
+  lfc_cut     = lfc_cut
+)
+
+
+# =============================================================================
+# SECTION 18 — DIFFERENTIAL GENE TABLES
+# =============================================================================
+# Builds combined differential-expression summary tables for one selected
+# contrast across all cell types.
+#
+# ┌─ DIFFERENTIAL TABLE PARAMETERS ──────────────────────────────────────────────
+#   diff_tag    : tag of the contrast to summarize
+#   diff_prefix : output filename prefix for the discrete matrix
+# └─────────────────────────────────────────────────────────────────────────────
+diff_tag    <- volcano_tag
+diff_prefix <- paste0("tabla_diferenciales_", diff_tag)
+
+output_dir <- dir_12
+
+diff_tables <- build_differential_tables(
+  results_dir = file.path(dir_10, diff_tag),
+  output_dir  = file.path(dir_12, diff_tag),
+  padj_cut    = padj_cut,
+  lfc_cut     = lfc_cut,
+  prefix      = diff_prefix
+)
 

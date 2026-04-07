@@ -1062,6 +1062,50 @@ hacer_pseudobulk <- function(obj) {
 }
 
 
+#' Save Pseudobulk Replicate Tables
+#'
+#' Builds one pseudobulk count table per Seurat object in a named list and
+#' writes each table to disk as a CSV file. Intended for per-cell-type
+#' pseudobulk objects carrying a `replicate` metadata column.
+#'
+#' @param obj_list    Named list of Seurat objects.
+#' @param output_dir  Directory where CSV files will be written.
+#' @param prefix      Filename prefix (default "Pseudobulk_Reps_").
+#' @return Named list of pseudobulk count data frames.
+#' @export
+guardar_tablas_pseudobulk <- function(obj_list,
+                                      output_dir,
+                                      prefix = "Pseudobulk_Reps_") {
+
+  dir.create(output_dir, recursive = TRUE, showWarnings = FALSE)
+
+  pseudobulk_list <- list()
+
+  for (tipo in names(obj_list)) {
+    obj <- obj_list[[tipo]]
+
+    if (!"replicate" %in% colnames(obj@meta.data)) {
+      warning("Skipping ", tipo, " because it lacks 'replicate' metadata.")
+      next
+    }
+
+    counts_reps_df <- hacer_pseudobulk(obj)
+    pseudobulk_list[[tipo]] <- counts_reps_df
+
+    tipo_clean <- gsub("[^[:alnum:]_]", "_", tipo)
+    file_name  <- paste0(prefix, tipo_clean, ".csv")
+
+    write.csv(counts_reps_df,
+              file = file.path(output_dir, file_name),
+              row.names = TRUE)
+
+    message("Saved pseudobulk table for ", tipo, " (", ncol(counts_reps_df), " replicates).")
+  }
+
+  pseudobulk_list
+}
+
+
 #' Run DESeq2 Differential Expression
 #'
 #' Builds a DESeqDataSet from a pseudobulk count matrix, detects condition
@@ -1203,6 +1247,120 @@ procesar_deseq2_resultado <- function(file_path,
   write_csv(df_filt, file.path(output_dir, paste0(comparacion, "_filtrado.csv")))
 
   list(class = df_class, logfc = df_logfc)
+}
+
+
+#' Render Volcano Plots for One DESeq2 Contrast Directory
+#'
+#' Reads all DESeq2 CSV files from a contrast-specific directory, writes one PNG
+#' per result, and combines them into a single PDF.
+#'
+#' @param results_dir Directory containing DESeq2 CSV files for one contrast.
+#' @param output_dir  Directory where volcano plot files will be written.
+#' @param pdf_name    Name of the combined PDF file.
+#' @param padj_cut    Adjusted p-value cutoff.
+#' @param lfc_cut     Absolute log2 fold-change cutoff.
+#' @return Invisible list of ggplot objects.
+#' @export
+render_volcano_plots <- function(results_dir,
+                                 output_dir,
+                                 pdf_name = "VolcanoPlots.pdf",
+                                 padj_cut = 0.05,
+                                 lfc_cut  = 1) {
+
+  dir.create(output_dir, recursive = TRUE, showWarnings = FALSE)
+
+  csv_files <- list.files(results_dir, pattern = "^DESeq2_.*\\.csv$", full.names = TRUE)
+  if (!length(csv_files)) {
+    message("No DESeq2 CSV files found in: ", results_dir)
+    return(invisible(list()))
+  }
+
+  pdf(file.path(output_dir, pdf_name), width = 12, height = 6)
+  on.exit(dev.off(), add = TRUE)
+
+  plots <- list()
+
+  for (file in csv_files) {
+    p <- hacer_volcano(file, padj_cut = padj_cut, lfc_cut = lfc_cut) +
+      labs(title = paste("Volcano Plot:", gsub("DESeq2_", "", tools::file_path_sans_ext(basename(file))))) +
+      theme(plot.title = element_text(hjust = 0.5))
+
+    ggsave(
+      filename = file.path(output_dir, paste0(tools::file_path_sans_ext(basename(file)), ".png")),
+      plot     = p,
+      width    = 8,
+      height   = 6,
+      dpi      = 300
+    )
+
+    plots <- c(plots, list(p))
+    if (length(plots) == 2) {
+      grid.arrange(grobs = plots, ncol = 2)
+      plots <- list()
+    }
+  }
+
+  if (length(plots) == 1) {
+    grid.arrange(grobs = plots, ncol = 1)
+  }
+
+  invisible(plots)
+}
+
+
+#' Build Combined Differential Expression Tables for One Contrast
+#'
+#' Processes all DESeq2 CSV files in a contrast directory, writes filtered
+#' per-cell-type CSV files, and assembles combined classification and log2FC
+#' matrices across cell types.
+#'
+#' @param results_dir Directory containing DESeq2 CSV files for one contrast.
+#' @param output_dir  Directory where combined tables will be written.
+#' @param padj_cut    Adjusted p-value cutoff.
+#' @param lfc_cut     Absolute log2 fold-change cutoff.
+#' @param prefix      Filename prefix for combined output tables.
+#' @return Named list with `class` and `logfc` tibbles.
+#' @export
+build_differential_tables <- function(results_dir,
+                                      output_dir,
+                                      padj_cut = 0.05,
+                                      lfc_cut  = 1,
+                                      prefix   = "tabla_diferenciales") {
+
+  dir.create(output_dir, recursive = TRUE, showWarnings = FALSE)
+
+  files <- list.files(results_dir, pattern = "^DESeq2_.*\\.csv$", full.names = TRUE)
+  if (!length(files)) stop("No DESeq2 CSV files found in: ", results_dir)
+
+  listas <- lapply(files,
+                   procesar_deseq2_resultado,
+                   output_dir = output_dir,
+                   padj_cut   = padj_cut,
+                   lfc_cut    = lfc_cut)
+
+  tabla_class <- Reduce(function(x, y) full_join(x, y, by = "gene_id"),
+                        lapply(listas, `[[`, "class")) %>%
+    arrange(gene_id)
+
+  tabla_logfc <- Reduce(function(x, y) full_join(x, y, by = "gene_id"),
+                        lapply(listas, `[[`, "logfc")) %>%
+    arrange(gene_id)
+
+  tabla_filtrada <- tabla_class %>%
+    filter(apply(dplyr::select(., -gene_id) != 0, 1, any))
+
+  tabla_logfc_filtrada <- tabla_logfc %>%
+    filter(gene_id %in% tabla_filtrada$gene_id)
+
+  suffix <- paste0("fc", lfc_cut, "_padj_", gsub("\\.", "", as.character(padj_cut)))
+
+  write_tsv(tabla_filtrada,
+            file.path(output_dir, paste0(prefix, "_", suffix, ".tsv")))
+  write_tsv(tabla_logfc_filtrada,
+            file.path(output_dir, paste0("tabla_log2FC_", suffix, ".tsv")))
+
+  list(class = tabla_filtrada, logfc = tabla_logfc_filtrada)
 }
 
 
