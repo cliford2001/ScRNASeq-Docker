@@ -683,5 +683,3 @@ Swap the organism-specific parameters below when applying this pipeline to speci
 For rice (*Oryza sativa*) use `org.Os.eg.db` with `keytype = "GID"`, and set `mt_pattern` / `cp_pattern` to match your genome annotation's organelle gene naming convention. Also update the `universo` background gene vector in the GO enrichment step to reflect the full gene set of your target organism.
 
 
-
-sexosaexoxse
