@@ -1048,17 +1048,43 @@ asignar_pseudoreplicados <- function(obj,
 #' @export
 hacer_pseudobulk <- function(obj) {
 
-  obj    <- JoinLayers(obj)
-  pseudo <- AggregateExpression(obj,
-                                group.by     = "replicate",
-                                assays       = "RNA",
-                                return.seurat = FALSE,
-                                slot         = "counts")
+  if (!"replicate" %in% colnames(obj@meta.data)) {
+    stop("Object lacks 'replicate' metadata.")
+  }
 
-  counts          <- as.data.frame(pseudo$RNA)
-  colnames(counts) <- sub("^g", "", colnames(counts))
+  keep <- !is.na(obj$replicate)
+  if (!any(keep)) {
+    stop("Object has no cells with assigned pseudo-replicates.")
+  }
 
-  counts[, sort(colnames(counts))]
+  obj <- subset(obj, cells = colnames(obj)[keep])
+  obj <- JoinLayers(obj)
+
+  counts <- GetAssayData(obj, assay = "RNA", slot = "counts")
+  rep_ids <- as.character(obj$replicate)
+
+  if (ncol(counts) != length(rep_ids)) {
+    stop("Counts matrix and replicate metadata have incompatible dimensions.")
+  }
+
+  rep_levels <- sort(unique(rep_ids))
+  pseudobulk_mat <- vapply(rep_levels, function(rep_id) {
+    idx <- rep_ids == rep_id
+    Matrix::rowSums(counts[, idx, drop = FALSE])
+  }, numeric(nrow(counts)))
+
+  if (is.null(dim(pseudobulk_mat))) {
+    pseudobulk_mat <- matrix(pseudobulk_mat, ncol = 1)
+    colnames(pseudobulk_mat) <- rep_levels
+  } else {
+    colnames(pseudobulk_mat) <- rep_levels
+  }
+
+  rownames(pseudobulk_mat) <- rownames(counts)
+
+  counts_df <- as.data.frame(pseudobulk_mat, check.names = FALSE)
+  colnames(counts_df) <- sub("^g", "", colnames(counts_df))
+  counts_df[, sort(colnames(counts_df)), drop = FALSE]
 }
 
 
@@ -1075,7 +1101,9 @@ hacer_pseudobulk <- function(obj) {
 #' @export
 guardar_tablas_pseudobulk <- function(obj_list,
                                       output_dir,
-                                      prefix = "Pseudobulk_Reps_") {
+                                      prefix = "Pseudobulk_Reps_",
+                                      min_cells = 10,
+                                      min_replicates = 2) {
 
   dir.create(output_dir, recursive = TRUE, showWarnings = FALSE)
 
@@ -1089,7 +1117,27 @@ guardar_tablas_pseudobulk <- function(obj_list,
       next
     }
 
-    counts_reps_df <- hacer_pseudobulk(obj)
+    obj <- subset(obj, cells = colnames(obj)[!is.na(obj$replicate)])
+    if (ncol(obj) < min_cells) {
+      warning("Skipping ", tipo, " because it has fewer than ", min_cells, " cells with pseudo-replicates.")
+      next
+    }
+
+    rep_tab <- table(obj$replicate)
+    if (length(rep_tab) < min_replicates) {
+      warning("Skipping ", tipo, " because it has fewer than ", min_replicates, " pseudo-replicates.")
+      next
+    }
+
+    counts_reps_df <- tryCatch(
+      hacer_pseudobulk(obj),
+      error = function(e) {
+        warning("Skipping ", tipo, " due to pseudobulk error: ", e$message)
+        NULL
+      }
+    )
+    if (is.null(counts_reps_df)) next
+
     pseudobulk_list[[tipo]] <- counts_reps_df
 
     tipo_clean <- gsub("[^[:alnum:]_]", "_", tipo)
