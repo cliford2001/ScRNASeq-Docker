@@ -166,6 +166,9 @@ names(seurat_list) <- sapply(samples, `[[`, "label")
 plots_post <- imap(seurat_list, ~ plot_qc_violin_grid(.x, .y, colors[[.y]]))
 save_qc(plots_post, "qc_postfilter.pdf")
 
+# Checkpoint — restore with: seurat_list <- readRDS(file.path(dir_02, "seurat_list_postfilter.rds"))
+saveRDS(seurat_list, file.path(dir_02, "seurat_list_postfilter.rds"))
+
 
 # =============================================================================
 # SECTION 3 — MERGE AND INITIAL PREPROCESSING
@@ -211,6 +214,9 @@ k_param  <- 30
 
 pbmc_harmony <- pbmc_harmony %>%
   RunHarmony("orig.ident", plot_convergence = FALSE)
+
+# Checkpoint — restore with: pbmc_harmony <- readRDS(file.path(dir_04, "pbmc_harmony_postharmony.rds"))
+saveRDS(pbmc_harmony, file.path(dir_04, "pbmc_harmony_postharmony.rds"))
 
 
 # =============================================================================
@@ -571,6 +577,9 @@ save_pdf(
           label = TRUE, repel = TRUE, raster = FALSE),
   "umap_curada.pdf"
 )
+
+# Checkpoint — restore with: pbmc_harmony <- readRDS(file.path(dir_07, "pbmc_harmony_curated.rds"))
+saveRDS(pbmc_harmony, file.path(dir_07, "pbmc_harmony_curated.rds"))
 
 
 # =============================================================================
