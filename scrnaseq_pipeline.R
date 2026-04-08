@@ -797,30 +797,23 @@ go_results <- run_go_enrichment_suite(
 
 
 # =============================================================================
-# SECTION 20 — HEATMAP, TOM COEXPRESSION AND GO PER CLUSTER
+# SECTION 20 — HEATMAP + CLUSTERS
 # =============================================================================
-# Builds a log2FC heatmap for one selected contrast, computes a rank-based
-# coexpression network with TOM, defines gene modules/clusters, and runs GO
-# enrichment for each detected cluster.
+# Builds a log2FC heatmap for one selected contrast and derives dynamic gene
+# clusters from the heatmap row dendrogram.
 #
-# ┌─ COEXPRESSION PARAMETERS ────────────────────────────────────────────────────
+# ┌─ HEATMAP PARAMETERS ─────────────────────────────────────────────────────────
 #   coexp_tag            : contrast tag used to select log2FC columns
 #   coexp_selected_cols  : optional explicit column vector (NULL = auto-select)
 #   coexp_min_genes      : minimum genes per cluster/module
 #   coexp_deepSplit      : dynamic tree cut deepSplit
 #   coexp_breaks         : color range for the heatmap
-#   coexp_network_power  : soft-threshold power for adjacency
-#   coexp_network_type   : "signed" or "unsigned"
-#   coexp_cor_method     : correlation method ("spearman" recommended here)
 # └─────────────────────────────────────────────────────────────────────────────
 coexp_tag           <- diff_tag
 coexp_selected_cols <- NULL
 coexp_min_genes     <- 1
 coexp_deepSplit     <- 0
 coexp_breaks        <- c(-5, 5)
-coexp_network_power <- 6
-coexp_network_type  <- "signed"
-coexp_cor_method    <- "spearman"
 
 output_dir <- file.path(dir_12, coexp_tag, "coexpression")
 dir.create(output_dir, recursive = TRUE, showWarnings = FALSE)
@@ -831,24 +824,63 @@ if (is.null(coexp_selected_cols)) {
                               value = TRUE)
 }
 
-coexp_results <- run_coexpression_cluster_suite(
-  diff_table          = diff_tables$logfc,
-  output_dir          = output_dir,
-  selected_cols       = coexp_selected_cols,
-  min_genes           = coexp_min_genes,
-  deepSplit_val       = coexp_deepSplit,
-  breaks              = coexp_breaks,
-  network_power       = coexp_network_power,
-  network_type        = coexp_network_type,
-  cor_method          = coexp_cor_method,
-  go_orgdb            = go_orgdb,
-  go_keytype          = go_keytype,
-  go_space            = go_space,
-  go_qvalue_cutoff    = go_qvalue_cutoff,
-  go_pvalue_cutoff    = go_pvalue_cutoff,
-  go_simplify_cutoff  = go_simplify_cutoff,
-  go_level            = go_level,
-  heatmap_pdf         = paste0("heatmap_", coexp_tag, ".pdf"),
-  tom_pdf             = paste0("TOM_", coexp_tag, ".pdf"),
-  go_pdf              = paste0("GO_clusters_", coexp_tag, ".pdf")
+coexp_matrix <- prepare_coexpression_matrix(
+  diff_table    = diff_tables$logfc,
+  selected_cols = coexp_selected_cols
+)
+
+heatmap_cluster_results <- build_heatmap_clusters(
+  Mz            = coexp_matrix,
+  output_dir    = output_dir,
+  min_genes     = coexp_min_genes,
+  deepSplit_val = coexp_deepSplit,
+  breaks        = coexp_breaks,
+  heatmap_pdf   = paste0("heatmap_", coexp_tag, ".pdf")
+)
+
+
+# =============================================================================
+# SECTION 21 — COEXPRESSION OF DIFFERENTIAL GENES
+# =============================================================================
+# Computes a rank-based gene coexpression network from the selected log2FC
+# matrix, derives TOM modules, and exports the TOM heatmap.
+#
+# ┌─ COEXPRESSION PARAMETERS ────────────────────────────────────────────────────
+#   coexp_network_power  : soft-threshold power for adjacency
+#   coexp_network_type   : "signed" or "unsigned"
+#   coexp_cor_method     : correlation method ("spearman" recommended here)
+# └─────────────────────────────────────────────────────────────────────────────
+coexp_network_power <- 6
+coexp_network_type  <- "signed"
+coexp_cor_method    <- "spearman"
+
+coexpression_results <- build_coexpression_modules(
+  Mz            = coexp_matrix,
+  output_dir    = output_dir,
+  min_genes     = coexp_min_genes,
+  deepSplit_val = coexp_deepSplit,
+  network_power = coexp_network_power,
+  network_type  = coexp_network_type,
+  cor_method    = coexp_cor_method,
+  tom_pdf       = paste0("TOM_", coexp_tag, ".pdf")
+)
+
+
+# =============================================================================
+# SECTION 22 — GO TERMS OF CLUSTERS
+# =============================================================================
+# Runs GO enrichment for the TOM-based gene clusters/modules detected in
+# Section 21.
+go_cluster_results <- run_go_for_gene_clusters(
+  assignments     = coexpression_results$module_assignments,
+  cluster_col     = "tom_module",
+  output_dir      = file.path(output_dir, "GO_clusters"),
+  orgdb           = go_orgdb,
+  keytype         = go_keytype,
+  espacio         = go_space,
+  qvalue_cutoff   = go_qvalue_cutoff,
+  pvalue_cutoff   = go_pvalue_cutoff,
+  simplify_cutoff = go_simplify_cutoff,
+  go_level        = go_level,
+  pdf_name        = paste0("GO_clusters_", coexp_tag, ".pdf")
 )
