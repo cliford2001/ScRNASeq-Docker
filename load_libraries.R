@@ -51,6 +51,7 @@ library(UpSetR)
 
 # ── Clustering helpers ────────────────────────────────────────────────────────
 library(dynamicTreeCut)
+library(WGCNA)
 
 # ── Reporting ─────────────────────────────────────────────────────────────────
 library(knitr)

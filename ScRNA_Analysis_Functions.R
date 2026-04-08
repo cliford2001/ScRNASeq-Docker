@@ -1907,6 +1907,234 @@ run_go_enrichment_suite <- function(diff_table,
   ))
 }
 
+
+#' Run Heatmap, Rank-Based Coexpression, TOM and GO per Cluster
+#'
+#' Builds a log2FC heatmap from a combined differential table, derives gene
+#' clusters from dynamic tree cutting, computes a rank-based coexpression
+#' network with TOM, and runs GO enrichment for each resulting cluster/module.
+#'
+#' @param diff_table       Path to a log2FC TSV file or a data.frame/tibble. The
+#'   first column must contain gene IDs.
+#' @param output_dir       Output directory for plots and tables.
+#' @param selected_cols    Optional character vector of column names to retain.
+#'   If NULL, all non-gene columns are used.
+#' @param min_genes        Minimum cluster/module size for dynamic tree cut.
+#' @param deepSplit_val    `cutreeDynamic` deepSplit parameter.
+#' @param breaks           Two-element numeric vector controlling heatmap scale.
+#' @param network_power    Soft-threshold power applied to correlation similarity.
+#' @param network_type     Network type: "signed" or "unsigned".
+#' @param cor_method       Correlation method; use "spearman" for rank-based
+#'   coexpression.
+#' @param go_orgdb         OrgDb object matching the organism.
+#' @param go_keytype       Key type matching the gene IDs in `diff_table`.
+#' @param go_space         GO namespace: "BP", "MF", or "CC".
+#' @param go_qvalue_cutoff Q-value cutoff for enrichGO.
+#' @param go_pvalue_cutoff P-value cutoff for enrichGO.
+#' @param go_simplify_cutoff Similarity cutoff for simplify().
+#' @param go_level         GO level used for pruning.
+#' @param heatmap_pdf      Output PDF filename for the heatmap.
+#' @param tom_pdf          Output PDF filename for the TOM heatmap.
+#' @param go_pdf           Output PDF filename for GO balloon plots.
+#' @return Named list with matrix, cluster assignments, TOM, and GO results.
+#' @export
+run_coexpression_cluster_suite <- function(diff_table,
+                                           output_dir,
+                                           selected_cols      = NULL,
+                                           min_genes          = 1,
+                                           deepSplit_val      = 0,
+                                           breaks             = c(-5, 5),
+                                           network_power      = 6,
+                                           network_type       = c("signed", "unsigned"),
+                                           cor_method         = "spearman",
+                                           go_orgdb,
+                                           go_keytype,
+                                           go_space           = "BP",
+                                           go_qvalue_cutoff   = 0.05,
+                                           go_pvalue_cutoff   = 0.05,
+                                           go_simplify_cutoff = 0.7,
+                                           go_level           = 6,
+                                           heatmap_pdf        = "coexpression_heatmap.pdf",
+                                           tom_pdf            = "tom_heatmap.pdf",
+                                           go_pdf             = "GO_clusters.pdf") {
+
+  network_type <- match.arg(network_type)
+  dir.create(output_dir, recursive = TRUE, showWarnings = FALSE)
+
+  if (is.character(diff_table) && length(diff_table) == 1) {
+    df <- read.table(diff_table, header = TRUE, sep = "\t", check.names = FALSE)
+  } else {
+    df <- as.data.frame(diff_table, check.names = FALSE)
+  }
+
+  if (ncol(df) < 2) {
+    stop("diff_table must contain one gene-ID column plus at least one numeric column.")
+  }
+
+  gene_col <- colnames(df)[1]
+  rownames(df) <- df[[gene_col]]
+
+  if (is.null(selected_cols)) {
+    selected_cols <- colnames(df)[-1]
+  } else {
+    selected_cols <- intersect(selected_cols, colnames(df))
+  }
+
+  if (!length(selected_cols)) {
+    stop("No selected columns found in diff_table.")
+  }
+
+  Mz <- as.matrix(df[, selected_cols, drop = FALSE])
+  mode(Mz) <- "numeric"
+  Mz[is.na(Mz)] <- 0
+
+  if (nrow(Mz) < 2 || ncol(Mz) < 2) {
+    stop("Need at least two genes and two selected columns for coexpression analysis.")
+  }
+
+  dist_rows <- dist(Mz, method = "euclidean")
+  hc_rows   <- hclust(dist_rows, method = "complete")
+
+  clust <- cutreeDynamic(
+    dendro            = hc_rows,
+    distM             = as.matrix(dist_rows),
+    deepSplit         = deepSplit_val,
+    minClusterSize    = min_genes,
+    pamRespectsDendro = FALSE
+  )
+
+  pca_res <- prcomp(t(Mz), scale. = FALSE)
+  var_exp <- summary(pca_res)$importance[3, ]
+  n_pcs   <- which(var_exp >= 0.90)[1]
+  if (is.na(n_pcs)) n_pcs <- ncol(pca_res$x)
+  hc_cols <- hclust(dist(pca_res$x[, seq_len(n_pcs), drop = FALSE]), method = "complete")
+
+  clusters_unicos <- sort(unique(clust[clust > 0]))
+  paleta <- colorRampPalette(brewer.pal(12, "Dark2"))(max(1, length(clusters_unicos)))
+  names(paleta) <- if (length(clusters_unicos)) clusters_unicos else "0"
+
+  annotation_rows <- data.frame(Cluster = as.factor(clust))
+  rownames(annotation_rows) <- rownames(Mz)
+
+  breaks_seq  <- seq(breaks[1], breaks[2], length.out = 80)
+  color_scale <- colorRampPalette(c("blue", "black", "yellow"))(length(breaks_seq) - 1)
+
+  heatmap_obj <- pheatmap(
+    Mz,
+    cluster_rows      = hc_rows,
+    cluster_cols      = hc_cols,
+    annotation_row    = annotation_rows,
+    annotation_colors = list(Cluster = paleta),
+    color             = color_scale,
+    breaks            = breaks_seq,
+    show_rownames     = TRUE,
+    border_color      = NA,
+    fontsize_row      = 1,
+    fontsize_col      = 20,
+    fontsize          = 22,
+    use_raster        = FALSE,
+    treeheight_row    = 50,
+    treeheight_col    = 50,
+    main              = sprintf("Heatmap (%d genes) - min %d genes por cluster",
+                                nrow(Mz), min_genes),
+    silent            = TRUE
+  )
+  ggsave(file.path(output_dir, heatmap_pdf), heatmap_obj$gtable, width = 10, height = 20, dpi = 300)
+
+  datExpr <- t(Mz)
+  gene_cor <- suppressWarnings(cor(datExpr, method = cor_method, use = "pairwise.complete.obs"))
+  gene_cor[is.na(gene_cor)] <- 0
+  diag(gene_cor) <- 1
+
+  adjacency_mat <- if (network_type == "signed") {
+    ((1 + gene_cor) / 2) ^ network_power
+  } else {
+    abs(gene_cor) ^ network_power
+  }
+  diag(adjacency_mat) <- 1
+
+  TOM <- TOMsimilarity(adjacency_mat, TOMType = network_type)
+  rownames(TOM) <- rownames(Mz)
+  colnames(TOM) <- rownames(Mz)
+
+  dissTOM <- 1 - TOM
+  gene_tree <- hclust(as.dist(dissTOM), method = "average")
+  tom_clusters <- cutreeDynamic(
+    dendro            = gene_tree,
+    distM             = dissTOM,
+    deepSplit         = deepSplit_val,
+    minClusterSize    = min_genes,
+    pamRespectsDendro = FALSE
+  )
+
+  tom_annotation <- data.frame(Module = as.factor(tom_clusters))
+  rownames(tom_annotation) <- rownames(Mz)
+  modules_unicos <- sort(unique(tom_clusters[tom_clusters > 0]))
+  tom_paleta <- colorRampPalette(brewer.pal(12, "Set3"))(max(1, length(modules_unicos)))
+  names(tom_paleta) <- if (length(modules_unicos)) modules_unicos else "0"
+
+  tom_order <- gene_tree$order
+  tom_plot_mat <- TOM[tom_order, tom_order, drop = FALSE]
+  tom_plot_ann <- tom_annotation[tom_order, , drop = FALSE]
+  tom_plot <- pheatmap(
+    tom_plot_mat,
+    cluster_rows      = FALSE,
+    cluster_cols      = FALSE,
+    show_rownames     = FALSE,
+    show_colnames     = FALSE,
+    annotation_row    = tom_plot_ann,
+    annotation_col    = tom_plot_ann,
+    annotation_colors = list(Module = tom_paleta),
+    color             = colorRampPalette(c("white", "steelblue", "navy"))(80),
+    border_color      = NA,
+    main              = sprintf("TOM Heatmap (%d genes)", nrow(Mz)),
+    silent            = TRUE
+  )
+  ggsave(file.path(output_dir, tom_pdf), tom_plot$gtable, width = 10, height = 10, dpi = 300)
+
+  cluster_assignments <- data.frame(
+    gene_id         = rownames(Mz),
+    heatmap_cluster = clust,
+    tom_module      = tom_clusters,
+    stringsAsFactors = FALSE
+  )
+  write.table(cluster_assignments,
+              file.path(output_dir, "gene_cluster_assignments.tsv"),
+              sep = "\t", quote = FALSE, row.names = FALSE)
+
+  cluster_table <- data.frame(gene_id = rownames(Mz), stringsAsFactors = FALSE)
+  for (cluster_id in sort(unique(tom_clusters[tom_clusters > 0]))) {
+    cluster_name <- paste0("cluster_", cluster_id)
+    cluster_table[[cluster_name]] <- as.integer(tom_clusters == cluster_id)
+  }
+
+  if (ncol(cluster_table) < 2) {
+    stop("No positive TOM modules were detected for GO enrichment.")
+  }
+
+  go_results <- run_go_enrichment_suite(
+    diff_table      = cluster_table,
+    output_dir      = file.path(output_dir, "GO_clusters"),
+    orgdb           = go_orgdb,
+    keytype         = go_keytype,
+    espacio         = go_space,
+    qvalue_cutoff   = go_qvalue_cutoff,
+    pvalue_cutoff   = go_pvalue_cutoff,
+    simplify_cutoff = go_simplify_cutoff,
+    go_level        = go_level,
+    pdf_name        = go_pdf
+  )
+
+  invisible(list(
+    matrix              = Mz,
+    heatmap_clusters    = clust,
+    tom_modules         = tom_clusters,
+    cluster_assignments = cluster_assignments,
+    tom                 = TOM,
+    go_results          = go_results
+  ))
+}
+
 # ── Plot-saving helpers ────────────────────────────────────────────────────────
 # save_pdf(plot, "name.pdf")             — UMAP / FeaturePlot  (10 × 8)
 # save_vln(plot, "name.pdf")             — VlnPlot single gene  (14 × 6)
