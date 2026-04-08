@@ -1754,6 +1754,7 @@ graficar_go_balones <- function(resuGO) {
   if (is.null(nombres)) nombres <- as.character(seq_along(resuGO))
 
   bloques <- lapply(seq_along(resuGO), function(k) {
+    if (is.null(resuGO[[k]])) return(NULL)
     df <- as.data.frame(resuGO[[k]])
     if (!nrow(df)) return(NULL)
 
@@ -1771,7 +1772,11 @@ graficar_go_balones <- function(resuGO) {
     )
   })
 
+  bloques <- Filter(Negate(is.null), bloques)
+  if (!length(bloques)) stop("No GO enrichment results available to plot.")
+
   dat     <- na.omit(do.call(rbind, bloques))
+  if (!nrow(dat)) stop("No GO enrichment results available to plot.")
   dat$Exp <- factor(dat$Exp, levels = nombres)
 
   ggballoonplot(dat, x = "Exp", y = "GODesc",
@@ -1782,6 +1787,124 @@ graficar_go_balones <- function(resuGO) {
     scale_x_discrete(labels = function(x) str_wrap(x, width = 28)) +
     theme(axis.text.x = element_text(angle = 45, hjust = 1),
           axis.title  = element_blank())
+}
+
+
+#' Run GO Enrichment Suite from a Differential Table
+#'
+#' Takes a binary differential-expression table, derives the background gene
+#' universe automatically from the supplied OrgDb/keytype pair, runs full and
+#' simplified enrichGO analyses, optionally prunes by GO level, and exports a
+#' multi-page balloon-plot PDF.
+#'
+#' @param diff_table     Either a data.frame/tibble or a path to a TSV file. The
+#'   first column must contain gene IDs; remaining columns must be binary 0/1.
+#' @param output_dir     Directory where GO result tables and plots will be saved.
+#' @param orgdb          OrgDb annotation object.
+#' @param keytype        Key type matching the gene IDs in `diff_table`.
+#' @param espacio        GO namespace: "BP", "MF", or "CC".
+#' @param qvalue_cutoff  Q-value cutoff for enrichGO.
+#' @param pvalue_cutoff  P-value cutoff for enrichGO.
+#' @param simplify_cutoff Similarity cutoff for simplify().
+#' @param go_level       GO level to retain in pruned outputs.
+#' @param pdf_name       Output PDF filename for balloon plots.
+#' @return Named list with total/simple and pruned GO result lists.
+#' @export
+run_go_enrichment_suite <- function(diff_table,
+                                    output_dir,
+                                    orgdb,
+                                    keytype,
+                                    espacio         = "BP",
+                                    qvalue_cutoff   = 0.05,
+                                    pvalue_cutoff   = 0.05,
+                                    simplify_cutoff = 0.7,
+                                    go_level        = 6,
+                                    pdf_name        = "GO_enrichment.pdf") {
+
+  dir.create(output_dir, recursive = TRUE, showWarnings = FALSE)
+
+  if (is.character(diff_table) && length(diff_table) == 1) {
+    tabla_df <- read.table(diff_table, header = TRUE, sep = "\t", check.names = FALSE)
+  } else {
+    tabla_df <- as.data.frame(diff_table, check.names = FALSE)
+  }
+
+  if (ncol(tabla_df) < 2) {
+    stop("Differential table must contain one gene-ID column plus at least one comparison column.")
+  }
+
+  gene_col <- colnames(tabla_df)[1]
+  rownames(tabla_df) <- tabla_df[[gene_col]]
+  tabla <- as.matrix(tabla_df[, -1, drop = FALSE])
+  mode(tabla) <- "numeric"
+  tabla <- tabla[, colSums(tabla != 0, na.rm = TRUE) > 0, drop = FALSE]
+
+  if (!ncol(tabla)) {
+    stop("Differential table contains no non-zero comparison columns.")
+  }
+
+  universo <- keys(orgdb, keytype = keytype)
+
+  go_total <- correr_enriquecimiento_go(
+    tabla            = tabla,
+    universo         = universo,
+    espacio          = espacio,
+    orgdb            = orgdb,
+    keytype          = keytype,
+    qvalueCutoff     = qvalue_cutoff,
+    pvalueCutoff     = pvalue_cutoff,
+    simplificar      = FALSE,
+    umbral_simply    = simplify_cutoff,
+    output_dir       = output_dir
+  )
+
+  go_simple <- correr_enriquecimiento_go(
+    tabla            = tabla,
+    universo         = universo,
+    espacio          = espacio,
+    orgdb            = orgdb,
+    keytype          = keytype,
+    qvalueCutoff     = qvalue_cutoff,
+    pvalueCutoff     = pvalue_cutoff,
+    simplificar      = TRUE,
+    umbral_simply    = simplify_cutoff,
+    output_dir       = output_dir
+  )
+
+  go_total_podado <- podar_go(
+    resuGO         = go_total,
+    nivel          = go_level,
+    espacio        = espacio,
+    qvalueCutoff   = qvalue_cutoff,
+    simplificar    = FALSE,
+    output_dir     = output_dir
+  )
+
+  go_simple_podado <- podar_go(
+    resuGO         = go_simple,
+    nivel          = go_level,
+    espacio        = espacio,
+    qvalueCutoff   = qvalue_cutoff,
+    simplificar    = TRUE,
+    output_dir     = output_dir
+  )
+
+  pdf(file.path(output_dir, pdf_name), width = 18, height = 18)
+  on.exit(dev.off(), add = TRUE)
+
+  for (obj in list(go_total, go_simple, go_total_podado, go_simple_podado)) {
+    tryCatch(print(graficar_go_balones(obj)),
+             error = function(e) message("Skipping GO balloon plot: ", e$message))
+  }
+
+  invisible(list(
+    tabla            = tabla,
+    universo         = universo,
+    total            = go_total,
+    simple           = go_simple,
+    total_podado     = go_total_podado,
+    simple_podado    = go_simple_podado
+  ))
 }
 
 # ── Plot-saving helpers ────────────────────────────────────────────────────────
