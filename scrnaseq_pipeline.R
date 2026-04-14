@@ -167,7 +167,7 @@ plots_post <- imap(seurat_list, ~ plot_qc_violin_grid(.x, .y, colors[[.y]]))
 save_qc(plots_post, "qc_postfilter.pdf")
 
 # Checkpoint — restore with: seurat_list <- readRDS(file.path(dir_02, "seurat_list_postfilter.rds"))
-saveRDS(seurat_list, file.path(dir_02, "seurat_list_postfilter.rds"))
+#readRDS(file.path(dir_02, "seurat_list_postfilter.rds"))
 
 
 # =============================================================================
@@ -217,6 +217,7 @@ pbmc_harmony <- pbmc_harmony %>%
 
 # Checkpoint — restore with: pbmc_harmony <- readRDS(file.path(dir_04, "pbmc_harmony_postharmony.rds"))
 saveRDS(pbmc_harmony, file.path(dir_04, "pbmc_harmony_postharmony.rds"))
+readRDS(file.path(dir_04, "pbmc_harmony_postharmony.rds"))
 
 
 # =============================================================================
