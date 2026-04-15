@@ -250,11 +250,27 @@ def scfates_trajectories_dendogram(adata):
 
 INPUT_H5AD      = "/home/mvergara/projects2/eleo/ScRNA/metodologia/resultados/08_export/pbmc_harmony_curated.h5ad"
 BASE_DIR        = "/home/mvergara/projects2/eleo/ScRNA/results/pseudotime"
-ROOT_CELL_TYPE  = "Stem"                           # Tipo celular raíz del árbol (ajustar)
+ROOT_CELL_TYPE  = "Stomatal lineage"               # Tipo celular raíz del árbol (ajustar)
 ANNOTATION_COL  = "celltype_reference_curated"     # Columna de anotación exportada desde R
 N_NEIGHBORS     = 30                               # k-vecinos para el grafo
 N_PCS           = 30                               # PCs a usar
 RANDOM_SEED     = 1807
+
+# ── Selección de tipos celulares para el análisis ────────
+# Pon None para usar TODAS las células, o una lista con los
+# tipos que quieres conservar. Los nombres deben coincidir
+# exactamente con los valores en ANNOTATION_COL.
+#
+# Ejemplo 1 — linaje estomático:
+#   CELL_TYPES_SUBSET = ["Stomatal lineage", "Pavement cell", "Guard cell"]
+#
+# Ejemplo 2 — solo vasculares:
+#   CELL_TYPES_SUBSET = ["Phloem", "Xylem", "Procambium"]
+#
+# Ejemplo 3 — todas las células:
+#   CELL_TYPES_SUBSET = None
+
+CELL_TYPES_SUBSET = ["Stomatal lineage", "Pavement cell", "Guard cell"]
 
 # ── Crear estructura de carpetas ──────────────────────────
 os.makedirs(BASE_DIR, exist_ok=True)
@@ -300,6 +316,30 @@ if ANNOTATION_COL not in adata.obs.columns:
         f"Columna '{ANNOTATION_COL}' no encontrada en obs.\n"
         f"Columnas disponibles: {available}"
     )
+
+# ── Subset por tipos celulares ────────────────────────────
+if CELL_TYPES_SUBSET is not None:
+    tipos_disponibles = adata.obs[ANNOTATION_COL].unique().tolist()
+    tipos_no_encontrados = [t for t in CELL_TYPES_SUBSET if t not in tipos_disponibles]
+
+    if tipos_no_encontrados:
+        print(f"⚠ Tipos celulares no encontrados: {tipos_no_encontrados}")
+        print(f"  Tipos disponibles: {sorted(tipos_disponibles)}")
+
+    adata = adata[adata.obs[ANNOTATION_COL].isin(CELL_TYPES_SUBSET)].copy()
+    print(f"── Subset aplicado: {adata.n_obs:,} células conservadas")
+    print(f"   Tipos incluidos: {CELL_TYPES_SUBSET}")
+
+    # UMAP del subset para verificar
+    sc.pl.umap(
+        adata,
+        color=ANNOTATION_COL,
+        title=f"Subset: {', '.join(CELL_TYPES_SUBSET)}",
+        show=False,
+        save=f"_subset_{'_'.join(CELL_TYPES_SUBSET)}.png".replace(" ", "_")
+    )
+else:
+    print(f"── Sin subset: usando todas las células ({adata.n_obs:,})")
 
 # ─────────────────────────────────────────────
 # 2. PREPROCESAMIENTO BÁSICO

@@ -1,0 +1,554 @@
+---
+title: "Pseudotime Analysis — scFates + Palantir"
+author: "Matias Vergara"
+date: "`r Sys.Date()`"
+output:
+  html_document:
+    toc: true
+    toc_float: true
+    toc_depth: 3
+    theme: flatly
+    code_folding: show
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(
+  echo    = TRUE,
+  warning = FALSE,
+  message = FALSE,
+  fig.width  = 10,
+  fig.height = 10
+)
+
+# Apuntar reticulate al venv de Python con scanpy/scFates/palantir
+reticulate::use_virtualenv("/opt/venv", required = TRUE)
+```
+
+---
+
+## Librerías
+
+```{python librerias}
+import os
+import sys
+import warnings
+warnings.filterwarnings("ignore")
+
+# Manipulación de datos y cálculos numéricos
+import numpy as np
+import pandas as pd
+from scipy.stats import pearsonr
+from sklearn.preprocessing import scale
+from sklearn.metrics import pairwise_distances_argmin
+
+# Análisis de Single-Cell
+import scanpy as sc
+import scFates as scf
+import palantir
+
+# Visualización
+import matplotlib
+matplotlib.use("Agg")
+import matplotlib.pyplot as plt
+import seaborn as sns
+
+# Configuración
+sc.settings.verbosity = 3
+sc.settings.logfile = sys.stdout
+
+print("Librerías cargadas correctamente")
+```
+
+---
+
+## Funciones
+
+```{python funciones}
+def scfates_trajectories_alignment2(nombre, adata, clusters, root_cluster, nodes, sigma, eigen, seeed, plambda):
+    """
+    Construye una trayectoria usando scFates + Palantir + ElPiGraph
+    en un subconjunto de células definidas por sus anotaciones agrupadas.
+    """
+
+    # --------------------------
+    # 1. Subset por clusters
+    # --------------------------
+    if clusters is None or len(clusters) == 0:
+        adata = adata.copy()
+    elif len(clusters) == 1:
+        adata = adata[adata.obs['annotation_curada_esp'] == clusters[0]].copy()
+    else:
+        adata = adata[adata.obs['annotation_curada_esp'].isin(clusters)].copy()
+
+    sc.pp.neighbors(adata)
+    sc.tl.leiden(adata, resolution=0.5)
+
+    # --------------------------
+    # 2. Palantir → Diffusion Maps
+    # --------------------------
+    pca_projections = pd.DataFrame(adata.obsm["X_pca"], index=adata.obs_names)
+    dm_res  = palantir.utils.run_diffusion_maps(pca_projections, n_components=50)
+    ms_data = palantir.utils.determine_multiscale_space(dm_res, n_eigs=eigen)
+
+    adata.obsm["X_palantir"] = ms_data.values
+
+    # --------------------------
+    # 3. Vecindarios + ForceAtlas2
+    # --------------------------
+    sc.pp.neighbors(adata, n_neighbors=50, use_rep="X_palantir", method='umap')
+    adata.obsm["X_pca2d"] = adata.obsm["X_pca"][:, :2]
+    sc.tl.draw_graph(adata, init_pos='X_pca2d')
+
+    title = f"{nombre}_{nodes}_nodes_{sigma}_sigma_{eigen}_eigen_{plambda}_lambda"
+    sc.set_figure_params(figsize=(10, 10), dpi=100, dpi_save=100)
+
+    sc.pl.draw_graph(
+        adata,
+        color=['annotation_curada_esp'],
+        add_outline=True,
+        legend_fontsize=10, legend_fontoutline=2, size=50,
+        title="ESP_FA_clusters",
+        palette=sns.color_palette('colorblind'),
+        save=f"ESP_FA_clusters.png"
+    )
+
+    # --------------------------
+    # 4. ElPiGraph con scFates
+    # --------------------------
+    scf.tl.tree(
+        adata,
+        method="ppt",
+        Nodes=nodes,
+        use_rep="palantir",
+        plot=False,
+        device="cpu",
+        seed=seeed,
+        ppt_lambda=plambda,
+        ppt_nsteps=200,
+        ppt_sigma=sigma
+    )
+
+    scf.pl.graph(
+        adata,
+        title=title,
+        color_cells='annotation_curada_esp',
+        palette=sns.color_palette('colorblind'),
+        save=f"_{title}_NODES_FA_diffusion_trajectory_clusters.png"
+    )
+
+    # --------------------------
+    # 5. Elegir raíz (root)
+    # --------------------------
+    mask         = (adata.obs['annotation_curada_esp'] == root_cluster).to_numpy()
+    cluster_cells = adata.obs_names[mask]
+    sub_conn     = adata.obsp['connectivities'][mask][:, mask]
+    degrees      = np.array(sub_conn.sum(axis=1)).flatten()
+    root_cell    = cluster_cells[degrees.argmax()]
+    print("Célula representativa:", root_cell)
+
+    cell_id = root_cell
+    adata.obs["highlight"] = adata.obs_names.isin([cell_id])
+    adata_sorted = adata[adata.obs.sort_values("highlight").index, :]
+
+    sc.pl.draw_graph(
+        adata_sorted,
+        color="highlight",
+        palette=["lightgray", "red"],
+        size=20,
+        title=f"Célula resaltada: {cell_id}",
+        frameon=False
+    )
+
+    adata.obs["is_root"] = adata.obs_names == root_cell
+    scf.tl.root(adata, root="is_root")
+
+    # --------------------------
+    # 6. Pseudotiempo
+    # --------------------------
+    scf.tl.pseudotime(adata)
+
+    cell_time = adata.obs[["t"]].copy()
+    cell_time.index.name = "cell_id"
+    if "annotation_curada_esp" in adata.obs.columns:
+        cell_time["annotation_curada_esp"] = adata.obs["annotation_curada_esp"]
+
+    out_file = f"{nombre}_pseudotime_por_celula.tsv"
+    cell_time.to_csv(out_file, sep="\t")
+    print(f"Pseudotiempo exportado a {out_file}")
+
+    # --------------------------
+    # 7. Trayectoria coloreada por pseudotiempo
+    # --------------------------
+    scf.pl.trajectory(
+        adata,
+        color_seg="t",
+        basis="draw_graph_fa",
+        frameon=False,
+        s=50,
+        scale_path=0.6,
+        save=f"_{title}_pseudotime.png"
+    )
+
+    sc.pl.umap(adata, color="leiden")
+    return adata
+
+
+def scfates_trajectories_dendogram(adata):
+    """
+    Genera dendrograma y trayectoria segmentada.
+    Requiere que scf.tl.tree() haya sido ejecutado previamente.
+    """
+    if "seg" not in adata.obs:
+        raise ValueError("ERROR: adata.obs['seg'] no existe. Primero corre scf.tl.tree()")
+
+    sc.pl.draw_graph(
+        adata,
+        color=["milestones", "leiden"],
+        palette=sns.color_palette("colorblind"),
+        add_outline=True,
+        legend_fontsize=10,
+        legend_fontoutline=2
+    )
+
+    scf.tl.dendrogram(adata)
+
+    scf.pl.dendrogram(
+        adata,
+        color="seg",
+        palette=sns.color_palette("colorblind"),
+        legend_fontoutline=True,
+        legend_loc="on data",
+        save="_seg.pdf"
+    )
+
+    scf.pl.dendrogram(
+        adata,
+        color="milestones",
+        palette=sns.color_palette("colorblind"),
+        legend_fontoutline=True,
+        legend_loc="on data",
+        save="_milestones.pdf"
+    )
+
+    print("Dendrograma generado")
+    return adata
+
+print("Funciones definidas correctamente")
+```
+
+---
+
+## Configuración
+
+```{python configuracion}
+INPUT_H5AD     = "/home/mvergara/projects2/eleo/ScRNA/metodologia/resultados/08_export/pbmc_harmony_curated.h5ad"
+BASE_DIR       = "/home/mvergara/projects2/eleo/ScRNA/results/pseudotime"
+ROOT_CELL_TYPE = "Stomatal lineage"           # Tipo celular raíz del árbol
+ANNOTATION_COL = "celltype_reference_curated" # Columna de anotación exportada desde R
+N_NEIGHBORS    = 30
+N_PCS          = 30
+RANDOM_SEED    = 1807
+
+# ── Selección de tipos celulares ──────────────────────────
+# None  → usar todas las células
+# lista → conservar solo esos tipos (deben coincidir exactamente)
+#
+# Ejemplo — linaje estomático:
+#   CELL_TYPES_SUBSET = ["Stomatal lineage", "Pavement cell", "Guard cell"]
+# Ejemplo — vasculares:
+#   CELL_TYPES_SUBSET = ["Phloem", "Xylem", "Procambium"]
+
+CELL_TYPES_SUBSET = ["Stomatal lineage", "Pavement cell", "Guard cell"]
+
+# ── Crear carpetas de resultados ──────────────────────────
+os.makedirs(BASE_DIR, exist_ok=True)
+
+OUTPUT_DIR    = os.path.join(BASE_DIR, "figures")
+OUTPUT_TABLAS = os.path.join(BASE_DIR, "tablas")
+
+os.makedirs(OUTPUT_DIR,    exist_ok=True)
+os.makedirs(OUTPUT_TABLAS, exist_ok=True)
+
+sc.settings.figdir = OUTPUT_DIR
+
+print(f"Output dir:    {OUTPUT_DIR}")
+print(f"Tablas dir:    {OUTPUT_TABLAS}")
+print(f"Subset:        {CELL_TYPES_SUBSET}")
+```
+
+---
+
+## 1. Carga del objeto
+
+```{python carga}
+Pc_esp = sc.read_h5ad(INPUT_H5AD)
+
+# Recuperar embeddings exportados desde Seurat
+Pc_esp.obsm['X_umap'] = Pc_esp.obsm['UMAP'].values
+Pc_esp.obsm['X_pca']  = Pc_esp.obsm['PCA'].values
+
+sc.set_figure_params(figsize=(10, 10), dpi=300, dpi_save=300)
+
+print(Pc_esp)
+```
+
+```{python umap_completo}
+# UMAP completo coloreado por tipo celular
+sc.pl.umap(
+    Pc_esp,
+    color=ANNOTATION_COL,
+    show=True,
+    save=f"_{ANNOTATION_COL}.png"
+)
+```
+
+---
+
+## 2. Subset por tipos celulares
+
+```{python subset}
+adata = Pc_esp.copy()
+
+# Verificar columna de anotación
+if ANNOTATION_COL not in adata.obs.columns:
+    raise ValueError(
+        f"Columna '{ANNOTATION_COL}' no encontrada.\n"
+        f"Disponibles: {list(adata.obs.columns)}"
+    )
+
+if CELL_TYPES_SUBSET is not None:
+    tipos_disponibles    = adata.obs[ANNOTATION_COL].unique().tolist()
+    tipos_no_encontrados = [t for t in CELL_TYPES_SUBSET if t not in tipos_disponibles]
+
+    if tipos_no_encontrados:
+        print(f"⚠ No encontrados: {tipos_no_encontrados}")
+        print(f"  Disponibles:    {sorted(tipos_disponibles)}")
+
+    adata = adata[adata.obs[ANNOTATION_COL].isin(CELL_TYPES_SUBSET)].copy()
+    print(f"Subset aplicado: {adata.n_obs:,} células")
+    print(f"Tipos incluidos: {CELL_TYPES_SUBSET}")
+else:
+    print(f"Sin subset: {adata.n_obs:,} células totales")
+```
+
+```{python umap_subset}
+sc.pl.umap(
+    adata,
+    color=ANNOTATION_COL,
+    title=f"Subset: {', '.join(CELL_TYPES_SUBSET) if CELL_TYPES_SUBSET else 'Todas'}",
+    show=True,
+    save=f"_subset.png"
+)
+```
+
+---
+
+## 3. Preprocesamiento
+
+```{python preprocesamiento}
+# Usar Harmony si está disponible, si no PCA
+if "X_harmony" in adata.obsm:
+    reduction_key = "X_harmony"
+    print("Usando reducción: Harmony")
+elif "X_pca" in adata.obsm:
+    reduction_key = "X_pca"
+    print("Usando reducción: PCA")
+else:
+    print("Calculando PCA desde cero...")
+    sc.pp.normalize_total(adata, target_sum=1e4)
+    sc.pp.log1p(adata)
+    sc.pp.highly_variable_genes(adata, n_top_genes=2000)
+    sc.pp.pca(adata, n_comps=N_PCS)
+    reduction_key = "X_pca"
+
+sc.pp.neighbors(adata, use_rep=reduction_key, n_neighbors=N_NEIGHBORS, random_state=RANDOM_SEED)
+
+if "X_umap" not in adata.obsm:
+    print("Calculando UMAP...")
+    sc.tl.umap(adata, random_state=RANDOM_SEED)
+
+print("Preprocesamiento completado")
+```
+
+```{python umap_preprocesado}
+sc.pl.umap(
+    adata,
+    color=ANNOTATION_COL,
+    title="Tipos celulares (post-preprocesamiento)",
+    show=True,
+    save="_cell_types.pdf"
+)
+```
+
+---
+
+## 4. Pseudotiempo con Palantir
+
+```{python diffmap}
+sc.tl.diffmap(adata, n_comps=10)
+```
+
+```{python raiz_palantir}
+# Seleccionar célula raíz por centroide en diffusion map
+root_cells = adata.obs.index[adata.obs[ANNOTATION_COL] == ROOT_CELL_TYPE]
+
+if len(root_cells) == 0:
+    raise ValueError(
+        f"Tipo '{ROOT_CELL_TYPE}' no encontrado.\n"
+        f"Disponibles: {adata.obs[ANNOTATION_COL].unique().tolist()}"
+    )
+
+dm_coords = adata.obsm["X_diffmap"][adata.obs[ANNOTATION_COL] == ROOT_CELL_TYPE]
+centroid  = dm_coords.mean(axis=0)
+dists     = np.linalg.norm(adata.obsm["X_diffmap"] - centroid, axis=1)
+root_cell = adata.obs.index[np.argmin(dists)]
+
+print(f"Célula raíz seleccionada: {root_cell}")
+```
+
+```{python palantir}
+palantir_result = palantir.core.run_palantir(
+    adata,
+    early_cell=root_cell,
+    use_early_cell_as_start=True,
+    num_waypoints=500,
+    n_jobs=4,
+)
+
+adata.obs["palantir_pseudotime"] = palantir_result.pseudotime
+adata.obs["palantir_entropy"]    = palantir_result.entropy
+```
+
+```{python umap_palantir}
+sc.pl.umap(
+    adata,
+    color=["palantir_pseudotime", "palantir_entropy"],
+    cmap="viridis",
+    show=True,
+    save="_palantir_pseudotime.pdf"
+)
+```
+
+---
+
+## 5. Árbol de trayectorias con scFates
+
+```{python arbol_scfates}
+scf.tl.tree(
+    adata,
+    method="ppt",
+    Nodes=20,
+    use_rep="X_diffmap",
+    seed=RANDOM_SEED,
+)
+```
+
+```{python pseudotime_scfates}
+scf.tl.pseudotime(adata, n_jobs=4, seed=RANDOM_SEED)
+```
+
+```{python grafico_arbol}
+scf.pl.graph(
+    adata,
+    basis="umap",
+    color_cells=ANNOTATION_COL,
+    show=True,
+    save=f"{OUTPUT_DIR}/scfates_tree.pdf"
+)
+```
+
+```{python grafico_pseudotime}
+scf.pl.trajectory(
+    adata,
+    basis="umap",
+    color_cells="t",
+    show=True,
+    save=f"{OUTPUT_DIR}/scfates_pseudotime.pdf"
+)
+```
+
+---
+
+## 6. Genes asociados al pseudotiempo
+
+```{python test_asociacion}
+scf.tl.test_association(
+    adata,
+    n_jobs=4,
+    A_cut=0.5,
+)
+
+sig_genes = adata.var[adata.var["signi"]].index.tolist()
+print(f"Genes significativos: {len(sig_genes)}")
+```
+
+```{python guardar_genes_asociados}
+assoc_df = adata.var[adata.var["signi"]].sort_values("A", ascending=False)
+assoc_df.to_csv(f"{OUTPUT_TABLAS}/pseudotime_genes_associated.csv")
+print(assoc_df.head(10))
+```
+
+```{python trends_genes, eval=TRUE}
+if len(sig_genes) > 0:
+    top_genes = assoc_df.head(50).index.tolist()
+    scf.pl.trends(
+        adata,
+        features=top_genes,
+        show=True,
+        save=f"{OUTPUT_DIR}/pseudotime_gene_trends.pdf"
+    )
+else:
+    print("No hay genes significativos para graficar.")
+```
+
+---
+
+## 7. Genes en bifurcaciones
+
+```{python bifurcaciones}
+if "fork" in adata.uns:
+    scf.tl.test_fork(adata, n_jobs=4)
+
+    fork_genes = adata.var[adata.var["signi_fk"]].index.tolist()
+    print(f"Genes en bifurcación: {len(fork_genes)}")
+
+    fork_df = adata.var[adata.var["signi_fk"]].sort_values("A_fk", ascending=False)
+    fork_df.to_csv(f"{OUTPUT_TABLAS}/pseudotime_fork_genes.csv")
+
+    if len(fork_genes) > 0:
+        scf.pl.trends(
+            adata,
+            features=fork_df.head(30).index.tolist(),
+            show=True,
+            save=f"{OUTPUT_DIR}/fork_gene_trends.pdf"
+        )
+else:
+    print("No se detectaron bifurcaciones en el árbol.")
+```
+
+---
+
+## 8. Guardar objeto final
+
+```{python guardar}
+output_h5ad = f"{OUTPUT_DIR}/pbmc_pseudotime.h5ad"
+adata.write_h5ad(output_h5ad)
+print(f"Objeto guardado en: {output_h5ad}")
+```
+
+---
+
+## Resumen
+
+```{python resumen}
+print("══════════════════════════════════════")
+print("  PSEUDOTIEMPO COMPLETADO")
+print("══════════════════════════════════════")
+print(f"  Input:              {INPUT_H5AD}")
+print(f"  Output dir:         {OUTPUT_DIR}")
+print(f"  Células analizadas: {adata.n_obs:,}")
+print(f"  Genes totales:      {adata.n_vars:,}")
+print(f"  Genes en pseudot.:  {len(sig_genes)}")
+print(f"  Objeto final:       {output_h5ad}")
+print("══════════════════════════════════════")
+```
