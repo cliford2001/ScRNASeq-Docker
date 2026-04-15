@@ -12,21 +12,17 @@ output:
 
 <!-- ============================================================
      CÓMO USAR ESTE ARCHIVO
-     ============================================================
-     1. Abre este archivo en RStudio
-     2. Cambia los valores en la sección "CONFIGURACIÓN" (abajo)
-     3. Ejecuta los bloques uno a uno con Ctrl+Shift+Enter
+     1. Cambia los valores en la sección CONFIGURACIÓN (abajo)
+     2. Ejecuta los bloques uno a uno con Ctrl+Shift+Enter
 
      REQUISITO: Python con scanpy, scFates y palantir instalados.
-     Si usas Docker, asegúrate de que el contenedor esté corriendo.
      ============================================================ -->
 
 ```{r setup, include=FALSE}
 knitr::opts_chunk$set(echo = TRUE, warning = FALSE, message = FALSE,
                       fig.width = 10, fig.height = 10)
 
-# Apuntar a Python con los paquetes de single-cell
-# Cambia la ruta si tu entorno Python está en otro lugar
+# Ruta al entorno Python con los paquetes instalados
 reticulate::use_virtualenv("/opt/venv", required = TRUE)
 ```
 
@@ -34,50 +30,48 @@ reticulate::use_virtualenv("/opt/venv", required = TRUE)
 
 # ⚙️ CONFIGURACIÓN
 
-> **Cambia solo esta sección.** El resto del script se ajusta automáticamente.
+> **Solo tienes que cambiar esta sección.**
 
 ```{python configuracion}
 import os
 
-# ── Archivo de entrada ────────────────────────────────────────────────────────
-# El archivo .h5ad generado por el pipeline de R (exportar_para_scanpy)
+# ── Rutas ─────────────────────────────────────────────────────────────────────
+# Archivo .h5ad generado por el pipeline de R con exportar_para_scanpy()
 ARCHIVO_ENTRADA = "/ruta/a/tu/pbmc_harmony_curated.h5ad"
 
-# ── Carpetas de salida ────────────────────────────────────────────────────────
 CARPETA_FIGURAS = "/ruta/a/resultados/pseudotime/figuras"
 CARPETA_TABLAS  = "/ruta/a/resultados/pseudotime/tablas"
 
-# ── Columna con los tipos celulares ──────────────────────────────────────────
-# Debe ser el nombre exacto de la columna en tu objeto
+# ── Columna de tipos celulares ────────────────────────────────────────────────
+# Nombre exacto de la columna en tu objeto (distingue mayúsculas/minúsculas)
 COLUMNA_TIPOS = "celltype_reference_curated"
 
-# ── Células para el análisis ─────────────────────────────────────────────────
-# Escribe los tipos celulares que quieres analizar
-# Los nombres deben coincidir EXACTAMENTE con los de tu objeto
-# Para usar TODAS las células pon: None
+# ── Qué células analizar ──────────────────────────────────────────────────────
+# Escribe los tipos que quieres incluir. Los nombres deben coincidir EXACTAMENTE.
+# Para usar todas las células pon: TIPOS_CELULARES = None
 TIPOS_CELULARES = ["Stomatal lineage", "Pavement cell", "Guard cell"]
 
-# ── Célula de origen (raíz del árbol) ────────────────────────────────────────
-# ¿Qué tipo celular es el más "inmaduro" o punto de partida?
+# ── Punto de partida del árbol ────────────────────────────────────────────────
+# El tipo celular más "inmaduro" o de origen en tu trayectoria
 CELULA_RAIZ = "Stomatal lineage"
 
-# ── Parámetros del árbol (ajustar si los resultados se ven raros) ─────────────
-NODOS   = 20    # Número de nodos del árbol. Más nodos = más detalle
-SIGMA   = 0.1   # Suavidad del árbol. Más alto = más suave
-LAMBDA  = 50    # Rigidez del árbol. Más alto = más recto
+# ── Parámetros del árbol ──────────────────────────────────────────────────────
+NODOS  = 20    # Nodos del árbol. Más = más detalle. Empieza con 20.
+SIGMA  = 0.1   # Suavidad. Más alto = curvas más suaves.
+LAMBDA = 50    # Rigidez. Más alto = árbol más recto.
 
 # Crear carpetas de salida
 os.makedirs(CARPETA_FIGURAS, exist_ok=True)
 os.makedirs(CARPETA_TABLAS,  exist_ok=True)
 
-print("✓ Configuración lista")
-print(f"  Tipos celulares: {TIPOS_CELULARES}")
-print(f"  Célula raíz:     {CELULA_RAIZ}")
+print(f"✓ Configuración lista")
+print(f"  Células a analizar: {TIPOS_CELULARES}")
+print(f"  Célula de origen:   {CELULA_RAIZ}")
 ```
 
 ---
 
-# 1. Cargar librerías
+# 1. Librerías
 
 ```{python librerias}
 import warnings
@@ -85,17 +79,16 @@ warnings.filterwarnings("ignore")
 
 import numpy  as np
 import pandas as pd
-import matplotlib
-matplotlib.use("Agg")
+import matplotlib; matplotlib.use("Agg")
 import matplotlib.pyplot as plt
 import seaborn as sns
 import scanpy  as sc
 import scFates as scf
 import palantir
-import sys
 
-sc.settings.verbosity = 1       # 1 = solo errores importantes
-sc.settings.figdir   = CARPETA_FIGURAS
+sc.settings.verbosity = 1
+sc.settings.figdir    = CARPETA_FIGURAS
+sc.set_figure_params(figsize=(10, 10), dpi=150, dpi_save=150)
 
 print("✓ Librerías cargadas")
 ```
@@ -107,83 +100,59 @@ print("✓ Librerías cargadas")
 ```{python cargar}
 datos = sc.read_h5ad(ARCHIVO_ENTRADA)
 
-# Recuperar embeddings guardados por Seurat/R
-datos.obsm['X_umap'] = datos.obsm['UMAP'].values
-datos.obsm['X_pca']  = datos.obsm['PCA'].values
+# Los embeddings vienen con nombres de Seurat — los renombramos para scanpy
+datos.obsm["X_umap"] = datos.obsm["UMAP"].values
+datos.obsm["X_pca"]  = datos.obsm["PCA"].values
 
-sc.set_figure_params(figsize=(10, 10), dpi=150, dpi_save=150)
+print(f"✓ {datos.n_obs:,} células | {datos.n_vars:,} genes")
 
-print(f"✓ Datos cargados: {datos.n_obs:,} células, {datos.n_vars:,} genes")
-```
-
-```{python umap_completo}
-# Ver todos los tipos celulares antes de filtrar
-sc.pl.umap(datos, color=COLUMNA_TIPOS,
-           title="Todos los tipos celulares",
-           show=True, save="_todos_los_tipos.png")
+# Ver UMAP completo antes de filtrar
+sc.pl.umap(datos, color=COLUMNA_TIPOS, title="Todos los tipos celulares",
+           show=True, save="_01_todos.png")
 ```
 
 ---
 
-# 3. Seleccionar células de interés
+# 3. Seleccionar células
 
 ```{python seleccion}
 if TIPOS_CELULARES is not None:
+    # Avisar si algún nombre no existe (typo frecuente)
+    no_encontrados = [t for t in TIPOS_CELULARES if t not in datos.obs[COLUMNA_TIPOS].values]
+    if no_encontrados:
+        print(f"⚠ No encontrados: {no_encontrados}")
+        print(f"  Disponibles: {sorted(datos.obs[COLUMNA_TIPOS].unique())}")
 
-    # Verificar que los nombres existen
-    tipos_en_datos   = datos.obs[COLUMNA_TIPOS].unique().tolist()
-    tipos_no_validos = [t for t in TIPOS_CELULARES if t not in tipos_en_datos]
-
-    if tipos_no_validos:
-        print(f"⚠ ATENCIÓN — Estos tipos no se encontraron: {tipos_no_validos}")
-        print(f"  Los tipos disponibles son: {sorted(tipos_en_datos)}")
-
-    # Filtrar
     subset = datos[datos.obs[COLUMNA_TIPOS].isin(TIPOS_CELULARES)].copy()
-    print(f"✓ Células seleccionadas: {subset.n_obs:,}")
-
 else:
     subset = datos.copy()
-    print(f"✓ Usando todas las células: {subset.n_obs:,}")
-```
 
-```{python umap_subset}
-sc.pl.umap(subset, color=COLUMNA_TIPOS,
-           title=f"Células seleccionadas",
-           show=True, save="_seleccion.png")
+print(f"✓ {subset.n_obs:,} células seleccionadas")
+
+sc.pl.umap(subset, color=COLUMNA_TIPOS, title="Células seleccionadas",
+           show=True, save="_02_seleccion.png")
 ```
 
 ---
 
-# 4. Preparar el espacio de reducción
+# 4. Recalcular vecinos y UMAP del subset
 
-```{python preparar}
-# Usar Harmony si está disponible (mejor), si no usar PCA
-if "X_harmony" in subset.obsm:
-    reduccion = "X_harmony"
-    print("✓ Usando Harmony")
-else:
-    reduccion = "X_pca"
-    print("✓ Usando PCA")
-
-# Recalcular grafo de vecinos sobre el subset
-sc.pp.neighbors(subset, use_rep=reduccion, n_neighbors=30)
-
-# Recalcular UMAP del subset
+```{python vecinos}
+# Recalculamos sobre el subset (el original incluye células que quitamos)
+sc.pp.neighbors(subset, use_rep="X_pca", n_neighbors=30)
 sc.tl.umap(subset)
 
-print("✓ Reducción lista")
+print("✓ Vecinos y UMAP recalculados")
 ```
 
 ---
 
-# 5. Diffusion Map con Palantir
+# 5. Diffusion Map (Palantir)
 
-> Palantir crea un "mapa de difusión" que captura mejor las
-> transiciones graduales entre tipos celulares.
+> Palantir construye un espacio que captura mejor las transiciones graduales
+> entre tipos celulares — es la base del árbol de trayectorias.
 
-```{python palantir_mapa}
-# Crear mapa de difusión
+```{python diffusion}
 pca_df  = pd.DataFrame(subset.obsm["X_pca"], index=subset.obs_names)
 dm_res  = palantir.utils.run_diffusion_maps(pca_df, n_components=50)
 ms_data = palantir.utils.determine_multiscale_space(dm_res, n_eigs=5)
@@ -193,123 +162,80 @@ subset.obsm["X_palantir"] = ms_data.values
 # Actualizar vecinos con el espacio Palantir
 sc.pp.neighbors(subset, use_rep="X_palantir", n_neighbors=30)
 
-print("✓ Mapa de difusión creado")
+print("✓ Diffusion Map listo")
 ```
 
 ---
 
-# 6. Construir el árbol de trayectorias
+# 6. Árbol de trayectorias
 
 ```{python arbol}
-scf.tl.tree(
-    subset,
-    method     = "ppt",
-    Nodes      = NODOS,
-    use_rep    = "palantir",
-    ppt_sigma  = SIGMA,
-    ppt_lambda = LAMBDA,
-    device     = "cpu",
-    seed       = 1807,
-)
+scf.tl.tree(subset, method="ppt", Nodes=NODOS, use_rep="palantir",
+            ppt_sigma=SIGMA, ppt_lambda=LAMBDA, device="cpu", seed=1807)
+
+scf.pl.graph(subset, color_cells=COLUMNA_TIPOS,
+             palette=sns.color_palette("colorblind"),
+             show=True, save="_03_arbol.png")
 
 print("✓ Árbol construido")
 ```
 
-```{python ver_arbol}
-scf.pl.graph(
-    subset,
-    color_cells = COLUMNA_TIPOS,
-    palette     = sns.color_palette("colorblind"),
-    show        = True,
-    save        = "_arbol_tipos.png"
-)
-```
-
 ---
 
-# 7. Calcular pseudotiempo
-
-```{python seleccionar_raiz}
-# Encontrar automáticamente la célula más "central" del tipo raíz
-mascara       = (subset.obs[COLUMNA_TIPOS] == CELULA_RAIZ).to_numpy()
-celulas_raiz  = subset.obs_names[mascara]
-conectividades = subset.obsp['connectivities'][mascara][:, mascara]
-grados        = np.array(conectividades.sum(axis=1)).flatten()
-celula_raiz   = celulas_raiz[grados.argmax()]
-
-print(f"✓ Célula raíz seleccionada: {celula_raiz}")
-
-# Marcar la raíz
-subset.obs["es_raiz"] = subset.obs_names == celula_raiz
-scf.tl.root(subset, root="es_raiz")
-```
+# 7. Pseudotiempo
 
 ```{python pseudotime}
-scf.tl.pseudotime(subset)
-print("✓ Pseudotiempo calculado")
-```
+# Seleccionar la célula raíz: la más conectada dentro del tipo de origen
+mascara    = subset.obs[COLUMNA_TIPOS].values == CELULA_RAIZ
+conn       = subset.obsp["connectivities"][mascara][:, mascara]
+grados     = np.array(conn.sum(axis=1)).flatten()
+raiz       = subset.obs_names[mascara][grados.argmax()]
+print(f"✓ Célula raíz: {raiz}")
 
-```{python ver_pseudotime}
-scf.pl.trajectory(
-    subset,
-    color_seg = "t",
-    frameon   = False,
-    s         = 50,
-    show      = True,
-    save      = "_pseudotime.png"
-)
+subset.obs["es_raiz"] = subset.obs_names == raiz
+scf.tl.root(subset, root="es_raiz")
+scf.tl.pseudotime(subset)
+
+# Visualizar
+scf.pl.trajectory(subset, color_seg="t", frameon=False, s=50,
+                  show=True, save="_04_pseudotime.png")
 ```
 
 ---
 
-# 8. Genes que cambian a lo largo del tiempo
+# 8. Genes que cambian con el tiempo
 
-```{python genes_tiempo}
+```{python genes}
 scf.tl.test_association(subset, n_jobs=4, A_cut=0.5)
 
-genes_significativos = subset.var[subset.var["signi"]].index.tolist()
-print(f"✓ Genes que cambian con el pseudotiempo: {len(genes_significativos)}")
-```
-
-```{python guardar_genes}
-# Guardar tabla de genes
 tabla_genes = subset.var[subset.var["signi"]].sort_values("A", ascending=False)
 tabla_genes.to_csv(f"{CARPETA_TABLAS}/genes_pseudotime.csv")
 
-print("Top 10 genes:")
+print(f"✓ {len(tabla_genes):,} genes cambian con el pseudotiempo")
 print(tabla_genes.head(10)[["A", "fdr"]].to_string())
-```
 
-```{python ver_genes}
-if len(genes_significativos) > 0:
-    top_genes = tabla_genes.head(30).index.tolist()
-    scf.pl.trends(
-        subset,
-        features = top_genes,
-        show     = True,
-        save     = "_tendencias_genes.png"
-    )
+# Gráfico de tendencias de los top 30 genes
+if len(tabla_genes) > 0:
+    scf.pl.trends(subset, features=tabla_genes.head(30).index.tolist(),
+                  show=True, save="_05_tendencias.png")
 ```
 
 ---
 
-# 9. Guardar resultados
+# 9. Guardar
 
 ```{python guardar}
-# Guardar pseudotiempo por célula
-tabla_pseudotime = subset.obs[["t", COLUMNA_TIPOS]].copy()
-tabla_pseudotime.index.name = "celula_id"
-tabla_pseudotime.to_csv(f"{CARPETA_TABLAS}/pseudotime_por_celula.tsv", sep="\t")
-
-# Guardar objeto completo
+subset.obs[["t", COLUMNA_TIPOS]].rename_axis("celula_id").to_csv(
+    f"{CARPETA_TABLAS}/pseudotime_por_celula.tsv", sep="\t"
+)
 subset.write_h5ad(f"{CARPETA_FIGURAS}/objeto_pseudotime.h5ad")
 
 print("══════════════════════════════════")
 print("  PSEUDOTIEMPO COMPLETADO")
 print("══════════════════════════════════")
-print(f"  Células analizadas: {subset.n_obs:,}")
-print(f"  Genes con cambio:   {len(genes_significativos)}")
-print(f"  Figuras en:         {CARPETA_FIGURAS}")
-print(f"  Tablas en:          {CARPETA_TABLAS}")
+print(f"  Células:      {subset.n_obs:,}")
+print(f"  Genes cambio: {len(tabla_genes):,}")
+print(f"  Figuras:      {CARPETA_FIGURAS}")
+print(f"  Tablas:       {CARPETA_TABLAS}")
 print("══════════════════════════════════")
 ```

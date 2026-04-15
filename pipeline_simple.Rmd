@@ -12,11 +12,9 @@ output:
 
 <!-- ============================================================
      CÓMO USAR ESTE ARCHIVO
-     ============================================================
-     1. Abre este archivo en RStudio
-     2. Cambia los valores en la sección "CONFIGURACIÓN" (abajo)
-     3. Ejecuta los bloques uno a uno con Ctrl+Shift+Enter
-     4. Para generar el reporte completo: haz clic en "Knit"
+     1. Cambia los valores en la sección CONFIGURACIÓN (abajo)
+     2. Ejecuta los bloques uno a uno con Ctrl+Shift+Enter
+     3. Para generar el reporte completo: clic en "Knit"
      ============================================================ -->
 
 ```{r setup, include=FALSE}
@@ -28,89 +26,69 @@ knitr::opts_chunk$set(echo = TRUE, warning = FALSE, message = FALSE,
 
 # ⚙️ CONFIGURACIÓN
 
-> **Cambia solo esta sección.** El resto del script se ajusta automáticamente.
+> **Solo tienes que cambiar esta sección.** El resto funciona solo.
 
 ```{r configuracion}
-# ── ¿Dónde están tus datos? ───────────────────────────────────────────────────
-# Carpeta con los archivos .h5 de cada muestra (uno por muestra)
-CARPETA_DATOS <- "/ruta/a/tus/datos"
-
-# ── ¿Dónde guardar los resultados? ───────────────────────────────────────────
+# ── Rutas ─────────────────────────────────────────────────────────────────────
+CARPETA_DATOS      <- "/ruta/a/tus/datos"
 CARPETA_RESULTADOS <- "/ruta/a/resultados"
 
-# ── Tus muestras ─────────────────────────────────────────────────────────────
-# Formato: nombre_muestra = "condicion"
-# Agrega o quita líneas según cuántas muestras tengas
+# ── Muestras ──────────────────────────────────────────────────────────────────
+# Agrega o quita entradas según cuántas muestras tengas.
+# "archivo" es la ruta al .h5 dentro de CARPETA_DATOS.
 MUESTRAS <- list(
-  list(archivo   = "muestra1/cellbender_filtered.h5",
-       nombre    = "Muestra1",
-       condicion = "control"),
-
-  list(archivo   = "muestra2/cellbender_filtered.h5",
-       nombre    = "Muestra2",
-       condicion = "tratamiento"),
-
-  list(archivo   = "muestra3/cellbender_filtered.h5",
-       nombre    = "Muestra3",
-       condicion = "tratamiento")
+  list(archivo = "muestra1/cellbender_filtered.h5", nombre = "M1", condicion = "control"),
+  list(archivo = "muestra2/cellbender_filtered.h5", nombre = "M2", condicion = "tratamiento"),
+  list(archivo = "muestra3/cellbender_filtered.h5", nombre = "M3", condicion = "tratamiento")
 )
 
-# ── Colores para tus condiciones ─────────────────────────────────────────────
-# Un color por cada condición distinta que tengas arriba
-COLORES <- c(
-  "control"     = "#4A90D9",
-  "tratamiento" = "#E84A5F"
-)
+# ── Colores (uno por condición) ───────────────────────────────────────────────
+COLORES <- c("control" = "#4A90D9", "tratamiento" = "#E84A5F")
 
 # ── Filtros de calidad ────────────────────────────────────────────────────────
-# Mínimo de genes detectados por célula (quita células vacías)
-MIN_GENES <- 200
-
-# Máximo % de RNA mitocondrial (quita células muertas)
-# Plantas: usar ~5 | Humano/ratón: usar ~20
-MAX_MITO <- 5
+MIN_GENES <- 200   # Mínimo de genes por célula. Quita células vacías.
+MAX_MITO  <- 5     # % máximo de RNA mitocondrial. Quita células muertas.
+                   # Plantas: ~5 | Humano/ratón: ~20
 
 # ── Organismo ─────────────────────────────────────────────────────────────────
-# Arabidopsis → MT_PATRON = "^ATMG" | CP_PATRON = "^ATCG"
-# Humano      → MT_PATRON = "^MT-"  | CP_PATRON = NULL
-# Ratón       → MT_PATRON = "^mt-"  | CP_PATRON = NULL
+# Arabidopsis: MT_PATRON = "^ATMG"  y  CP_PATRON = "^ATCG"
+# Humano:      MT_PATRON = "^MT-"   y  CP_PATRON = NULL
+# Ratón:       MT_PATRON = "^mt-"   y  CP_PATRON = NULL
 MT_PATRON <- "^ATMG"
 CP_PATRON <- "^ATCG"
 
 # ── Clustering ────────────────────────────────────────────────────────────────
-# Número entre 0.1 y 1.5 — más alto = más clusters
-# Empieza con 0.3 y ajusta según los resultados
+# Entre 0.1 y 1.5. Más alto = más clusters. Empieza con 0.3.
 RESOLUCION <- 0.3
 
 # ── Expresión diferencial ─────────────────────────────────────────────────────
-# ¿Qué condición comparar contra qué?
 CONDICION_TRATAMIENTO <- "tratamiento"
 CONDICION_CONTROL     <- "control"
+UMBRAL_LFC            <- 1     # Cambio mínimo (log2). 1 = el doble de expresión.
+UMBRAL_PADJ           <- 0.05  # Significancia estadística.
 
-# Umbral de cambio (log2). 1 = doble de expresión. Recomendado: 1
-UMBRAL_LFC  <- 1
-
-# Umbral de significancia estadística. Recomendado: 0.05
-UMBRAL_PADJ <- 0.05
+# ── Organismo para GO ─────────────────────────────────────────────────────────
+# Arabidopsis: ORG_DB = "org.At.tair.db"  y  KEY_TYPE = "TAIR"
+# Humano:      ORG_DB = "org.Hs.eg.db"   y  KEY_TYPE = "ENSEMBL"
+# Ratón:       ORG_DB = "org.Mm.eg.db"   y  KEY_TYPE = "ENSEMBL"
+ORG_DB   <- "org.At.tair.db"
+KEY_TYPE <- "TAIR"
 ```
 
 ---
 
-# 1. Cargar librerías
+# 1. Librerías
 
 ```{r librerias}
 library(Seurat)
 library(harmony)
 library(ggplot2)
-library(dplyr)
 library(patchwork)
 library(DESeq2)
 library(clusterProfiler)
-library(org.At.tair.db)   # Cambia a org.Hs.eg.db (humano) o org.Mm.eg.db (ratón)
+library(ORG_DB, character.only = TRUE)
 
-# Crear carpeta de resultados si no existe
 dir.create(CARPETA_RESULTADOS, showWarnings = FALSE, recursive = TRUE)
-
 cat("✓ Librerías cargadas\n")
 ```
 
@@ -121,88 +99,63 @@ cat("✓ Librerías cargadas\n")
 ```{r cargar_muestras}
 lista_muestras <- list()
 
-for (muestra in MUESTRAS) {
+for (m in MUESTRAS) {
 
-  ruta <- file.path(CARPETA_DATOS, muestra$archivo)
-  cat("Cargando:", muestra$nombre, "\n")
+  cat("Cargando:", m$nombre, "\n")
 
-  # Leer archivo
-  obj <- Read10X_h5(ruta)
-  obj <- CreateSeuratObject(counts = obj, project = muestra$nombre)
+  obj <- Read10X_h5(file.path(CARPETA_DATOS, m$archivo))
+  obj <- CreateSeuratObject(counts = obj, project = m$nombre)
 
-  # Calcular % mitocondrial
   obj[["percent.mt"]] <- PercentageFeatureSet(obj, pattern = MT_PATRON)
 
-  # Calcular % cloroplástico (solo plantas)
-  if (!is.null(CP_PATRON)) {
+  if (!is.null(CP_PATRON))
     obj[["percent.cp"]] <- PercentageFeatureSet(obj, pattern = CP_PATRON)
-  }
 
-  # Agregar condición
-  obj$condicion <- muestra$condicion
-
-  # Filtrar células de mala calidad
-  if (!is.null(CP_PATRON)) {
-    obj <- subset(obj, subset = nFeature_RNA >= MIN_GENES & percent.mt <= MAX_MITO)
-  } else {
-    obj <- subset(obj, subset = nFeature_RNA >= MIN_GENES & percent.mt <= MAX_MITO)
-  }
+  obj$condicion <- m$condicion
+  obj <- subset(obj, subset = nFeature_RNA >= MIN_GENES & percent.mt <= MAX_MITO)
 
   cat("  →", ncol(obj), "células después del filtro\n")
-  lista_muestras[[muestra$nombre]] <- obj
+  lista_muestras[[m$nombre]] <- obj
 }
-
-cat("\n✓ Todas las muestras cargadas\n")
 ```
 
 ```{r qc_plot}
-# Ver distribución de calidad de las muestras
-plots <- lapply(names(lista_muestras), function(nombre) {
-  obj <- lista_muestras[[nombre]]
-  VlnPlot(obj, features = c("nFeature_RNA", "percent.mt"),
-          ncol = 2, pt.size = 0) + plot_annotation(title = nombre)
-})
-wrap_plots(plots, ncol = 1)
+# Ver distribución de calidad de cada muestra
+for (nombre in names(lista_muestras)) {
+  p <- VlnPlot(lista_muestras[[nombre]],
+               features = c("nFeature_RNA", "percent.mt"),
+               ncol = 2, pt.size = 0) +
+       plot_annotation(title = nombre)
+  print(p)
+}
 ```
 
 ---
 
-# 3. Unir muestras y normalizar
+# 3. Unir, normalizar e integrar con Harmony
 
-```{r unir_normalizar}
-# Unir todas las muestras en un solo objeto
-datos <- merge(lista_muestras[[1]],
-               y = lista_muestras[-1],
+```{r procesar}
+# Unir todas las muestras
+datos <- merge(lista_muestras[[1]], y = lista_muestras[-1],
                add.cell.ids = names(lista_muestras))
 
-# Normalizar y encontrar genes variables
+# Normalización estándar
 datos <- NormalizeData(datos)
 datos <- FindVariableFeatures(datos, nfeatures = 2000)
 datos <- ScaleData(datos)
 datos <- RunPCA(datos, npcs = 30)
 
-cat("✓ Objeto combinado:", ncol(datos), "células,", nrow(datos), "genes\n")
-```
-
----
-
-# 4. Corregir efectos de batch con Harmony
-
-> Si tus muestras vienen de diferentes experimentos o días, Harmony las integra.
-
-```{r harmony}
+# Harmony corrige diferencias entre muestras (batch effect)
 datos <- RunHarmony(datos, group.by.vars = "orig.ident")
-
-# UMAP usando la corrección de Harmony
 datos <- RunUMAP(datos, reduction = "harmony", dims = 1:20)
 datos <- FindNeighbors(datos, reduction = "harmony", dims = 1:20)
 
-cat("✓ Integración con Harmony completada\n")
+cat("✓ Listo:", ncol(datos), "células\n")
 ```
 
 ---
 
-# 5. Clustering
+# 4. Clustering
 
 ```{r clustering}
 datos <- FindClusters(datos, resolution = RESOLUCION)
@@ -212,47 +165,36 @@ cat("✓ Clusters encontrados:", length(unique(datos$seurat_clusters)), "\n")
 
 ```{r umap_clusters}
 DimPlot(datos, reduction = "umap", label = TRUE, label.size = 5) +
-  ggtitle(paste("Clusters — Resolución:", RESOLUCION)) +
-  NoLegend()
+  ggtitle(paste("Clusters — Resolución:", RESOLUCION)) + NoLegend()
 ```
 
 ```{r umap_condicion}
-DimPlot(datos, reduction = "umap", group.by = "condicion",
-        cols = COLORES) +
+DimPlot(datos, reduction = "umap", group.by = "condicion", cols = COLORES) +
   ggtitle("Células por condición")
 ```
 
 ---
 
-# 6. Anotación de tipos celulares
+# 5. Anotación de tipos celulares
 
-> Aquí defines manualmente qué cluster corresponde a qué tipo celular,
-> basándote en los marcadores que conoces de la literatura.
+> Mira los UMAPs de abajo y luego asigna un tipo celular a cada número de cluster.
 
-```{r marcadores_conocidos}
-# Cambia estos genes por los marcadores que tú conoces
-# Formato: "gen" = "tipo celular"
-marcadores <- c(
-  "AT1G01010" = "Epidermis",
-  "AT2G03000" = "Cortex",
-  "AT3G05020" = "Endodermis"
-  # Agrega más aquí...
-)
+```{r ver_marcadores}
+# Escribe aquí los genes marcadores que conoces de la literatura
+# Formato: un vector con los nombres de los genes
+MIS_MARCADORES <- c("AT1G01010", "AT2G03000", "AT3G05020")
 
-# Ver expresión de tus marcadores en el UMAP
-FeaturePlot(datos, features = names(marcadores)[1:min(4, length(marcadores))],
-            ncol = 2)
+FeaturePlot(datos, features = MIS_MARCADORES, ncol = 2)
 ```
 
 ```{r asignar_tipos}
-# Después de revisar los UMAPs de arriba, asigna tipos celulares a clusters
-# Formato: "número_cluster" = "nombre_tipo_celular"
-# Ejemplo: si el cluster 0 es Epidermis, escribe "0" = "Epidermis"
+# Asigna un nombre a cada cluster según lo que viste arriba
+# "número de cluster" = "nombre del tipo celular"
 anotacion <- c(
-  "0" = "Tipo A",
-  "1" = "Tipo B",
-  "2" = "Tipo C"
-  # Continúa para todos tus clusters...
+  "0" = "Epidermis",
+  "1" = "Cortex",
+  "2" = "Endodermis"
+  # agrega una línea por cada cluster que tengas...
 )
 
 datos$tipo_celular <- anotacion[as.character(datos$seurat_clusters)]
@@ -264,148 +206,100 @@ DimPlot(datos, reduction = "umap", group.by = "tipo_celular",
 
 ---
 
-# 7. Expresión diferencial
-
-```{r pseudobulk}
-# Crear pseudo-réplicas para DESeq2
-set.seed(1807)
-datos$replica <- paste0(datos$condicion, "_rep",
-                         sample(1:3, ncol(datos), replace = TRUE))
-
-# Agregar conteos por réplica
-pseudobulk <- AggregateExpression(datos,
-                                   group.by = "replica",
-                                   return.seurat = FALSE)$RNA
-
-# Crear tabla de condiciones para DESeq2
-condicion_tabla <- data.frame(
-  replica   = colnames(pseudobulk),
-  condicion = sub("_rep.*", "", colnames(pseudobulk))
-)
-rownames(condicion_tabla) <- condicion_tabla$replica
-
-cat("✓ Pseudobulk creado:", nrow(pseudobulk), "genes x", ncol(pseudobulk), "réplicas\n")
-```
+# 6. Expresión diferencial (DESeq2)
 
 ```{r deseq2}
-# Correr DESeq2
-dds <- DESeqDataSetFromMatrix(
-  countData = round(pseudobulk),
-  colData   = condicion_tabla,
-  design    = ~ condicion
-)
+# Asignar pseudo-réplicas (necesarias para DESeq2)
+set.seed(1807)
+n_celulas  <- ncol(datos)
+datos$replica <- paste0(datos$condicion, "_rep", sample(1:3, n_celulas, replace = TRUE))
 
+# Agregar conteos por réplica
+pseudobulk <- AggregateExpression(datos, group.by = "replica",
+                                   return.seurat = FALSE)$RNA
+
+# Tabla de condiciones: extraer el nombre antes de "_rep"
+condiciones       <- gsub("_rep[0-9]+$", "", colnames(pseudobulk))
+info_muestras     <- data.frame(condicion = condiciones, row.names = colnames(pseudobulk))
+
+# Correr DESeq2
+dds <- DESeqDataSetFromMatrix(countData = round(pseudobulk),
+                               colData   = info_muestras,
+                               design    = ~ condicion)
 dds$condicion <- relevel(dds$condicion, ref = CONDICION_CONTROL)
 dds <- DESeq(dds)
 
-# Extraer resultados
-resultados <- results(dds,
-                       contrast = c("condicion",
-                                    CONDICION_TRATAMIENTO,
-                                    CONDICION_CONTROL))
-resultados <- as.data.frame(resultados)
-resultados$gen <- rownames(resultados)
+# Extraer y guardar resultados
+resultados      <- as.data.frame(results(dds, contrast = c("condicion",
+                                                             CONDICION_TRATAMIENTO,
+                                                             CONDICION_CONTROL)))
+resultados$gen  <- rownames(resultados)
 
-# Guardar
-write.csv(resultados,
-          file.path(CARPETA_RESULTADOS, "genes_diferenciales.csv"),
+write.csv(resultados, file.path(CARPETA_RESULTADOS, "genes_diferenciales.csv"),
           row.names = FALSE)
 
-# Resumen
+# Genes significativos
 sig <- subset(resultados, padj < UMBRAL_PADJ & abs(log2FoldChange) >= UMBRAL_LFC)
 cat("✓ Genes significativos:", nrow(sig),
-    "(↑", sum(sig$log2FoldChange > 0), "subidos |",
-    "↓", sum(sig$log2FoldChange < 0), "bajados)\n")
+    "— Subidos:", sum(sig$log2FoldChange > 0),
+    "| Bajados:", sum(sig$log2FoldChange < 0), "\n")
 ```
 
 ```{r volcano}
-# Volcano plot
 resultados$color <- "sin cambio"
-resultados$color[resultados$padj < UMBRAL_PADJ & resultados$log2FoldChange >= UMBRAL_LFC]  <- "subido"
+resultados$color[resultados$padj < UMBRAL_PADJ & resultados$log2FoldChange >=  UMBRAL_LFC] <- "subido"
 resultados$color[resultados$padj < UMBRAL_PADJ & resultados$log2FoldChange <= -UMBRAL_LFC] <- "bajado"
 
 ggplot(resultados, aes(x = log2FoldChange, y = -log10(padj), color = color)) +
   geom_point(alpha = 0.6, size = 1.5) +
-  scale_color_manual(values = c("subido" = "#E84A5F",
-                                "bajado" = "#4A90D9",
+  scale_color_manual(values = c("subido" = "#E84A5F", "bajado" = "#4A90D9",
                                 "sin cambio" = "grey70")) +
   geom_vline(xintercept = c(-UMBRAL_LFC, UMBRAL_LFC), linetype = "dashed") +
   geom_hline(yintercept = -log10(UMBRAL_PADJ), linetype = "dashed") +
-  labs(title = paste("Volcano:", CONDICION_TRATAMIENTO, "vs", CONDICION_CONTROL),
+  labs(title = paste(CONDICION_TRATAMIENTO, "vs", CONDICION_CONTROL),
        x = "log2 Fold Change", y = "-log10(FDR)", color = "") +
   theme_classic()
 ```
 
 ---
 
-# 8. Enriquecimiento GO
+# 7. Enriquecimiento GO
 
 ```{r go}
-# Genes subidos y bajados
-genes_subidos <- sig$gen[sig$log2FoldChange > 0]
-genes_bajados <- sig$gen[sig$log2FoldChange < 0]
-universo      <- resultados$gen   # todos los genes como fondo
+org_db    <- get(ORG_DB)
+universo  <- resultados$gen
 
-# GO — Biological Process (BP)
-# Cambia org.At.tair.db por tu organismo y "TAIR" por "ENSEMBL" si es humano/ratón
-go_subidos <- enrichGO(
-  gene          = genes_subidos,
-  universe      = universo,
-  OrgDb         = org.At.tair.db,
-  keyType       = "TAIR",
-  ont           = "BP",
-  pAdjustMethod = "BH",
-  qvalueCutoff  = 0.05,
-  readable      = TRUE
-)
+go_subidos <- enrichGO(gene = sig$gen[sig$log2FoldChange > 0], universe = universo,
+                        OrgDb = org_db, keyType = KEY_TYPE, ont = "BP",
+                        pAdjustMethod = "BH", qvalueCutoff = 0.05, readable = TRUE)
 
-go_bajados <- enrichGO(
-  gene          = genes_bajados,
-  universe      = universo,
-  OrgDb         = org.At.tair.db,
-  keyType       = "TAIR",
-  ont           = "BP",
-  pAdjustMethod = "BH",
-  qvalueCutoff  = 0.05,
-  readable      = TRUE
-)
+go_bajados <- enrichGO(gene = sig$gen[sig$log2FoldChange < 0], universe = universo,
+                        OrgDb = org_db, keyType = KEY_TYPE, ont = "BP",
+                        pAdjustMethod = "BH", qvalueCutoff = 0.05, readable = TRUE)
 
-# Guardar tablas
-if (!is.null(go_subidos)) {
-  write.csv(as.data.frame(go_subidos),
-            file.path(CARPETA_RESULTADOS, "GO_subidos.csv"), row.names = FALSE)
-}
-if (!is.null(go_bajados)) {
-  write.csv(as.data.frame(go_bajados),
-            file.path(CARPETA_RESULTADOS, "GO_bajados.csv"), row.names = FALSE)
-}
+write.csv(as.data.frame(go_subidos), file.path(CARPETA_RESULTADOS, "GO_subidos.csv"), row.names = FALSE)
+write.csv(as.data.frame(go_bajados), file.path(CARPETA_RESULTADOS, "GO_bajados.csv"), row.names = FALSE)
 
 cat("✓ GO completado\n")
 ```
 
 ```{r go_plots}
-# Gráficos de los top términos GO
-if (!is.null(go_subidos) && nrow(as.data.frame(go_subidos)) > 0) {
-  print(dotplot(go_subidos, showCategory = 15, title = "GO Subidos"))
-}
-
-if (!is.null(go_bajados) && nrow(as.data.frame(go_bajados)) > 0) {
-  print(dotplot(go_bajados, showCategory = 15, title = "GO Bajados"))
-}
+if (nrow(as.data.frame(go_subidos)) > 0) dotplot(go_subidos, showCategory = 15, title = "GO — Genes subidos")
+if (nrow(as.data.frame(go_bajados)) > 0) dotplot(go_bajados, showCategory = 15, title = "GO — Genes bajados")
 ```
 
 ---
 
-# 9. Guardar objeto final
+# 8. Guardar
 
 ```{r guardar}
 saveRDS(datos, file.path(CARPETA_RESULTADOS, "objeto_final.rds"))
-cat("✓ Objeto guardado en:", file.path(CARPETA_RESULTADOS, "objeto_final.rds"), "\n")
-cat("\n══════════════════════════════════\n")
+
+cat("══════════════════════════\n")
 cat("  PIPELINE COMPLETADO\n")
-cat("══════════════════════════════════\n")
-cat("  Células totales: ", ncol(datos), "\n")
-cat("  Clusters:        ", length(unique(datos$seurat_clusters)), "\n")
-cat("  Genes DE:        ", nrow(sig), "\n")
-cat("══════════════════════════════════\n")
+cat("══════════════════════════\n")
+cat("  Células: ", ncol(datos), "\n")
+cat("  Clusters:", length(unique(datos$seurat_clusters)), "\n")
+cat("  Genes DE:", nrow(sig), "\n")
+cat("══════════════════════════\n")
 ```
