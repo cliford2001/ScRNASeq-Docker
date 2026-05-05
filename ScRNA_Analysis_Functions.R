@@ -2804,3 +2804,47 @@ load_seurat_samples <- function(samples, DATA_DIR, USE_CELLBENDER, mt_pattern, c
   return(seurat_list)
 }
 
+
+
+# =============================================================================
+# CELL-TYPE SUBSETTING
+# =============================================================================
+
+#' Create Seurat subsets for each cell type
+#'
+#' @param seurat_obj Seurat object with cell-type annotations
+#' @param annot_col Metadata column name containing cell-type labels
+#'
+#' @return Named list of Seurat subsets (one per cell type), with sanitized names
+#'
+#' @details
+#' Cell-type names are sanitised (special characters replaced with "_") so they
+#' can be used safely as list names and output filenames.
+#'
+#' @export
+create_cell_type_subsets <- function(seurat_obj, annot_col = "celltype_reference_curated") {
+  
+  # Get unique cell types (excluding NA)
+  cell_types <- sort(unique(na.omit(seurat_obj@meta.data[[annot_col]])))
+  
+  # Create subsets and sanitise names
+  subsets <- setNames(
+    lapply(cell_types, function(tipo) {
+      subset(seurat_obj,
+             cells = colnames(seurat_obj)[seurat_obj@meta.data[[annot_col]] == tipo])
+    }),
+    gsub("[^[:alnum:]_]", "_", cell_types)
+  )
+  
+  # Print summary
+  cell_counts <- setNames(
+    vapply(subsets, function(x) as.integer(ncol(x)), integer(1)),
+    names(subsets)
+  )
+  
+  message("Cell-type subsets created:")
+  print(cell_counts)
+  
+  return(subsets)
+}
+

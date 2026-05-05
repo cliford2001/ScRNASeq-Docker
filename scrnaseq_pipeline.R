@@ -629,19 +629,8 @@ pseudobulk_annot_col <- "celltype_reference_curated"
 
 output_dir <- dir_09
 
-cell_types <- sort(unique(na.omit(pbmc_harmony@meta.data[[pseudobulk_annot_col]])))
-
-celular_subsets <- setNames(
-  lapply(cell_types, function(tipo) {
-    subset(pbmc_harmony,
-           cells = colnames(pbmc_harmony)[pbmc_harmony@meta.data[[pseudobulk_annot_col]] == tipo])
-  }),
-  gsub("[^[:alnum:]_]", "_", cell_types)
-)
-
-message("Cell-type subsets created:")
-print(setNames(vapply(celular_subsets, function(x) as.integer(ncol(x)), integer(1)),
-               names(celular_subsets)))
+# Create cell-type subsets for pseudobulk analysis
+celular_subsets <- create_cell_type_subsets(pbmc_harmony, annot_col = pseudobulk_annot_col)
 
 
 # =============================================================================
