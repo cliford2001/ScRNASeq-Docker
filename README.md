@@ -4,6 +4,38 @@ This repository contains the pipeline helper scripts used in the **Methods in Mo
 
 ---
 
+## Quick Start with Docker
+
+A pre-built Docker image with all dependencies (R 4.5, Python 3.12, Seurat, scanpy, CellRanger 9.0.1, and all required packages) is available on Docker Hub.
+
+### Pull the image
+
+```bash
+docker pull matigara/scrnaseq:latest
+```
+
+### Run interactively (R console)
+
+```bash
+docker run -it -v /path/to/your/data:/workspace matigara/scrnaseq:latest R
+```
+
+### Run interactively (Python console)
+
+```bash
+docker run -it -v /path/to/your/data:/workspace matigara/scrnaseq:latest python3
+```
+
+### Run a bash shell
+
+```bash
+docker run -it -v /path/to/your/data:/workspace matigara/scrnaseq:latest /bin/bash
+```
+
+**Note:** Replace `/path/to/your/data` with your local data directory path. Inside the container, it will be available at `/workspace`.
+
+---
+
 ## Repository files
 
 | File | Purpose |
