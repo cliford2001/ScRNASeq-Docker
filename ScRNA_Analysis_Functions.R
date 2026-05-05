@@ -2762,3 +2762,45 @@ plot_pipeline_workflow <- function(outfile) {
 # =============================================================================
 # END OF FUNCTIONS
 # =============================================================================
+
+
+# =============================================================================
+# DATA LOADING
+# =============================================================================
+
+#' Load Seurat objects from samples (CellBender or CellRanger)
+#'
+#' @param samples List of sample configurations (file, label, condition)
+#' @param DATA_DIR Root data directory path
+#' @param USE_CELLBENDER Logical; if TRUE load CellBender HDF5, if FALSE load CellRanger
+#' @param mt_pattern Regex pattern for mitochondrial genes (e.g., "^ATMG" for Arabidopsis)
+#' @param cp_pattern Regex pattern for chloroplast genes (e.g., "^ATCG" for Arabidopsis)
+#'
+#' @return Named list of Seurat objects with QC metrics (percent.mt, percent.cp)
+#'
+#' @export
+load_seurat_samples <- function(samples, DATA_DIR, USE_CELLBENDER, mt_pattern, cp_pattern) {
+  
+  if (USE_CELLBENDER) {
+    # Load CellBender-filtered HDF5 files
+    seurat_list <- lapply(samples, load_sample,
+                          mt_pattern = mt_pattern,
+                          cp_pattern = cp_pattern)
+  } else {
+    # Load CellRanger filtered_feature_bc_matrix directories
+    seurat_list <- lapply(samples, function(s) {
+      mat <- Read10X(data.dir = file.path(DATA_DIR, s$file))
+      obj <- CreateSeuratObject(counts = mat, project = s$label,
+                                min.cells = 3, min.features = 200)
+      obj$condition <- s$condition
+      obj[["percent.mt"]] <- PercentageFeatureSet(obj, pattern = mt_pattern)
+      if (!is.null(cp_pattern))
+        obj[["percent.cp"]] <- PercentageFeatureSet(obj, pattern = cp_pattern)
+      obj
+    })
+  }
+  
+  names(seurat_list) <- sapply(samples, `[[`, "label")
+  return(seurat_list)
+}
+

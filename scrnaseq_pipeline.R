@@ -80,14 +80,6 @@ colors <- c(
   "5N_R1"   = "#8da0cb", "5N_R2"   = "#8da0cb"
 )
 
-# ── Organism-specific gene patterns ───────────────────────────────────────────
-# Define mitochondrial (mt) and chloroplast (cp) gene patterns for your organism
-# These are used throughout the pipeline for QC filtering
-mt_pattern <- "^ATMG"  # Arabidopsis mitochondrial genes
-cp_pattern <- "^ATCG"  # Arabidopsis chloroplast genes
-# For other organisms, use:
-#   Human: mt_pattern <- "^MT-", cp_pattern <- NULL
-#   Mouse: mt_pattern <- "^mt-", cp_pattern <- NULL
 
 
 # =============================================================================
@@ -140,26 +132,22 @@ plot_pipeline_workflow(file.path(dir_00, "pipeline_workflow.pdf"))
 # └─────────────────────────────────────────────────────────────────────────────
 output_dir <- dir_01
 
-if (USE_CELLBENDER) {
-  # Load CellBender-filtered HDF5 files (recommended)
-  seurat_list_raw <- lapply(samples, load_sample,
-                            mt_pattern = mt_pattern,
-                            cp_pattern = cp_pattern)
-} else {
-  # Load directly from CellRanger filtered_feature_bc_matrix/ directories.
-  # Use this path if you skipped the CellBender step.
-  seurat_list_raw <- lapply(samples, function(s) {
-    mat <- Read10X(data.dir = file.path(DATA_DIR, s$file))
-    obj <- CreateSeuratObject(counts = mat, project = s$label,
-                              min.cells = 3, min.features = 200)
-    obj$condition             <- s$condition
-    obj[["percent.mt"]]       <- PercentageFeatureSet(obj, pattern = mt_pattern)
-    if (!is.null(cp_pattern))
-      obj[["percent.cp"]]     <- PercentageFeatureSet(obj, pattern = cp_pattern)
-    obj
-  })
-}
-names(seurat_list_raw) <- sapply(samples, `[[`, "label")
+# ── Organism-specific gene patterns ───────────────────────────────────────────
+# Define mitochondrial (mt) and chloroplast (cp) gene patterns for your organism
+# These are used throughout the pipeline for QC filtering
+mt_pattern <- "^ATMG"  # Arabidopsis mitochondrial genes
+cp_pattern <- "^ATCG"  # Arabidopsis chloroplast genes
+# For other organisms, use:
+#   Human: mt_pattern <- "^MT-", cp_pattern <- NULL
+#   Mouse: mt_pattern <- "^mt-", cp_pattern <- NULL
+
+
+# Load all samples using the helper function
+seurat_list_raw <- load_seurat_samples(samples = samples,
+                                       DATA_DIR = DATA_DIR,
+                                       USE_CELLBENDER = USE_CELLBENDER,
+                                       mt_pattern = mt_pattern,
+                                       cp_pattern = cp_pattern)
 
 plots_pre <- imap(seurat_list_raw, ~ plot_qc_violin_grid(.x, .y, colors[[.y]]))
 save_qc(plots_pre, "qc_prefilter.pdf")
