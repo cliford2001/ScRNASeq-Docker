@@ -690,47 +690,20 @@ comparaciones <- list(
 
 output_dir <- dir_10
 
-# ── Step 1: Create pseudobulk directory ──────────────────────────────────────
-pseudobulk_tables_dir <- file.path(dir_09, "pseudobulk_replicas")
-dir.create(pseudobulk_tables_dir, recursive = TRUE, showWarnings = FALSE)
-message("Pseudobulk directory: ", pseudobulk_tables_dir)
+# ┌─ SELECT WHICH CELL TYPES TO ANALYZE ────────────────────────────────────────
+#   NULL = analyze all cell types
+#   c("Epidermis", "Cortex") = analyze only these
+# └─────────────────────────────────────────────────────────────────────────────
+cell_types_to_analyze <- NULL  # Change to c("Epidermis", "Cortex") to filter
 
-# ── Step 2: Generate pseudobulk count tables ─────────────────────────────────
-message("
-[STEP 1/3] Generating pseudobulk count tables...")
-pseudobulk_list <- guardar_tablas_pseudobulk(
-  celular_subsets_replicados,
-  output_dir = pseudobulk_tables_dir
+# Run pseudobulk aggregation and DESeq2 analysis
+deseq2_results <- run_pseudobulk_deseq2_analysis(
+  cell_type_subsets_replicates = celular_subsets_replicados,
+  comparisons = comparaciones,
+  output_dir = output_dir,
+  cell_types = cell_types_to_analyze,
+  pseudobulk_dir = file.path(dir_09, "pseudobulk_replicas")
 )
-message("✓ Tables generated for: ", paste(names(pseudobulk_list), collapse = ", "))
-
-# ── Step 3: Create output directories for each comparison ────────────────────
-message("
-[STEP 2/3] Creating output directories...")
-for (tag in sapply(comparaciones, `[[`, "tag")) {
-  dir.create(file.path(output_dir, tag), recursive = TRUE, showWarnings = FALSE)
-  message("  ✓ ", tag)
-}
-
-# ── Step 4: Run DESeq2 for each cell type ────────────────────────────────────
-message("
-[STEP 3/3] Running DESeq2 for each cell type...")
-message("Contrasts: ", paste(sapply(comparaciones, `[[`, "tag"), collapse = " | "))
-
-for (tipo in names(pseudobulk_list)) {
-  message("
-  ► ", tipo)
-  correr_deseq2(
-    counts_mat = as.matrix(pseudobulk_list[[tipo]]),
-    comparaciones = comparaciones,
-    output_dir = output_dir,
-    tipo = tipo
-  )
-}
-
-message("
-✓✓✓ SECTION 16 COMPLETE ✓✓✓
-")
 
 
 # =============================================================================
