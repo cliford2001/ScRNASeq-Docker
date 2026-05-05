@@ -690,14 +690,47 @@ comparaciones <- list(
 
 output_dir <- dir_10
 
-# Run pseudobulk aggregation and DESeq2 analysis for all cell types
-# To process only specific cell types, add: cell_types = c("Epidermis", "Cortex")
-deseq2_results <- run_pseudobulk_deseq2_analysis(
-  cell_type_subsets_replicates = celular_subsets_replicados,
-  comparisons = comparaciones,
-  output_dir = output_dir,
-  pseudobulk_dir = file.path(dir_09, "pseudobulk_replicas")
+# ── Step 1: Create pseudobulk directory ──────────────────────────────────────
+pseudobulk_tables_dir <- file.path(dir_09, "pseudobulk_replicas")
+dir.create(pseudobulk_tables_dir, recursive = TRUE, showWarnings = FALSE)
+message("Pseudobulk directory: ", pseudobulk_tables_dir)
+
+# ── Step 2: Generate pseudobulk count tables ─────────────────────────────────
+message("
+[STEP 1/3] Generating pseudobulk count tables...")
+pseudobulk_list <- guardar_tablas_pseudobulk(
+  celular_subsets_replicados,
+  output_dir = pseudobulk_tables_dir
 )
+message("✓ Tables generated for: ", paste(names(pseudobulk_list), collapse = ", "))
+
+# ── Step 3: Create output directories for each comparison ────────────────────
+message("
+[STEP 2/3] Creating output directories...")
+for (tag in sapply(comparaciones, `[[`, "tag")) {
+  dir.create(file.path(output_dir, tag), recursive = TRUE, showWarnings = FALSE)
+  message("  ✓ ", tag)
+}
+
+# ── Step 4: Run DESeq2 for each cell type ────────────────────────────────────
+message("
+[STEP 3/3] Running DESeq2 for each cell type...")
+message("Contrasts: ", paste(sapply(comparaciones, `[[`, "tag"), collapse = " | "))
+
+for (tipo in names(pseudobulk_list)) {
+  message("
+  ► ", tipo)
+  correr_deseq2(
+    counts_mat = as.matrix(pseudobulk_list[[tipo]]),
+    comparaciones = comparaciones,
+    output_dir = output_dir,
+    tipo = tipo
+  )
+}
+
+message("
+✓✓✓ SECTION 16 COMPLETE ✓✓✓
+")
 
 
 # =============================================================================
