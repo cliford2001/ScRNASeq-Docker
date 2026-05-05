@@ -677,27 +677,41 @@ save_qc(list(p_wt, p_mut), "qc_violin_grid.pdf")
 
 ## Quick start
 
+### Option 1: Use Docker Hub (recommended)
+
+```bash
+# 1. Pull the pre-built image
+docker pull matigara/scrnaseq:latest
+
+# 2. Launch an interactive R session with your data directory mounted
+docker run -it -v /path/to/your/data:/workspace matigara/scrnaseq:latest R
+
+# 3. Inside R: load all dependencies and source the function library
+source("load_libraries.R")
+source("ScRNA_Analysis_Functions.R")
+
+# 4. Optionally source custom extensions and run the full pipeline
+source("custom_seurat.R")
+source("scrnaseq_pipeline.R")
+```
+
+### Option 2: Build locally
+
 ```bash
 # 1. Clone the repository
-git clone https://github.com/your-org/ScRNASeq-Docker.git
+git clone https://github.com/cliford2001/ScRNASeq-Docker.git
 cd ScRNASeq-Docker
 
-# 2. Build the Docker image (R + all dependencies pre-installed)
-docker build -t scrnaseq-docker .
+# 2. Build the Docker image (requires cellranger-9.0.1 in directory)
+docker build -t scrnaseq:local .
 
 # 3. Launch an interactive R session with the project directory mounted
 docker run --rm -it \
   -v "$(pwd)":/workspace \
   -w /workspace \
-  scrnaseq-docker R
+  scrnaseq:local R
 
-# 4. Inside R: load all dependencies then source the function library
-source("load_libraries.R")
-source("ScRNA_Analysis_Functions.R")
-
-# 5. Optionally source the custom Seurat extensions and run the full pipeline
-source("custom_seurat.R")
-source("scrnaseq_pipeline.R")
+# 4-5. Inside R: source libraries and run pipeline (same as Option 1)
 ```
 
 ---
