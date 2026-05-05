@@ -648,17 +648,10 @@ n_pseudoreps          <- 3
 
 output_dir <- dir_09
 
-celular_subsets_replicados <- Filter(
-  Negate(is.null),
-  lapply(celular_subsets,
-         asignar_pseudoreplicados,
-         condiciones = pseudobulk_conditions,
-         n_reps      = n_pseudoreps,
-         seed        = 1807)
-)
-
-message("Cell types retained for pseudobulk:")
-print(names(celular_subsets_replicados))
+# Assign pseudo-replicates (uses global random seed set in INITIALIZATION)
+celular_subsets_replicados <- assign_pseudoreplicates_batch(celular_subsets,
+                                                             pseudobulk_conditions = pseudobulk_conditions,
+                                                             n_pseudoreps = n_pseudoreps)
 
 message("Cells per curated cell type:")
 print(table(pbmc_harmony@meta.data[[pseudobulk_annot_col]]))

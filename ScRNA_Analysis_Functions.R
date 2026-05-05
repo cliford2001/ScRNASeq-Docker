@@ -2848,3 +2848,41 @@ create_cell_type_subsets <- function(seurat_obj, annot_col = "celltype_reference
   return(subsets)
 }
 
+
+
+# =============================================================================
+# PSEUDOBULK PREPARATION
+# =============================================================================
+
+#' Assign pseudo-replicates to cell-type subsets
+#'
+#' @param cell_type_subsets Named list of Seurat objects (one per cell type)
+#' @param pseudobulk_conditions Optional character vector of conditions to retain (NULL = all)
+#' @param n_pseudoreps Number of pseudo-replicates per condition
+#'
+#' @return Named list of Seurat subsets with pseudo-replicate assignments,
+#'         filtered to include only subsets with ≥2 conditions
+#'
+#' @details
+#' The random seed must be set globally before calling this function (e.g., set.seed(1807))
+#' to ensure reproducibility.
+#'
+#' @export
+assign_pseudoreplicates_batch <- function(cell_type_subsets,
+                                          pseudobulk_conditions = NULL,
+                                          n_pseudoreps = 3) {
+  
+  subsets_with_reps <- Filter(
+    Negate(is.null),
+    lapply(cell_type_subsets,
+           asignar_pseudoreplicados,
+           condiciones = pseudobulk_conditions,
+           n_reps = n_pseudoreps)
+  )
+  
+  message("Cell types retained for pseudobulk (≥2 conditions):")
+  print(names(subsets_with_reps))
+  
+  return(subsets_with_reps)
+}
+
