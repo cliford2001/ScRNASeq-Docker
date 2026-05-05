@@ -2886,3 +2886,74 @@ assign_pseudoreplicates_batch <- function(cell_type_subsets,
   return(subsets_with_reps)
 }
 
+
+
+# =============================================================================
+# PSEUDOBULK AND DESEQ2 ANALYSIS
+# =============================================================================
+
+#' Run pseudobulk aggregation and DESeq2 analysis
+#'
+#' @param cell_type_subsets_replicates Named list of Seurat objects with pseudo-replicate assignments
+#' @param comparisons List of contrast definitions, each with:
+#'                    - conds: character vector c("reference", "treatment")
+#'                    - tag: character label for output folder
+#' @param output_dir Base output directory for results
+#' @param cell_types Optional character vector of specific cell types to process
+#'                   (NULL = process all)
+#' @param pseudobulk_dir Directory to save pseudobulk count tables
+#'
+#' @return Named list of DESeq2 results per cell type
+#'
+#' @export
+run_pseudobulk_deseq2_analysis <- function(cell_type_subsets_replicates,
+                                           comparisons,
+                                           output_dir,
+                                           cell_types = NULL,
+                                           pseudobulk_dir = NULL) {
+  
+  # Set default pseudobulk directory
+  if (is.null(pseudobulk_dir))
+    pseudobulk_dir <- file.path(dirname(output_dir), "pseudobulk_replicas")
+  
+  # Create output directories
+  dir.create(pseudobulk_dir, recursive = TRUE, showWarnings = FALSE)
+  for (tag in sapply(comparisons, `[[`, "tag")) {
+    dir.create(file.path(output_dir, tag), recursive = TRUE, showWarnings = FALSE)
+  }
+  
+  # If cell_types not specified, use all available
+  if (is.null(cell_types))
+    cell_types <- names(cell_type_subsets_replicates)
+  
+  # Generate pseudobulk count tables
+  message("Generating pseudobulk count tables...")
+  pseudobulk_list <- guardar_tablas_pseudobulk(
+    cell_type_subsets_replicates,
+    output_dir = pseudobulk_dir
+  )
+  
+  # Filter to requested cell types
+  pseudobulk_list <- pseudobulk_list[names(pseudobulk_list) %in% cell_types]
+  
+  message("Processing ", length(pseudobulk_list), " cell types:")
+  print(names(pseudobulk_list))
+  
+  # Run DESeq2 for each cell type
+  deseq2_results <- setNames(
+    lapply(names(pseudobulk_list), function(tipo) {
+      message("  Running DESeq2 for: ", tipo)
+      correr_deseq2(
+        counts_mat = as.matrix(pseudobulk_list[[tipo]]),
+        comparaciones = comparisons,
+        output_dir = output_dir,
+        tipo = tipo
+      )
+    }),
+    names(pseudobulk_list)
+  )
+  
+  message("✓ DESeq2 analysis complete")
+  return(deseq2_results)
+}
+

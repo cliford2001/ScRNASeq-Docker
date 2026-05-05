@@ -649,11 +649,10 @@ celular_subsets <- create_cell_type_subsets(pbmc_harmony, annot_col = pseudobulk
 # └─────────────────────────────────────────────────────────────────────────────
 
 # Use all conditions
-pseudobulk_conditions <- NULL
-
+#pseudobulk_conditions <- NULL
 # Uncomment below to use only specific conditions:
 # pseudobulk_conditions <- c("0N", "0.5N")      # Compare control vs low nitrogen
-# pseudobulk_conditions <- c("0.5N", "5N")      # Compare nitrogen treatments
+#pseudobulk_conditions <- c("0.5N", "5N")      # Compare nitrogen treatments
 # pseudobulk_conditions <- "5N"                  # Single condition (rarely useful)
 
 n_pseudoreps <- 3
@@ -669,8 +668,8 @@ message("Cells per curated cell type:")
 print(table(pbmc_harmony@meta.data[[pseudobulk_annot_col]]))
 
 # Example QC checks for one subset:
-# table(celular_subsets_replicados[[1]]$replicate)
-# table(celular_subsets_replicados[[1]]$orig.ident)
+table(celular_subsets_replicados$Pavement_Cell$replicate)
+table(celular_subsets_replicados$Pavement_Cell$orig.ident)
 
 
 # =============================================================================
@@ -691,27 +690,14 @@ comparaciones <- list(
 
 output_dir <- dir_10
 
-pseudobulk_tables_dir <- file.path(dir_09, "pseudobulk_replicas")
-dir.create(pseudobulk_tables_dir, recursive = TRUE, showWarnings = FALSE)
-
-pseudobulk_list <- guardar_tablas_pseudobulk(
-  celular_subsets_replicados,
-  output_dir = pseudobulk_tables_dir
+# Run pseudobulk aggregation and DESeq2 analysis for all cell types
+# To process only specific cell types, add: cell_types = c("Epidermis", "Cortex")
+deseq2_results <- run_pseudobulk_deseq2_analysis(
+  cell_type_subsets_replicates = celular_subsets_replicados,
+  comparisons = comparaciones,
+  output_dir = output_dir,
+  pseudobulk_dir = file.path(dir_09, "pseudobulk_replicas")
 )
-
-for (tag in sapply(comparaciones, `[[`, "tag")) {
-  dir.create(file.path(dir_10, tag), recursive = TRUE, showWarnings = FALSE)
-}
-
-for (tipo in names(pseudobulk_list)) {
-  message("Running DESeq2 for cell type: ", tipo)
-  correr_deseq2(
-    counts_mat    = as.matrix(pseudobulk_list[[tipo]]),
-    comparaciones = comparaciones,
-    output_dir    = dir_10,
-    tipo          = tipo
-  )
-}
 
 
 # =============================================================================
