@@ -2962,3 +2962,74 @@ run_pseudobulk_deseq2_analysis <- function(cell_type_subsets_replicates,
   return(deseq2_results)
 }
 
+
+
+# =============================================================================
+# GO ENRICHMENT (SIMPLE)
+# =============================================================================
+
+#' Simple GO enrichment analysis
+#'
+#' @param diff_table Path to differential expression table (gene IDs in first column)
+#' @param output_dir Output directory for results
+#' @param orgdb OrgDb object for the organism (e.g., org.At.tair.db)
+#' @param keytype Key type matching gene IDs (e.g., "TAIR" for Arabidopsis)
+#' @param go_space Ontology namespace: "BP" (biological process), "MF" (molecular function), "CC" (cellular component)
+#' @param padj_cutoff Adjusted p-value threshold
+#'
+#' @return Enrichment results with GO terms, counts, and visualizations
+#'
+#' @export
+run_simple_go_enrichment <- function(diff_table,
+                                     output_dir,
+                                     orgdb,
+                                     keytype = "TAIR",
+                                     go_space = "BP",
+                                     padj_cutoff = 0.05) {
+  
+  dir.create(output_dir, recursive = TRUE, showWarnings = FALSE)
+  
+  # Read table
+  if (is.character(diff_table)) {
+    tabla_df <- read.table(diff_table, header = TRUE, sep = "	", check.names = FALSE)
+  } else {
+    tabla_df <- as.data.frame(diff_table, check.names = FALSE)
+  }
+  
+  gene_col <- colnames(tabla_df)[1]
+  genes_all <- tabla_df[[gene_col]]
+  
+  # Get universe of genes
+  universo <- keys(orgdb, keytype = keytype)
+  
+  # Run enrichment
+  message("Running GO enrichment (", go_space, ")...")
+  go_result <- enrichGO(
+    gene = genes_all,
+    universe = universo,
+    OrgDb = orgdb,
+    keyType = keytype,
+    ont = go_space,
+    pvalueCutoff = padj_cutoff,
+    pAdjustMethod = "BH",
+    readable = TRUE
+  )
+  
+  message("✓ Found ", nrow(go_result@result), " significant GO terms")
+  
+  # Save results
+  write.table(go_result@result,
+              file = file.path(output_dir, paste0("GO_", go_space, ".tsv")),
+              sep = "	", quote = FALSE, row.names = FALSE)
+  
+  # Generate plots
+  tryCatch({
+    pdf(file.path(output_dir, paste0("GO_", go_space, "_bubble.pdf")), width = 12, height = 8)
+    print(dotplot(go_result, showCategory = 20))
+    dev.off()
+    message("✓ Bubble plot saved")
+  }, error = function(e) message("Could not generate bubble plot: ", e$message))
+  
+  return(go_result)
+}
+
