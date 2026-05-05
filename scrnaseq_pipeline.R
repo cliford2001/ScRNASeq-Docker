@@ -641,10 +641,22 @@ celular_subsets <- create_cell_type_subsets(pbmc_harmony, annot_col = pseudobulk
 #
 # ┌─ PSEUDOBULK PARAMETERS ──────────────────────────────────────────────────────
 #   pseudobulk_conditions : optional condition subset to retain (NULL = all)
-#   n_pseudoreps          : number of pseudo-replicates per condition
+#                           Examples:
+#                             NULL              → use all conditions (0N, 0.5N, 5N)
+#                             c("0N", "0.5N")   → use only 0N and 0.5N
+#                             "5N"              → use only 5N
+#   n_pseudoreps          : number of pseudo-replicates per condition (per cell type)
 # └─────────────────────────────────────────────────────────────────────────────
+
+# Use all conditions
 pseudobulk_conditions <- NULL
-n_pseudoreps          <- 3
+
+# Uncomment below to use only specific conditions:
+# pseudobulk_conditions <- c("0N", "0.5N")      # Compare control vs low nitrogen
+# pseudobulk_conditions <- c("0.5N", "5N")      # Compare nitrogen treatments
+# pseudobulk_conditions <- "5N"                  # Single condition (rarely useful)
+
+n_pseudoreps <- 3
 
 output_dir <- dir_09
 
