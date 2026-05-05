@@ -757,50 +757,37 @@ diff_tables <- build_differential_tables(
 
 
 # =============================================================================
-# SECTION 19 — GO ENRICHMENT AND BALLOON PLOTS
+# SECTION 19 — GO ENRICHMENT (SIMPLE)
 # =============================================================================
-# Runs GO enrichment from the combined differential-expression table, derives
-# the gene universe automatically from OrgDb, and exports full/simplified plus
-# GO-level-pruned balloon plots.
+# Simple Gene Ontology enrichment analysis for the selected contrast.
+# Generates a TSV table of significant GO terms and a bubble plot.
 #
 # ┌─ GO PARAMETERS ──────────────────────────────────────────────────────────────
-#   go_tag            : contrast tag to analyse
-#   go_orgdb          : OrgDb object matching your organism
-#   go_keytype        : key type matching the gene IDs in the differential table
-#   go_space          : ontology namespace ("BP", "MF", or "CC")
-#   go_qvalue_cutoff  : q-value threshold for enrichGO
-#   go_pvalue_cutoff  : p-value threshold for enrichGO
-#   go_simplify_cutoff: similarity threshold for simplify()
-#   go_level          : GO level used for pruning
+#   go_tag      : contrast tag to analyse (usually same as diff_tag)
+#   go_space    : ontology namespace - "BP" (biological process), 
+#                 "MF" (molecular function), or "CC" (cellular component)
+#   padj_cutoff : adjusted p-value threshold for significance
 # └─────────────────────────────────────────────────────────────────────────────
-go_tag             <- diff_tag
-go_orgdb           <- org.At.tair.db
-go_keytype         <- "TAIR"
-go_space           <- "BP"
-go_qvalue_cutoff   <- 0.05
-go_pvalue_cutoff   <- 0.05
-go_simplify_cutoff <- 0.7
-go_level           <- 6
+go_tag      <- diff_tag
+go_space    <- "BP"          # Change to "MF" or "CC" if desired
+padj_cutoff <- 0.05
 
 output_dir <- dir_13
 
-go_results <- run_go_enrichment_suite(
-  diff_table      = file.path(dir_12, go_tag,
-                              paste0(diff_prefix, "_fc", lfc_cut, "_padj_",
-                                     gsub("\\.", "", as.character(padj_cut)), ".tsv")),
-  output_dir      = file.path(dir_13, go_tag),
-  orgdb           = go_orgdb,
-  keytype         = go_keytype,
-  espacio         = go_space,
-  qvalue_cutoff   = go_qvalue_cutoff,
-  pvalue_cutoff   = go_pvalue_cutoff,
-  simplify_cutoff = go_simplify_cutoff,
-  go_level        = go_level,
-  pdf_name        = paste0("GO_", go_tag, ".pdf")
+# Run simple GO enrichment
+go_results <- run_simple_go_enrichment(
+  diff_table = file.path(dir_12, go_tag,
+                         paste0(diff_prefix, "_fc", lfc_cut, "_padj_",
+                                gsub("\.", "", as.character(padj_cut)), ".tsv")),
+  output_dir = file.path(dir_13, go_tag),
+  orgdb = org.At.tair.db,
+  keytype = "TAIR",
+  go_space = go_space,
+  padj_cutoff = padj_cutoff
 )
 
+message("\n✓ GO enrichment results in: ", file.path(dir_13, go_tag))
 
-# =============================================================================
 # SECTION 20 — HEATMAP + CLUSTERS
 # =============================================================================
 # Builds a log2FC heatmap for one selected contrast and derives dynamic gene
