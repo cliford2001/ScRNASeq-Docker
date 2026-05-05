@@ -768,25 +768,19 @@ diff_tables <- build_differential_tables(
 #                 "MF" (molecular function), or "CC" (cellular component)
 #   padj_cutoff : adjusted p-value threshold for significance
 # └─────────────────────────────────────────────────────────────────────────────
-go_tag      <- diff_tag
-go_space    <- "BP"          # Change to "MF" or "CC" if desired
-padj_cutoff <- 0.05
-
-output_dir <- dir_13
-
 # Run simple GO enrichment
 go_results <- run_simple_go_enrichment(
-  diff_table = file.path(dir_12, go_tag,
+  diff_table = file.path(dir_12, diff_tag,
                          paste0(diff_prefix, "_fc", lfc_cut, "_padj_",
                                 gsub("\.", "", as.character(padj_cut)), ".tsv")),
-  output_dir = file.path(dir_13, go_tag),
+  output_dir = file.path(dir_13, diff_tag),
   orgdb = org.At.tair.db,
   keytype = "TAIR",
-  go_space = go_space,
-  padj_cutoff = padj_cutoff
+  go_space = "BP",          # Change to "MF" or "CC" if desired
+  padj_cutoff = 0.05
 )
 
-message("\n✓ GO enrichment results in: ", file.path(dir_13, go_tag))
+message("\n✓ GO enrichment results in: ", file.path(dir_13, diff_tag))
 
 # SECTION 20 — HEATMAP + CLUSTERS
 # =============================================================================
