@@ -54,6 +54,17 @@ USE_CELLBENDER <- FALSE
 #   file      — path to the input file or directory (relative to DATA_DIR)
 #   label     — unique name for this sample (appears in all plots)
 #   condition — experimental group this sample belongs to
+
+# ── OPTION 1: CellBender-filtered HDF5 files (USE_CELLBENDER = TRUE) ─────────
+# samples <- list(
+#   list(file = "cellbender/Sample_0N_cellbender_filtered.h5",      label = "0N",      condition = "0N"),
+#   list(file = "cellbender/Sample_05N_R1_cellbender_filtered.h5",  label = "0.5N_R1", condition = "0.5N"),
+#   list(file = "cellbender/Sample_05N_2_cellbender_filtered.h5",   label = "0.5N_R2", condition = "0.5N"),
+#   list(file = "cellbender/Sample_5N_R1_cellbender_filtered.h5",   label = "5N_R1",   condition = "5N"),
+#   list(file = "cellbender/Sample_5N_2_cellbender_filtered.h5",    label = "5N_R2",   condition = "5N")
+# )
+
+# ── OPTION 2: CellRanger filtered_feature_bc_matrix (USE_CELLBENDER = FALSE) ─
 samples <- list(
   list(file = "cellranger/Sample_0N/outs/filtered_feature_bc_matrix",      label = "0N",      condition = "0N"),
   list(file = "cellranger/Sample_05N/outs/filtered_feature_bc_matrix",     label = "0.5N_R1", condition = "0.5N"),
