@@ -2939,21 +2939,26 @@ run_pseudobulk_deseq2_analysis <- function(cell_type_subsets_replicates,
   message("Processing ", length(pseudobulk_list), " cell types:")
   print(names(pseudobulk_list))
   
-  # Run DESeq2 for each cell type
-  deseq2_results <- setNames(
-    lapply(names(pseudobulk_list), function(tipo) {
-      message("  Running DESeq2 for: ", tipo)
-      correr_deseq2(
-        counts_mat = as.matrix(pseudobulk_list[[tipo]]),
-        comparaciones = comparisons,
-        output_dir = output_dir,
-        tipo = tipo
-      )
-    }),
-    names(pseudobulk_list)
-  )
+  # Run DESeq2 for each cell type (shows all output)
+  deseq2_results <- list()
+  for (tipo in names(pseudobulk_list)) {
+    message("
+", strrep("─", 70))
+    message("DESeq2 analysis for cell type: ", tipo)
+    message(strrep("─", 70))
+    
+    deseq2_results[[tipo]] <- correr_deseq2(
+      counts_mat = as.matrix(pseudobulk_list[[tipo]]),
+      comparaciones = comparisons,
+      output_dir = output_dir,
+      tipo = tipo
+    )
+  }
   
-  message("✓ DESeq2 analysis complete")
+  message("
+", strrep("═", 70))
+  message("✓ DESeq2 analysis complete for all cell types")
+  message(strrep("═", 70))
   return(deseq2_results)
 }
 
