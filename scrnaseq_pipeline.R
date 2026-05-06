@@ -777,11 +777,13 @@ for (deseq2_file in deseq2_files) {
   if (length(sig_genes) > 0) {
     run_simple_go_enrichment(
       diff_table = data.frame(gene_id = sig_genes),
-      output_dir = file.path(dir_13, diff_tag, cell_type),
+      output_dir = file.path(dir_13, diff_tag),
       orgdb = org.At.tair.db,
       keytype = "TAIR",
       go_space = go_space,
-      padj_cutoff = padj_cutoff
+      padj_cutoff = padj_cutoff,
+      cell_type = cell_type,
+      contrast_tag = diff_tag
     )
   }
 }
