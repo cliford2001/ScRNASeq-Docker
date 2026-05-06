@@ -814,50 +814,27 @@ heatmap_results <- build_logfc_heatmap(
 
 
 # =============================================================================
-# SECTION 21 — COEXPRESSION OF DIFFERENTIAL GENES
+# SECTION 21 — GO ENRICHMENT PER CLUSTER
 # =============================================================================
-# Computes a rank-based gene coexpression network from the selected log2FC
-# matrix, derives TOM modules, and exports the TOM heatmap.
-#
-# ┌─ COEXPRESSION PARAMETERS ────────────────────────────────────────────────────
-#   coexp_network_power  : soft-threshold power for adjacency
-#   coexp_network_type   : "signed" or "unsigned"
-#   coexp_cor_method     : correlation method ("spearman" recommended here)
-# └─────────────────────────────────────────────────────────────────────────────
-coexp_network_power <- 6
-coexp_network_type  <- "signed"
-coexp_cor_method    <- "spearman"
+# Runs GO enrichment for each cluster identified in Section 20.
+# Uses the cluster assignments from heatmap_results.
 
-coexpression_results <- build_coexpression_modules(
-  Mz            = coexp_matrix,
-  output_dir    = output_dir,
-  min_genes     = coexp_min_genes,
-  deepSplit_val = coexp_deepSplit,
-  network_power = coexp_network_power,
-  network_type  = coexp_network_type,
-  cor_method    = coexp_cor_method,
-  tom_pdf       = paste0("TOM_", coexp_tag, ".pdf")
-)
+go_clusters_padj <- 0.05
 
+for (clust_id in unique(heatmap_results$cluster)) {
+  genes <- heatmap_results$gene_id[heatmap_results$cluster == clust_id]
 
-# =============================================================================
-# SECTION 22 — GO TERMS OF CLUSTERS
-# =============================================================================
-# Runs GO enrichment for the TOM-based gene clusters/modules detected in
-# Section 21.
-go_cluster_results <- run_go_for_gene_clusters(
-  assignments     = coexpression_results$module_assignments,
-  cluster_col     = "tom_module",
-  output_dir      = file.path(output_dir, "GO_clusters"),
-  orgdb           = go_orgdb,
-  keytype         = go_keytype,
-  espacio         = go_space,
-  qvalue_cutoff   = go_qvalue_cutoff,
-  pvalue_cutoff   = go_pvalue_cutoff,
-  simplify_cutoff = go_simplify_cutoff,
-  go_level        = go_level,
-  pdf_name        = paste0("GO_clusters_", coexp_tag, ".pdf")
-)
+  run_simple_go_enrichment(
+    diff_table   = data.frame(gene_id = genes),
+    output_dir   = file.path(dir_12, diff_tag, paste0("GO_clusters_", CLUSTER_METHOD)),
+    orgdb        = org.At.tair.db,
+    keytype      = "TAIR",
+    go_space     = "BP",
+    padj_cutoff  = go_clusters_padj,
+    cell_type    = as.character(clust_id),
+    contrast_tag = diff_tag
+  )
+}
 
 
 
