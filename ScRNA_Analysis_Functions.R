@@ -3016,6 +3016,11 @@ run_simple_go_enrichment <- function(diff_table,
     readable = TRUE
   )
 
+  # If no enrichment results, return early
+  if (is.null(go_result) || nrow(go_result@result) == 0) {
+    return(NULL)
+  }
+
   # Build filename prefix
   file_prefix <- "GO"
   if (!is.null(cell_type)) file_prefix <- paste0(file_prefix, "_", cell_type)
@@ -3036,7 +3041,7 @@ run_simple_go_enrichment <- function(diff_table,
     print(p)
     dev.off()
   }, error = function(e) message("Could not generate bubble plot: ", e$message))
-  
+
   return(go_result)
 }
 
