@@ -796,20 +796,24 @@ for (deseq2_file in deseq2_files) {
 
 heatmap_limits <- c(-5, 5)   # Color scale range
 
-# Build matrix
+# Build matrix — replace NA with 0 (gene not DE in that cell type = no change)
 mat <- as.matrix(diff_tables$logfc[, -1])
 rownames(mat) <- diff_tables$logfc$gene_id
 colnames(mat) <- gsub(paste0("_", diff_tag, "$"), "", colnames(mat))
+mat[is.na(mat)] <- 0
+
+# Hierarchical clustering of rows (ward.D2 + euclidean)
+hc_rows <- hclust(dist(mat, method = "euclidean"), method = "ward.D2")
 
 ht <- Heatmap(
   mat,
   name = "log2FC",
   col  = colorRamp2(c(heatmap_limits[1], 0, heatmap_limits[2]),
                     c("blue", "black", "yellow")),
-  na_col = "grey85",
 
-  cluster_rows    = FALSE,
+  cluster_rows    = hc_rows,
   cluster_columns = FALSE,
+  row_dend_width  = unit(3, "cm"),
 
   show_row_names    = FALSE,
   show_column_names = TRUE,
@@ -820,9 +824,9 @@ ht <- Heatmap(
   column_title_gp = gpar(fontsize = 16, fontface = "bold"),
 
   heatmap_legend_param = list(
-    title          = "log2FC",
-    title_gp       = gpar(fontsize = 12, fontface = "bold"),
-    legend_height  = unit(4, "cm")
+    title         = "log2FC",
+    title_gp      = gpar(fontsize = 12, fontface = "bold"),
+    legend_height = unit(4, "cm")
   )
 )
 
