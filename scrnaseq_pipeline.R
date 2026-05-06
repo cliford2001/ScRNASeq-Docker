@@ -772,7 +772,7 @@ diff_tables <- build_differential_tables(
 go_results <- run_simple_go_enrichment(
   diff_table = file.path(dir_12, diff_tag,
                          paste0(diff_prefix, "_fc", lfc_cut, "_padj_",
-                                gsub("\.", "", as.character(padj_cut)), ".tsv")),
+                                gsub("\\.", "", as.character(padj_cut)), ".tsv")),
   output_dir = file.path(dir_13, diff_tag),
   orgdb = org.At.tair.db,
   keytype = "TAIR",
