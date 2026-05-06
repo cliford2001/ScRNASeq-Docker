@@ -2233,7 +2233,8 @@ build_heatmap_clusters <- function(Mz,
   breaks_seq  <- seq(breaks[1], breaks[2], length.out = 80)
   color_scale <- colorRampPalette(c("blue", "black", "yellow"))(length(breaks_seq) - 1)
 
-  heatmap_obj <- pheatmap(
+  pdf(file.path(output_dir, heatmap_pdf), width = 10, height = 20)
+  pheatmap(
     Mz,
     cluster_rows      = hc_rows,
     cluster_cols      = hc_cols,
@@ -2250,10 +2251,9 @@ build_heatmap_clusters <- function(Mz,
     treeheight_row    = 50,
     treeheight_col    = 50,
     main              = sprintf("Heatmap (%d genes) - min %d genes por cluster",
-                                nrow(Mz), min_genes),
-    silent            = TRUE
+                                nrow(Mz), min_genes)
   )
-  ggsave(file.path(output_dir, heatmap_pdf), heatmap_obj$gtable, width = 10, height = 20, dpi = 300)
+  dev.off()
 
   cluster_assignments <- data.frame(
     gene_id         = rownames(Mz),
@@ -2269,8 +2269,7 @@ build_heatmap_clusters <- function(Mz,
     row_tree             = hc_rows,
     col_tree             = hc_cols,
     heatmap_clusters     = clust,
-    cluster_assignments  = cluster_assignments,
-    heatmap              = heatmap_obj
+    cluster_assignments  = cluster_assignments
   ))
 }
 
