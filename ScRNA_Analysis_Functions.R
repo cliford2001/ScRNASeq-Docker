@@ -2019,6 +2019,7 @@ run_coexpression_cluster_suite <- function(diff_table,
   breaks_seq  <- seq(breaks[1], breaks[2], length.out = 80)
   color_scale <- colorRampPalette(c("blue", "black", "yellow"))(length(breaks_seq) - 1)
 
+  pdf(file.path(output_dir, heatmap_pdf), width = 10, height = 20)
   heatmap_obj <- pheatmap(
     Mz,
     cluster_rows      = hc_rows,
@@ -2036,11 +2037,8 @@ run_coexpression_cluster_suite <- function(diff_table,
     treeheight_row    = 50,
     treeheight_col    = 50,
     main              = sprintf("Heatmap (%d genes) - min %d genes por cluster",
-                                nrow(Mz), min_genes),
-    silent            = TRUE
+                                nrow(Mz), min_genes)
   )
-  pdf(file.path(output_dir, heatmap_pdf), width = 10, height = 20)
-  print(heatmap_obj)
   dev.off()
 
   datExpr <- t(Mz)
