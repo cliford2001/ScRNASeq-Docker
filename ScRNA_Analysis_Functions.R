@@ -3315,6 +3315,29 @@ infer_combined_networks <- function(cluster_assignments,
            bty = "n", cex = 0.75)
   }
 
+  # ── Plotter for a single-method network (no support coloring) ───────────────
+  plot_single_net <- function(edges, title, hubs, color = "#1f78b4", max_nodes = 80) {
+    if (is.null(edges) || nrow(edges) == 0) {
+      par(mar = c(0, 0, 2, 0)); plot.new(); title(title)
+      return()
+    }
+    g <- igraph::graph_from_data_frame(edges[, c("from", "to")], directed = FALSE)
+    if (length(igraph::V(g)) > max_nodes) {
+      keep <- names(sort(igraph::degree(g), decreasing = TRUE))[seq_len(max_nodes)]
+      g <- igraph::induced_subgraph(g, keep)
+    }
+    igraph::V(g)$color <- ifelse(igraph::V(g)$name %in% hubs, "#ff7f0e", "#cccccc")
+    igraph::V(g)$size  <- ifelse(igraph::V(g)$name %in% hubs, 7, 3)
+    igraph::V(g)$label <- ifelse(igraph::V(g)$name %in% hubs, igraph::V(g)$name, "")
+    par(mar = c(0, 0, 2.5, 0))
+    plot(g, layout = igraph::layout_with_fr(g),
+         vertex.label.cex   = 0.55,
+         vertex.label.color = "black",
+         vertex.frame.color = NA,
+         edge.color = adjustcolor(color, alpha.f = 0.4),
+         main = title)
+  }
+
   # ── Analysis per cluster ────────────────────────────────────────────────────
   results <- list()
   for (clust_id in top_clusters) {
@@ -3327,188 +3350,216 @@ infer_combined_networks <- function(cluster_assignments,
     edges <- build_combined_net(expr)
     if (is.null(edges)) { message("  Skip (no edges)"); next }
 
-    # Top consensus edges (both methods agree)
-    edges_both <- edges[edges$support == "both", ]
-    hubs <- get_hubs(edges, n_top_hubs)
+    # Split into 3 networks
+    edges_wgcna   <- edges[edges$support %in% c("both", "wgcna_only"), ]
+    edges_genie3  <- edges[edges$support %in% c("both", "genie3_only"), ]
+    edges_consen  <- edges[edges$support == "both", ]
 
-    n_both    <- sum(edges$support == "both")
-    n_wonly   <- sum(edges$support == "wgcna_only")
-    n_gonly   <- sum(edges$support == "genie3_only")
+    hubs_wgcna   <- get_hubs(edges_wgcna,  n_top_hubs)
+    hubs_genie3  <- get_hubs(edges_genie3, n_top_hubs)
+    hubs_consen  <- get_hubs(edges_consen, n_top_hubs)
 
     results[[clust_id]] <- list(
       cluster      = clust_id,
       n_genes      = nrow(expr),
       edges        = edges,
-      hubs         = hubs,
-      n_total      = nrow(edges),
-      n_both       = n_both,
-      n_wonly      = n_wonly,
-      n_gonly      = n_gonly,
-      consensus_pct = round(100 * n_both / nrow(edges), 1)
+      edges_wgcna  = edges_wgcna,
+      edges_genie3 = edges_genie3,
+      edges_consen = edges_consen,
+      hubs_wgcna   = hubs_wgcna,
+      hubs_genie3  = hubs_genie3,
+      hubs_consen  = hubs_consen,
+      n_wgcna      = nrow(edges_wgcna),
+      n_genie3     = nrow(edges_genie3),
+      n_consen     = nrow(edges_consen),
+      hub_overlap_wg  = length(intersect(hubs_wgcna$gene,  hubs_genie3$gene)),
+      consensus_pct   = if (nrow(edges) > 0) round(100 * nrow(edges_consen) / nrow(edges), 1) else 0
     )
 
-    write.table(edges,
-                file.path(output_dir, paste0("edges_combined_", clust_id, ".tsv")),
-                sep = "\t", quote = FALSE, row.names = FALSE)
+    write.table(edges_wgcna,  file.path(output_dir, paste0("edges_WGCNA_",     clust_id, ".tsv")), sep = "\t", quote = FALSE, row.names = FALSE)
+    write.table(edges_genie3, file.path(output_dir, paste0("edges_GENIE3_",    clust_id, ".tsv")), sep = "\t", quote = FALSE, row.names = FALSE)
+    write.table(edges_consen, file.path(output_dir, paste0("edges_CONSENSUS_", clust_id, ".tsv")), sep = "\t", quote = FALSE, row.names = FALSE)
   }
 
   # ── Build PDF report ────────────────────────────────────────────────────────
-  pdf(file.path(output_dir, "combined_network_report.pdf"), width = 11, height = 14)
+  pdf(file.path(output_dir, "network_inference_report.pdf"), width = 16, height = 11)
 
+  # Cover
   grid::grid.newpage()
-  grid::grid.text("Combined Network Inference",
-                  y = 0.85, gp = grid::gpar(fontsize = 22, fontface = "bold"))
-  grid::grid.text("WGCNA + GENIE3 consensus per cluster",
-                  y = 0.80, gp = grid::gpar(fontsize = 14))
-  grid::grid.text(paste0("Top ", length(results), " clusters · ",
+  grid::grid.text("Network Inference per Cluster",
+                  y = 0.85, gp = grid::gpar(fontsize = 24, fontface = "bold"))
+  grid::grid.text("WGCNA  ·  GENIE3  ·  Consensus",
+                  y = 0.80, gp = grid::gpar(fontsize = 16))
+  grid::grid.text(paste0(length(results), " clusters analyzed · ",
                          ncol(pb_log), " pseudobulk samples"),
-                  y = 0.76, gp = grid::gpar(fontsize = 11, fontface = "italic"))
+                  y = 0.76, gp = grid::gpar(fontsize = 12, fontface = "italic"))
 
   intro <- paste(
-    "METHOD",
+    "METHODS — three networks per cluster",
     "",
-    "For each cluster, two networks are inferred independently:",
-    paste0("  1. WGCNA   — Pearson correlation^6 between genes (undirected)"),
-    paste0("  2. GENIE3  — Random Forest importance scores (collapsed to undirected)"),
+    "  1. WGCNA      Pearson correlation^6 (undirected co-expression)",
+    "  2. GENIE3     Random Forest importance (collapsed to undirected)",
+    "  3. CONSENSUS  Edges supported by BOTH methods (intersection)",
     "",
-    paste0("An edge is included if it ranks in the top ", top_edge_pct * 100,
-           "% in EITHER method."),
-    "Each retained edge is annotated with:",
-    "  - weight_wgcna     : raw WGCNA score",
-    "  - weight_genie3    : raw GENIE3 score",
-    "  - weight_combined  : average of the rank-normalized scores [0,1]",
-    "  - support          : 'both', 'wgcna_only' or 'genie3_only'",
+    paste0("Edges retained per method: top ", top_edge_pct * 100, "% by score."),
+    paste0("Hubs: top ", n_top_hubs, " genes by degree centrality in each network."),
     "",
-    "Edges supported by both methods are the highest-confidence relationships.",
-    "Hubs are computed by degree centrality on the combined consensus graph.",
+    "INTERPRETATION",
+    "",
+    "  - WGCNA hubs       genes that co-vary widely with the cluster",
+    "  - GENIE3 hubs      genes whose expression best predicts others",
+    "  - Consensus hubs   genes that satisfy BOTH criteria — strongest candidates",
+    "",
+    "The consensus network is the most conservative and the most reliable.",
+    "WGCNA-only or GENIE3-only edges are still informative as secondary signals.",
     sep = "\n"
   )
-  grid::grid.text(intro, x = 0.05, y = 0.45, just = c("left", "center"),
-                  gp = grid::gpar(fontsize = 10, fontfamily = "mono"))
+  grid::grid.text(intro, x = 0.05, y = 0.42, just = c("left", "center"),
+                  gp = grid::gpar(fontsize = 11, fontfamily = "mono"))
 
   # Summary table
   if (length(results) > 0) {
     grid::grid.newpage()
     grid::grid.text("Summary across clusters",
-                    y = 0.95, gp = grid::gpar(fontsize = 16, fontface = "bold"))
+                    y = 0.95, gp = grid::gpar(fontsize = 18, fontface = "bold"))
     smry <- do.call(rbind, lapply(results, function(r) data.frame(
-      Cluster        = r$cluster,
-      Genes          = r$n_genes,
-      Total_edges    = r$n_total,
-      Both_methods   = r$n_both,
-      WGCNA_only     = r$n_wonly,
-      GENIE3_only    = r$n_gonly,
-      Consensus      = paste0(r$consensus_pct, "%")
+      Cluster      = r$cluster,
+      Genes        = r$n_genes,
+      WGCNA_edges  = r$n_wgcna,
+      GENIE3_edges = r$n_genie3,
+      Consensus    = r$n_consen,
+      `Consensus%` = paste0(r$consensus_pct, "%"),
+      Hub_overlap  = paste0(r$hub_overlap_wg, "/", n_top_hubs),
+      check.names  = FALSE
     )))
     grid::grid.draw(gridExtra::tableGrob(smry, rows = NULL,
-                                         theme = gridExtra::ttheme_default(base_size = 11)))
+                                         theme = gridExtra::ttheme_default(base_size = 12)))
   }
 
   # Per-cluster pages
   for (r in results) {
-    # Page A: full consensus network
-    plot_consensus_net(r$edges,
-                       sprintf("Cluster '%s' — Consensus network (%d edges, %d both)",
-                               r$cluster, r$n_total, r$n_both),
-                       r$hubs$gene)
+    # Page A: 3 networks side-by-side
+    layout(matrix(1:3, 1, 3))
+    par(oma = c(0, 0, 3, 0))
+    plot_single_net(r$edges_wgcna,
+                    sprintf("WGCNA — %d edges", r$n_wgcna),
+                    r$hubs_wgcna$gene, color = "#1f77b4")
+    plot_single_net(r$edges_genie3,
+                    sprintf("GENIE3 — %d edges", r$n_genie3),
+                    r$hubs_genie3$gene, color = "#2ca02c")
+    plot_single_net(r$edges_consen,
+                    sprintf("CONSENSUS — %d edges", r$n_consen),
+                    r$hubs_consen$gene, color = "#d62728")
+    mtext(sprintf("Cluster '%s'  (%d genes)", r$cluster, r$n_genes),
+          outer = TRUE, cex = 1.4, font = 2)
+    layout(1)
 
-    # Page B: hubs and edge breakdown
-    if (nrow(r$hubs) > 0) {
-      print(ggplot2::ggplot(r$hubs,
-                            ggplot2::aes(x = stats::reorder(gene, degree), y = degree)) +
-            ggplot2::geom_col(fill = "#ff7f0e") +
+    # Page B: hubs comparison (3 facets)
+    hubs_all <- rbind(
+      cbind(r$hubs_wgcna,  method = "WGCNA"),
+      cbind(r$hubs_genie3, method = "GENIE3"),
+      cbind(r$hubs_consen, method = "CONSENSUS")
+    )
+    if (nrow(hubs_all) > 0) {
+      hubs_all$method <- factor(hubs_all$method, levels = c("WGCNA", "GENIE3", "CONSENSUS"))
+      print(ggplot2::ggplot(hubs_all,
+                            ggplot2::aes(x = stats::reorder(gene, degree), y = degree, fill = method)) +
+            ggplot2::geom_col() +
             ggplot2::coord_flip() +
-            ggplot2::labs(title    = sprintf("Top consensus hubs — cluster '%s'", r$cluster),
-                          subtitle = sprintf("Hub degree on the combined network"),
+            ggplot2::facet_wrap(~ method, scales = "free") +
+            ggplot2::scale_fill_manual(values = c(WGCNA = "#1f77b4",
+                                                  GENIE3 = "#2ca02c",
+                                                  CONSENSUS = "#d62728")) +
+            ggplot2::labs(title = sprintf("Top hubs by method — cluster '%s'", r$cluster),
+                          subtitle = sprintf("Hub overlap WGCNA/GENIE3: %d / %d",
+                                              r$hub_overlap_wg, n_top_hubs),
                           x = NULL, y = "Degree") +
-            ggplot2::theme_bw(base_size = 13))
+            ggplot2::theme_bw(base_size = 12) +
+            ggplot2::theme(legend.position = "none",
+                           strip.text = ggplot2::element_text(face = "bold")))
     }
 
     # Page C: discussion
     grid::grid.newpage()
     grid::grid.text(sprintf("Cluster '%s' - Interpretation", r$cluster),
-                    y = 0.95, gp = grid::gpar(fontsize = 16, fontface = "bold"))
+                    y = 0.95, gp = grid::gpar(fontsize = 18, fontface = "bold"))
 
     confidence_msg <- if (r$consensus_pct >= 30) {
-      "HIGH confidence: a substantial fraction of edges is confirmed by both methods."
+      "HIGH confidence: a large fraction of relationships is supported by both methods."
     } else if (r$consensus_pct >= 10) {
-      "MODERATE confidence: methods partially agree; focus on dual-supported edges."
+      "MODERATE confidence: methods partially agree; focus on consensus edges."
     } else {
-      "LOW confidence: methods diverge strongly; treat the network as exploratory."
+      "LOW confidence: methods diverge; treat the network as exploratory."
     }
 
-    top_both <- head(r$edges[r$edges$support == "both", ], 5)
-    top_lines <- if (nrow(top_both) > 0) {
-      apply(top_both, 1, function(e) sprintf("  %s -- %s   (combined=%.2f)",
-                                              e["from"], e["to"],
-                                              as.numeric(e["weight_combined"])))
+    top_consen <- head(r$edges_consen, 5)
+    top_lines <- if (nrow(top_consen) > 0) {
+      apply(top_consen, 1, function(e) sprintf("  %s -- %s   (combined=%.2f)",
+                                                e["from"], e["to"],
+                                                as.numeric(e["weight_combined"])))
     } else "  (none)"
 
     disc <- paste(
       sprintf("Genes (after variance filter): %d", r$n_genes),
-      sprintf("Total edges in consensus:      %d", r$n_total),
-      sprintf("Edges in BOTH methods:         %d  (%.1f%%)", r$n_both, r$consensus_pct),
-      sprintf("WGCNA-only:                    %d", r$n_wonly),
-      sprintf("GENIE3-only:                   %d", r$n_gonly),
+      "",
+      sprintf("WGCNA edges:     %d", r$n_wgcna),
+      sprintf("GENIE3 edges:    %d", r$n_genie3),
+      sprintf("Consensus edges: %d  (%.1f%% of union)", r$n_consen, r$consensus_pct),
+      sprintf("Hub overlap (WGCNA vs GENIE3): %d / %d", r$hub_overlap_wg, n_top_hubs),
       "",
       "INTERPRETATION",
       "",
       confidence_msg,
       "",
-      "Top hubs (by degree on combined network):",
-      paste0("  ", paste(head(r$hubs$gene, 5), collapse = ", ")),
+      "TOP HUBS",
+      sprintf("  WGCNA      : %s", paste(head(r$hubs_wgcna$gene,  5), collapse = ", ")),
+      sprintf("  GENIE3     : %s", paste(head(r$hubs_genie3$gene, 5), collapse = ", ")),
+      sprintf("  CONSENSUS  : %s", paste(head(r$hubs_consen$gene, 5), collapse = ", ")),
       "",
-      "Strongest dual-supported edges:",
+      "Strongest consensus edges:",
       paste(top_lines, collapse = "\n"),
       sep = "\n"
     )
     grid::grid.text(disc, x = 0.05, y = 0.5, just = c("left", "center"),
-                    gp = grid::gpar(fontsize = 10, fontfamily = "mono"))
+                    gp = grid::gpar(fontsize = 11, fontfamily = "mono"))
   }
 
   # Final conclusions
   grid::grid.newpage()
   grid::grid.text("Overall conclusions",
-                  y = 0.95, gp = grid::gpar(fontsize = 18, fontface = "bold"))
+                  y = 0.95, gp = grid::gpar(fontsize = 20, fontface = "bold"))
 
   mean_consensus <- mean(sapply(results, function(r) r$consensus_pct))
-  total_dual_supported <- sum(sapply(results, function(r) r$n_both))
-  total_edges <- sum(sapply(results, function(r) r$n_total))
+  total_consen <- sum(sapply(results, function(r) r$n_consen))
 
   final <- paste(
     "GENERAL OBSERVATIONS",
     "",
     sprintf("Clusters analyzed: %d", length(results)),
-    sprintf("Total consensus edges (both methods): %d / %d (%.1f%%)",
-            total_dual_supported, total_edges,
-            100 * total_dual_supported / total_edges),
-    sprintf("Mean per-cluster consensus: %.1f%%", mean_consensus),
+    sprintf("Total consensus edges across all clusters: %d", total_consen),
+    sprintf("Mean per-cluster consensus rate: %.1f%%", mean_consensus),
     "",
-    "WHAT THIS MEANS",
+    "WHAT TO USE",
     "",
-    "Edges flagged as 'both' are simultaneously supported by:",
-    "  - high linear correlation (WGCNA)",
-    "  - high predictive importance in Random Forest (GENIE3)",
+    "  • CONSENSUS network  — most reliable; use for biological hypothesis generation",
+    "  • WGCNA network      — broadest co-expression view; useful for module exploration",
+    "  • GENIE3 network     — best for identifying putative regulators",
     "",
-    "These dual-supported edges are the strongest candidates for biological",
-    "follow-up: experimental validation, motif analysis, or pathway curation.",
+    "RECOMMENDED FOLLOW-UP",
     "",
-    "Singletons (only WGCNA or only GENIE3) are still informative but should",
-    "be interpreted as secondary signals.",
-    "",
-    "NEXT STEPS",
-    "  - Cross-check consensus hubs against PlantTFDB to identify likely TFs",
-    "  - Run GO enrichment on hub-neighbour subnetworks",
-    "  - Use directed information from raw GENIE3 output to assign regulator->target",
+    "  1. Cross-check consensus hubs against PlantTFDB (Arabidopsis TFs)",
+    "  2. Run GO enrichment on consensus hub neighborhoods",
+    "  3. Recover edge directionality from raw GENIE3 output for top consensus edges",
+    "  4. Validate strongest consensus edges experimentally (DAP-seq, Y1H, ChIP)",
     sep = "\n"
   )
   grid::grid.text(final, x = 0.05, y = 0.5, just = c("left", "center"),
-                  gp = grid::gpar(fontsize = 10, fontfamily = "mono"))
+                  gp = grid::gpar(fontsize = 11, fontfamily = "mono"))
 
   dev.off()
 
-  saveRDS(results, file.path(output_dir, "combined_network_results.rds"))
-  message("Report saved to: ", file.path(output_dir, "combined_network_report.pdf"))
+  saveRDS(results, file.path(output_dir, "network_inference_results.rds"))
+  message("Report saved to: ", file.path(output_dir, "network_inference_report.pdf"))
 
   invisible(results)
 }
