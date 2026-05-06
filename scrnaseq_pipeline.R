@@ -759,69 +759,32 @@ diff_tables <- build_differential_tables(
 # =============================================================================
 # SECTION 19 — GO ENRICHMENT (SIMPLE)
 # =============================================================================
-# Simple Gene Ontology enrichment analysis for the selected contrast.
-# Runs enrichment for EACH CELL TYPE separately.
-# Generates a TSV table of significant GO terms and a bubble plot per cell type.
-#
-# ┌─ GO PARAMETERS ──────────────────────────────────────────────────────────────
-#   go_space    : ontology namespace - "BP" (biological process),
-#                 "MF" (molecular function), or "CC" (cellular component)
-#   padj_cutoff : adjusted p-value threshold for significance
-# └─────────────────────────────────────────────────────────────────────────────
+# Gene Ontology enrichment per cell type for the selected contrast.
 
 go_space    <- "BP"          # Change to "MF" or "CC" if desired
 padj_cutoff <- 0.05
 
-output_dir_base <- dir_13
-results_dir <- file.path(dir_10, diff_tag)
+deseq2_files <- list.files(file.path(dir_10, diff_tag),
+                           pattern = "^DESeq2_.*\\.csv$",
+                           full.names = TRUE)
 
-# Find all DESeq2 results files for each cell type
-deseq2_files <- list.files(results_dir, pattern = "^DESeq2_.*\\.csv$", full.names = TRUE)
-
-if (length(deseq2_files) == 0) {
-  stop("No DESeq2 CSV files found in: ", results_dir)
-}
-
-# Loop over each cell type and run GO enrichment
 for (deseq2_file in deseq2_files) {
-
-  # Extract cell type name from filename (e.g., "DESeq2_Epidermis.csv" -> "Epidermis")
   cell_type <- gsub("^DESeq2_|\\.csv$", "", basename(deseq2_file))
 
-  message("\n─ GO enrichment for cell type: ", cell_type)
-
-  # Read DESeq2 results directly
   deseq2_results <- read.csv(deseq2_file, row.names = 1)
-
-  # Filter for significant genes (padj < padj_cutoff)
   sig_genes <- rownames(deseq2_results)[deseq2_results$padj < padj_cutoff]
 
-  if (length(sig_genes) == 0) {
-    message("  ⚠ No significant genes found for ", cell_type)
-    next
+  if (length(sig_genes) > 0) {
+    run_simple_go_enrichment(
+      diff_table = data.frame(gene_id = sig_genes),
+      output_dir = file.path(dir_13, diff_tag, cell_type),
+      orgdb = org.At.tair.db,
+      keytype = "TAIR",
+      go_space = go_space,
+      padj_cutoff = padj_cutoff
+    )
   }
-
-  message("  Found ", length(sig_genes), " significant genes")
-
-  # Create temporary data frame for enrichment
-  temp_table <- data.frame(gene_id = sig_genes)
-
-  # Run simple GO enrichment
-  go_output_dir <- file.path(output_dir_base, diff_tag, cell_type)
-
-  go_results <- run_simple_go_enrichment(
-    diff_table = temp_table,
-    output_dir = go_output_dir,
-    orgdb = org.At.tair.db,
-    keytype = "TAIR",
-    go_space = go_space,
-    padj_cutoff = padj_cutoff
-  )
-
-  message("  ✓ Results saved in: ", go_output_dir)
 }
-
-message("\n✓ All GO enrichment results in: ", file.path(output_dir_base, diff_tag))
 
 # SECTION 20 — HEATMAP + CLUSTERS
 # =============================================================================
