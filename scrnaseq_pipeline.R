@@ -788,46 +788,43 @@ for (deseq2_file in deseq2_files) {
   }
 }
 
-# SECTION 20 — HEATMAP + CLUSTERS
 # =============================================================================
-# Builds a log2FC heatmap for one selected contrast and derives dynamic gene
-# clusters from the heatmap row dendrogram.
+# SECTION 20 — LOG2FC HEATMAP PER CELL TYPE
+# =============================================================================
+# Heatmap of log2FC values across all cell types for the selected contrast.
+# Rows = genes, columns = cell types. NAs shown as grey (gene not DE in that type).
 #
-# ┌─ HEATMAP PARAMETERS ─────────────────────────────────────────────────────────
-#   coexp_tag            : contrast tag used to select log2FC columns
-#   coexp_selected_cols  : optional explicit column vector (NULL = auto-select)
-#   coexp_min_genes      : minimum genes per cluster/module
-#   coexp_deepSplit      : dynamic tree cut deepSplit
-#   coexp_breaks         : color range for the heatmap
+# ┌─ PARAMETERS ─────────────────────────────────────────────────────────────────
+#   heatmap_breaks : color range (symmetric around 0)
 # └─────────────────────────────────────────────────────────────────────────────
-coexp_tag           <- diff_tag
-coexp_selected_cols <- NULL
-coexp_min_genes     <- 1
-coexp_deepSplit     <- 0
-coexp_breaks        <- c(-5, 5)
+heatmap_breaks <- c(-4, 4)
 
-output_dir <- file.path(dir_12, coexp_tag, "coexpression")
-dir.create(output_dir, recursive = TRUE, showWarnings = FALSE)
+# Build matrix
+logfc_table <- diff_tables$logfc
+mat <- as.matrix(logfc_table[, -1])
+rownames(mat) <- logfc_table$gene_id
+colnames(mat) <- gsub(paste0("_", diff_tag, "$"), "", colnames(mat))  # clean column names
 
-if (is.null(coexp_selected_cols)) {
-  coexp_selected_cols <- grep(paste0("_", coexp_tag, "$"),
-                              colnames(diff_tables$logfc),
-                              value = TRUE)
-}
+# Color scale: blue -> white -> red
+breaks_seq  <- seq(heatmap_breaks[1], heatmap_breaks[2], length.out = 101)
+color_scale <- colorRampPalette(c("#2166ac", "white", "#d6604d"))(100)
 
-coexp_matrix <- prepare_coexpression_matrix(
-  diff_table    = diff_tables$logfc,
-  selected_cols = coexp_selected_cols
+pdf(file.path(dir_12, diff_tag, paste0("heatmap_", diff_tag, ".pdf")), width = 12, height = 16)
+pheatmap(
+  mat,
+  cluster_rows     = FALSE,
+  cluster_cols     = FALSE,
+  color            = color_scale,
+  breaks           = breaks_seq,
+  na_col           = "grey85",
+  show_rownames    = FALSE,
+  fontsize_col     = 10,
+  border_color     = NA,
+  main             = paste0("log2FC per cell type — ", diff_tag)
 )
+dev.off()
 
-heatmap_cluster_results <- build_heatmap_clusters(
-  Mz            = coexp_matrix,
-  output_dir    = output_dir,
-  min_genes     = coexp_min_genes,
-  deepSplit_val = coexp_deepSplit,
-  breaks        = coexp_breaks,
-  heatmap_pdf   = paste0("heatmap_", coexp_tag, ".pdf")
-)
+message("✓ Heatmap saved in: ", file.path(dir_12, diff_tag))
 
 
 # =============================================================================
