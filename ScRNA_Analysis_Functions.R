@@ -2076,7 +2076,8 @@ run_coexpression_cluster_suite <- function(diff_table,
   tom_order <- gene_tree$order
   tom_plot_mat <- TOM[tom_order, tom_order, drop = FALSE]
   tom_plot_ann <- tom_annotation[tom_order, , drop = FALSE]
-  tom_plot <- pheatmap(
+  pdf(file.path(output_dir, tom_pdf), width = 10, height = 10)
+  pheatmap(
     tom_plot_mat,
     cluster_rows      = FALSE,
     cluster_cols      = FALSE,
@@ -2087,11 +2088,8 @@ run_coexpression_cluster_suite <- function(diff_table,
     annotation_colors = list(Module = tom_paleta),
     color             = colorRampPalette(c("white", "steelblue", "navy"))(80),
     border_color      = NA,
-    main              = sprintf("TOM Heatmap (%d genes)", nrow(Mz)),
-    silent            = TRUE
+    main              = sprintf("TOM Heatmap (%d genes)", nrow(Mz))
   )
-  pdf(file.path(output_dir, tom_pdf), width = 10, height = 10)
-  print(tom_plot)
   dev.off()
 
   cluster_assignments <- data.frame(
@@ -2338,7 +2336,8 @@ build_coexpression_modules <- function(Mz,
   tom_order <- gene_tree$order
   tom_plot_mat <- TOM[tom_order, tom_order, drop = FALSE]
   tom_plot_ann <- tom_annotation[tom_order, , drop = FALSE]
-  tom_plot <- pheatmap(
+  pdf(file.path(output_dir, tom_pdf), width = 10, height = 10)
+  pheatmap(
     tom_plot_mat,
     cluster_rows      = FALSE,
     cluster_cols      = FALSE,
@@ -2349,11 +2348,8 @@ build_coexpression_modules <- function(Mz,
     annotation_colors = list(Module = tom_paleta),
     color             = colorRampPalette(c("white", "steelblue", "navy"))(80),
     border_color      = NA,
-    main              = sprintf("TOM Heatmap (%d genes)", nrow(Mz)),
-    silent            = TRUE
+    main              = sprintf("TOM Heatmap (%d genes)", nrow(Mz))
   )
-  pdf(file.path(output_dir, tom_pdf), width = 10, height = 10)
-  print(tom_plot)
   dev.off()
 
   module_assignments <- data.frame(
