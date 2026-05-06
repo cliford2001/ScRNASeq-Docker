@@ -53,6 +53,10 @@ library(UpSetR)
 library(dynamicTreeCut)
 library(WGCNA)
 
+# ── Network inference ─────────────────────────────────────────────────────────
+library(GENIE3)
+library(igraph)
+
 # ── Reporting ─────────────────────────────────────────────────────────────────
 library(knitr)
 library(kableExtra)

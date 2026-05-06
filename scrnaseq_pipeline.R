@@ -837,4 +837,36 @@ for (clust_id in unique(heatmap_results$cluster)) {
 }
 
 
+# =============================================================================
+# SECTION 22 — NETWORK INFERENCE: WGCNA vs GENIE3 PER CLUSTER
+# =============================================================================
+# For each cluster from Section 20, infers two complementary gene networks:
+#   - WGCNA  : correlation-based, undirected (which genes co-vary)
+#   - GENIE3 : Random Forest based, directed (regulator → target)
+# Generates a comparative PDF report and saves edge tables per cluster.
+#
+# ┌─ NETWORK PARAMETERS ─────────────────────────────────────────────────────────
+#   n_top_clusters : how many largest clusters to analyze
+#   top_edge_pct   : fraction of strongest edges to retain per network
+#   n_top_hubs     : top-N hub genes by degree to highlight
+#   genie3_ntrees  : trees for Random Forest (more = slower, more stable)
+#   min_var_filter : drop genes with variance below this across pseudobulk samples
+# └─────────────────────────────────────────────────────────────────────────────
+n_top_clusters <- 3
+top_edge_pct   <- 0.05
+n_top_hubs     <- 10
+genie3_ntrees  <- 100
+min_var_filter <- 0.5
+
+network_results <- compare_wgcna_genie3_networks(
+  cluster_assignments = heatmap_results,
+  pseudobulk_dir      = file.path(dir_09, "pseudobulk_replicas"),
+  output_dir          = file.path(dir_14, diff_tag),
+  n_top_clusters      = n_top_clusters,
+  top_edge_pct        = top_edge_pct,
+  n_top_hubs          = n_top_hubs,
+  genie3_ntrees       = genie3_ntrees,
+  min_var_filter      = min_var_filter
+)
+
 

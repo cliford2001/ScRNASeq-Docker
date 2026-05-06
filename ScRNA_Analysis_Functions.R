@@ -2483,7 +2483,8 @@ create_pipeline_dirs <- function(base_dir) {
     dir_10 = mkd("10_deseq2"),
     dir_11 = mkd("11_volcano"),
     dir_12 = mkd("12_heatmaps"),
-    dir_13 = mkd("13_go")
+    dir_13 = mkd("13_go"),
+    dir_14 = mkd("14_networks")
   )
 }
 
@@ -3159,5 +3160,190 @@ build_logfc_heatmap <- function(logfc_table,
               sep = "\t", quote = FALSE, row.names = FALSE)
 
   invisible(assignments)
+}
+
+
+# =============================================================================
+# compare_wgcna_genie3_networks
+# =============================================================================
+# For each cluster from build_logfc_heatmap(), infers two gene networks:
+#   - WGCNA: correlation-based (undirected)
+#   - GENIE3: random-forest based (directed regulator → target)
+# Generates a PDF report comparing both methods per cluster.
+compare_wgcna_genie3_networks <- function(cluster_assignments,
+                                          pseudobulk_dir,
+                                          output_dir,
+                                          n_top_clusters = 3,
+                                          top_edge_pct   = 0.05,
+                                          n_top_hubs     = 10,
+                                          genie3_ntrees  = 100,
+                                          min_var_filter = 0.5) {
+
+  dir.create(output_dir, recursive = TRUE, showWarnings = FALSE)
+
+  # ── Load & merge pseudobulk counts ──────────────────────────────────────────
+  pb_files <- list.files(pseudobulk_dir, pattern = "^Pseudobulk_Reps_.*\\.csv$",
+                         full.names = TRUE)
+  pb_list <- lapply(pb_files, function(f) {
+    df <- read.csv(f, row.names = 1, check.names = FALSE)
+    ct <- gsub("Pseudobulk_Reps_|\\.csv$", "", basename(f))
+    colnames(df) <- paste0(ct, "_", colnames(df))
+    df
+  })
+  common_genes <- Reduce(intersect, lapply(pb_list, rownames))
+  pb_log <- log2(as.matrix(do.call(cbind, lapply(pb_list, function(d) d[common_genes, ]))) + 1)
+
+  message("Pseudobulk matrix: ", nrow(pb_log), " genes x ", ncol(pb_log), " samples")
+
+  # ── Select top clusters ─────────────────────────────────────────────────────
+  ca <- cluster_assignments[cluster_assignments$cluster != "grey", ]
+  cluster_sizes <- sort(table(ca$cluster), decreasing = TRUE)
+  top_clusters  <- names(cluster_sizes)[seq_len(min(n_top_clusters, length(cluster_sizes)))]
+
+  # ── Helper functions ────────────────────────────────────────────────────────
+  build_wgcna_net <- function(expr) {
+    if (nrow(expr) < 5) return(NULL)
+    cor_mat <- cor(t(expr), method = "pearson", use = "pairwise.complete.obs")
+    adj <- abs(cor_mat) ^ 6; diag(adj) <- 0
+    idx <- which(upper.tri(adj), arr.ind = TRUE)
+    w <- adj[idx]
+    keep <- w >= quantile(w, 1 - top_edge_pct, na.rm = TRUE)
+    if (!any(keep)) return(NULL)
+    data.frame(from = rownames(adj)[idx[keep, 1]],
+               to   = colnames(adj)[idx[keep, 2]],
+               weight = w[keep], stringsAsFactors = FALSE)
+  }
+
+  build_genie3_net <- function(expr) {
+    if (nrow(expr) < 5) return(NULL)
+    wm <- GENIE3(as.matrix(expr), nTrees = genie3_ntrees, verbose = FALSE)
+    e  <- getLinkList(wm)
+    keep <- e$weight >= quantile(e$weight, 1 - top_edge_pct, na.rm = TRUE)
+    if (!any(keep)) return(NULL)
+    out <- e[keep, ]; colnames(out) <- c("from", "to", "weight"); out
+  }
+
+  get_hubs <- function(edges, n) {
+    if (is.null(edges) || nrow(edges) == 0) return(data.frame())
+    g <- igraph::graph_from_data_frame(edges, directed = FALSE)
+    deg <- sort(igraph::degree(g), decreasing = TRUE)
+    data.frame(gene = names(deg)[seq_len(min(n, length(deg)))],
+               degree = deg[seq_len(min(n, length(deg)))])
+  }
+
+  plot_net <- function(edges, title, hubs, max_nodes = 80) {
+    if (is.null(edges) || nrow(edges) == 0) {
+      grid::grid.text(paste0(title, "\n(empty)")); return()
+    }
+    g <- igraph::graph_from_data_frame(edges, directed = FALSE)
+    if (length(igraph::V(g)) > max_nodes) {
+      keep <- names(sort(igraph::degree(g), decreasing = TRUE))[seq_len(max_nodes)]
+      g <- igraph::induced_subgraph(g, keep)
+    }
+    igraph::V(g)$color <- ifelse(igraph::V(g)$name %in% hubs, "#d6604d", "#92c5de")
+    igraph::V(g)$size  <- ifelse(igraph::V(g)$name %in% hubs, 6, 3)
+    igraph::V(g)$label <- ifelse(igraph::V(g)$name %in% hubs, igraph::V(g)$name, "")
+    par(mar = c(0, 0, 2, 0))
+    plot(g, layout = igraph::layout_with_fr(g),
+         vertex.label.cex = 0.5, vertex.label.color = "black",
+         vertex.frame.color = NA,
+         edge.color = adjustcolor("grey60", alpha.f = 0.3), main = title)
+  }
+
+  # ── Analysis per cluster ────────────────────────────────────────────────────
+  results <- list()
+  for (clust_id in top_clusters) {
+    message("Analyzing cluster: ", clust_id)
+    genes <- intersect(ca$gene_id[ca$cluster == clust_id], rownames(pb_log))
+    expr  <- pb_log[genes, , drop = FALSE]
+    expr  <- expr[apply(expr, 1, var) >= min_var_filter, , drop = FALSE]
+    if (nrow(expr) < 10) { message("  Skip (<10 genes)"); next }
+
+    we <- build_wgcna_net(expr)
+    ge <- build_genie3_net(expr)
+    wh <- get_hubs(we, n_top_hubs)
+    gh <- get_hubs(ge, n_top_hubs)
+
+    edge_overlap <- 0
+    if (!is.null(we) && !is.null(ge)) {
+      wp <- paste(pmin(we$from, we$to), pmax(we$from, we$to))
+      gp <- paste(pmin(ge$from, ge$to), pmax(ge$from, ge$to))
+      edge_overlap <- length(intersect(wp, gp))
+    }
+
+    results[[clust_id]] <- list(
+      cluster = clust_id, n_genes = nrow(expr),
+      wgcna_edges = we, genie3_edges = ge,
+      wgcna_hubs = wh, genie3_hubs = gh,
+      hub_overlap = length(intersect(wh$gene, gh$gene)),
+      edge_overlap_n = edge_overlap,
+      n_wgcna_edges  = if (!is.null(we)) nrow(we) else 0,
+      n_genie3_edges = if (!is.null(ge)) nrow(ge) else 0
+    )
+
+    if (!is.null(we)) write.table(we, file.path(output_dir, paste0("edges_WGCNA_",  clust_id, ".tsv")), sep = "\t", quote = FALSE, row.names = FALSE)
+    if (!is.null(ge)) write.table(ge, file.path(output_dir, paste0("edges_GENIE3_", clust_id, ".tsv")), sep = "\t", quote = FALSE, row.names = FALSE)
+  }
+
+  # ── Build PDF report ────────────────────────────────────────────────────────
+  pdf(file.path(output_dir, "WGCNA_vs_GENIE3_report.pdf"), width = 11, height = 14)
+
+  grid::grid.newpage()
+  grid::grid.text("WGCNA vs GENIE3 — Network comparison",
+                  y = 0.85, gp = grid::gpar(fontsize = 22, fontface = "bold"))
+  grid::grid.text(paste0("Top ", length(results), " clusters · ", ncol(pb_log), " pseudobulk samples"),
+                  y = 0.80, gp = grid::gpar(fontsize = 12))
+
+  # Summary table
+  if (length(results) > 0) {
+    grid::grid.newpage()
+    grid::grid.text("Summary across clusters",
+                    y = 0.95, gp = grid::gpar(fontsize = 16, fontface = "bold"))
+    smry <- do.call(rbind, lapply(results, function(r) data.frame(
+      Cluster = r$cluster, Genes = r$n_genes,
+      WGCNA_edges = r$n_wgcna_edges, GENIE3_edges = r$n_genie3_edges,
+      Edge_overlap = r$edge_overlap_n,
+      Hub_overlap = paste0(r$hub_overlap, "/", n_top_hubs)
+    )))
+    grid::grid.draw(gridExtra::tableGrob(smry, rows = NULL,
+                                         theme = gridExtra::ttheme_default(base_size = 11)))
+  }
+
+  # Per-cluster pages
+  for (r in results) {
+    layout(matrix(1:2, 1, 2))
+    par(oma = c(0, 0, 3, 0))
+    plot_net(r$wgcna_edges,  sprintf("WGCNA - %d edges",  r$n_wgcna_edges),  r$wgcna_hubs$gene)
+    plot_net(r$genie3_edges, sprintf("GENIE3 - %d edges", r$n_genie3_edges), r$genie3_hubs$gene)
+    mtext(sprintf("Cluster '%s' (%d genes)", r$cluster, r$n_genes),
+          outer = TRUE, cex = 1.3, font = 2)
+    layout(1)
+
+    hubs_combined <- rbind(
+      cbind(r$wgcna_hubs,  method = "WGCNA"),
+      cbind(r$genie3_hubs, method = "GENIE3")
+    )
+    if (nrow(hubs_combined) > 0) {
+      print(ggplot2::ggplot(hubs_combined,
+                            ggplot2::aes(x = stats::reorder(gene, degree), y = degree, fill = method)) +
+            ggplot2::geom_col(position = ggplot2::position_dodge(width = 0.8)) +
+            ggplot2::coord_flip() +
+            ggplot2::facet_wrap(~ method, scales = "free_y") +
+            ggplot2::scale_fill_manual(values = c(WGCNA = "#1f78b4", GENIE3 = "#e31a1c")) +
+            ggplot2::labs(title = sprintf("Top hubs - cluster '%s'", r$cluster),
+                          subtitle = sprintf("Hubs in common: %d / %d",
+                                             r$hub_overlap, n_top_hubs),
+                          x = NULL, y = "Degree") +
+            ggplot2::theme_bw(base_size = 12) +
+            ggplot2::theme(legend.position = "none",
+                           strip.text = ggplot2::element_text(face = "bold")))
+    }
+  }
+  dev.off()
+
+  saveRDS(results, file.path(output_dir, "network_analysis_results.rds"))
+  message("Report saved to: ", file.path(output_dir, "WGCNA_vs_GENIE3_report.pdf"))
+
+  invisible(results)
 }
 
