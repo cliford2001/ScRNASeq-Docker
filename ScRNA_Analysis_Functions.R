@@ -2039,7 +2039,9 @@ run_coexpression_cluster_suite <- function(diff_table,
                                 nrow(Mz), min_genes),
     silent            = TRUE
   )
-  ggsave(file.path(output_dir, heatmap_pdf), heatmap_obj$gtable, width = 10, height = 20, dpi = 300)
+  pdf(file.path(output_dir, heatmap_pdf), width = 10, height = 20)
+  print(heatmap_obj)
+  dev.off()
 
   datExpr <- t(Mz)
   gene_cor <- suppressWarnings(cor(datExpr, method = cor_method, use = "pairwise.complete.obs"))
@@ -2090,7 +2092,9 @@ run_coexpression_cluster_suite <- function(diff_table,
     main              = sprintf("TOM Heatmap (%d genes)", nrow(Mz)),
     silent            = TRUE
   )
-  ggsave(file.path(output_dir, tom_pdf), tom_plot$gtable, width = 10, height = 10, dpi = 300)
+  pdf(file.path(output_dir, tom_pdf), width = 10, height = 10)
+  print(tom_plot)
+  dev.off()
 
   cluster_assignments <- data.frame(
     gene_id         = rownames(Mz),
@@ -2350,7 +2354,9 @@ build_coexpression_modules <- function(Mz,
     main              = sprintf("TOM Heatmap (%d genes)", nrow(Mz)),
     silent            = TRUE
   )
-  ggsave(file.path(output_dir, tom_pdf), tom_plot$gtable, width = 10, height = 10, dpi = 300)
+  pdf(file.path(output_dir, tom_pdf), width = 10, height = 10)
+  print(tom_plot)
+  dev.off()
 
   module_assignments <- data.frame(
     gene_id     = rownames(Mz),
