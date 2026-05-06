@@ -792,36 +792,42 @@ for (deseq2_file in deseq2_files) {
 # SECTION 20 — LOG2FC HEATMAP PER CELL TYPE
 # =============================================================================
 # Heatmap of log2FC values across all cell types for the selected contrast.
-# Rows = genes, columns = cell types. NAs shown as grey (gene not DE in that type).
-#
-# ┌─ PARAMETERS ─────────────────────────────────────────────────────────────────
-#   heatmap_breaks : color range (symmetric around 0)
-# └─────────────────────────────────────────────────────────────────────────────
-heatmap_breaks <- c(-4, 4)
+# Rows = genes, columns = cell types. NAs shown in grey.
+
+heatmap_limits <- c(-5, 5)   # Color scale range
 
 # Build matrix
-logfc_table <- diff_tables$logfc
-mat <- as.matrix(logfc_table[, -1])
-rownames(mat) <- logfc_table$gene_id
-colnames(mat) <- gsub(paste0("_", diff_tag, "$"), "", colnames(mat))  # clean column names
+mat <- as.matrix(diff_tables$logfc[, -1])
+rownames(mat) <- diff_tables$logfc$gene_id
+colnames(mat) <- gsub(paste0("_", diff_tag, "$"), "", colnames(mat))
 
-# Color scale: blue -> white -> red
-breaks_seq  <- seq(heatmap_breaks[1], heatmap_breaks[2], length.out = 101)
-color_scale <- colorRampPalette(c("#2166ac", "white", "#d6604d"))(100)
+ht <- Heatmap(
+  mat,
+  name = "log2FC",
+  col  = colorRamp2(c(heatmap_limits[1], 0, heatmap_limits[2]),
+                    c("blue", "black", "yellow")),
+  na_col = "grey85",
+
+  cluster_rows    = FALSE,
+  cluster_columns = FALSE,
+
+  show_row_names    = FALSE,
+  show_column_names = TRUE,
+  column_names_gp   = gpar(fontsize = 14, fontface = "bold"),
+  column_names_rot  = 45,
+
+  column_title    = sprintf("log2FC per cell type — %s  (%d genes)", diff_tag, nrow(mat)),
+  column_title_gp = gpar(fontsize = 16, fontface = "bold"),
+
+  heatmap_legend_param = list(
+    title          = "log2FC",
+    title_gp       = gpar(fontsize = 12, fontface = "bold"),
+    legend_height  = unit(4, "cm")
+  )
+)
 
 pdf(file.path(dir_12, diff_tag, paste0("heatmap_", diff_tag, ".pdf")), width = 12, height = 16)
-pheatmap(
-  mat,
-  cluster_rows     = FALSE,
-  cluster_cols     = FALSE,
-  color            = color_scale,
-  breaks           = breaks_seq,
-  na_col           = "grey85",
-  show_rownames    = FALSE,
-  fontsize_col     = 10,
-  border_color     = NA,
-  main             = paste0("log2FC per cell type — ", diff_tag)
-)
+draw(ht, padding = unit(c(2, 2, 2, 10), "mm"))
 dev.off()
 
 message("✓ Heatmap saved in: ", file.path(dir_12, diff_tag))
