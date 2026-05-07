@@ -3541,14 +3541,57 @@ generate_network_pdf <- function(results,
   pdf_path <- file.path(output_dir, paste0(method_name, "_network_report.pdf"))
   pdf(pdf_path, width = 12, height = 10)
 
-  # Cover page
+  # ── Cover page with description ─────────────────────────────────────────────
   grid::grid.newpage()
-  grid::grid.text(paste0(method_name, " — Network Analysis"),
-                  y = 0.85, gp = grid::gpar(fontsize = 22, fontface = "bold"))
+  grid::grid.text(paste0(method_name, " - Network Analysis"),
+                  y = 0.92, gp = grid::gpar(fontsize = 22, fontface = "bold"))
   grid::grid.text(paste0(length(results), " clusters analyzed"),
-                  y = 0.78, gp = grid::gpar(fontsize = 12))
+                  y = 0.86, gp = grid::gpar(fontsize = 12, fontface = "italic"))
 
-  # Summary table
+  desc <- switch(method_name,
+    "GENIE3" = paste(
+      "GENIE3 — Gene Network Inference with Ensemble of Trees",
+      "",
+      "  • Random Forest based regulatory network inference",
+      "  • Edges are DIRECTED: regulator (TF) -> target",
+      "  • Edge score = variable importance from RF model",
+      "  • Filtered by absolute Pearson correlation",
+      "",
+      "Each edge represents a putative TF -> target interaction.",
+      "Hubs are TFs that regulate many targets in the cluster.",
+      sep = "\n"
+    ),
+    "WGCNA" = paste(
+      "WGCNA — Weighted Gene Co-expression Network Analysis",
+      "",
+      "  • Pearson correlation raised to soft-power (default 6)",
+      "  • TOM (Topological Overlap Measure) refines using shared neighbors",
+      "  • Edges are UNDIRECTED",
+      "  • Filtered by TOM threshold",
+      "",
+      "Each edge represents two genes that co-vary AND share many neighbors.",
+      "Hubs are genes highly connected within the co-expression module.",
+      sep = "\n"
+    ),
+    "SYNERGY" = paste(
+      "SYNERGY — Complementary GENIE3 + WGCNA",
+      "",
+      "  • Each method contributes what the other cannot:",
+      "      GENIE3 -> directionality (TF -> target)",
+      "      WGCNA  -> coexpression robustness via TOM",
+      "  • score_synergy = sqrt(rank(weight_genie3) * rank(TOM))",
+      "  • Edges retained only if BOTH thresholds are met",
+      "",
+      "Hubs are TFs whose targets are also strongly co-expressed.",
+      "The strongest candidates for biological follow-up.",
+      sep = "\n"
+    ),
+    paste("Method:", method_name)
+  )
+  grid::grid.text(desc, x = 0.05, y = 0.5, just = c("left", "center"),
+                  gp = grid::gpar(fontsize = 11, fontfamily = "mono"))
+
+  # ── Summary table ───────────────────────────────────────────────────────────
   summary_df <- do.call(rbind, lapply(results, function(r) data.frame(
     Cluster        = r$cluster,
     Genes          = r$n_genes,
@@ -3557,11 +3600,13 @@ generate_network_pdf <- function(results,
   )))
   grid::grid.newpage()
   grid::grid.text("Summary across clusters",
-                  y = 0.95, gp = grid::gpar(fontsize = 16, fontface = "bold"))
+                  y = 0.92, gp = grid::gpar(fontsize = 18, fontface = "bold"))
+  pushViewport(viewport(y = 0.55, height = 0.7))
   grid::grid.draw(gridExtra::tableGrob(summary_df, rows = NULL,
-                                       theme = gridExtra::ttheme_default(base_size = 11)))
+                                       theme = gridExtra::ttheme_default(base_size = 12)))
+  popViewport()
 
-  # Per-cluster pages
+  # ── Per-cluster pages ───────────────────────────────────────────────────────
   for (r in results) {
     edges <- as.data.frame(r$filtered)
     if (nrow(edges) == 0) next
@@ -3571,7 +3616,6 @@ generate_network_pdf <- function(results,
       directed = directed
     )
 
-    # Subset to top hubs by degree
     if (length(igraph::V(g)) > max_nodes) {
       keep <- names(sort(igraph::degree(g), decreasing = TRUE))[seq_len(max_nodes)]
       g <- igraph::induced_subgraph(g, keep)
@@ -3579,7 +3623,7 @@ generate_network_pdf <- function(results,
     deg <- sort(igraph::degree(g), decreasing = TRUE)
     hubs <- names(deg)[seq_len(min(n_top_hubs, length(deg)))]
 
-    # Network plot
+    # Page A: network
     igraph::V(g)$color <- ifelse(igraph::V(g)$name %in% hubs, "#ff7f0e", "#cccccc")
     igraph::V(g)$size  <- ifelse(igraph::V(g)$name %in% hubs, 8, 3)
     igraph::V(g)$label <- ifelse(igraph::V(g)$name %in% hubs, igraph::V(g)$name, "")
@@ -3591,21 +3635,58 @@ generate_network_pdf <- function(results,
          edge.color = adjustcolor(edge_color, alpha.f = 0.4),
          edge.width = scales::rescale(igraph::edge_attr(g, weight_col), to = c(0.3, 1.8)),
          edge.arrow.size = if (directed) 0.3 else 0,
-         main = sprintf("%s — Cluster '%s'  (%d nodes, %d edges)",
+         main = sprintf("%s - Cluster '%s'  (%d nodes, %d edges)",
                         method_name, r$cluster,
                         length(igraph::V(g)), length(igraph::E(g))))
 
-    # Hubs bar chart
+    # Page B: hub barchart
     hubs_df <- data.frame(gene = hubs, degree = deg[seq_len(length(hubs))])
     print(ggplot2::ggplot(hubs_df,
                           ggplot2::aes(x = stats::reorder(gene, degree), y = degree)) +
           ggplot2::geom_col(fill = edge_color) +
           ggplot2::coord_flip() +
-          ggplot2::labs(title    = sprintf("Top %d hubs — cluster '%s'",
+          ggplot2::labs(title    = sprintf("Top %d hubs - cluster '%s'",
                                             n_top_hubs, r$cluster),
                         subtitle = paste0("Method: ", method_name),
                         x = NULL, y = "Degree") +
           ggplot2::theme_bw(base_size = 12))
+
+    # Page C: top edges table + interpretation
+    grid::grid.newpage()
+    grid::grid.text(sprintf("Cluster '%s' - Details", r$cluster),
+                    y = 0.97, gp = grid::gpar(fontsize = 16, fontface = "bold"))
+
+    # Top 15 edges table (above)
+    top15 <- head(edges, 15)
+    pushViewport(viewport(y = 0.70, height = 0.45))
+    grid::grid.text(paste0("Top 15 edges (sorted by ", weight_col, ")"),
+                    y = 1.02, gp = grid::gpar(fontsize = 12, fontface = "bold"))
+    grid::grid.draw(gridExtra::tableGrob(
+      do.call(data.frame, lapply(top15, function(x)
+        if (is.numeric(x)) round(x, 4) else x)),
+      rows = NULL,
+      theme = gridExtra::ttheme_default(base_size = 8)))
+    popViewport()
+
+    # Interpretation text (below)
+    interp <- paste(
+      sprintf("Genes in cluster (after variance filter): %d", r$n_genes),
+      sprintf("Total edges (unfiltered): %d", r$n_all),
+      sprintf("Filtered edges in this network: %d", r$n_filtered),
+      "",
+      sprintf("Top hubs by degree:"),
+      paste0("  ", paste(hubs, collapse = ", ")),
+      "",
+      sprintf("Strongest edge: %s %s %s  (%s = %.4f)",
+              top15$source[1],
+              if (directed) "->" else "--",
+              top15$target[1],
+              weight_col,
+              as.numeric(top15[[weight_col]][1])),
+      sep = "\n"
+    )
+    grid::grid.text(interp, x = 0.05, y = 0.20, just = c("left", "center"),
+                    gp = grid::gpar(fontsize = 10, fontfamily = "mono"))
   }
 
   dev.off()
