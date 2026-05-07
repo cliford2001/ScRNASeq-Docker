@@ -3393,3 +3393,126 @@ run_wgcna_per_cluster <- function(cluster_assignments,
 
   invisible(results)
 }
+
+
+# =============================================================================
+# run_synergistic_network
+# =============================================================================
+# SYNERGISTIC analysis (NOT a consensus / intersection).
+#
+# Each method contributes what the other cannot:
+#   - GENIE3 provides DIRECTIONALITY (TF -> target) and predictive power
+#   - WGCNA  provides COEXPRESSION ROBUSTNESS via TOM (shared neighbors)
+#
+# For every TF -> target edge proposed by GENIE3, the WGCNA TOM of that pair
+# is looked up. The synergistic score combines both with a geometric mean of
+# rank-normalized values, which penalizes any edge where one side is weak:
+#
+#   score_synergy = sqrt( rank_norm(weight_genie3) * rank_norm(TOM) )
+#
+# Output: directed edges (TF -> target) with both metrics + synergistic score.
+run_synergistic_network <- function(cluster_assignments,
+                                    pseudobulk_dir,
+                                    output_dir,
+                                    orgdb,
+                                    keytype        = "TAIR",
+                                    custom_tfs     = NULL,
+                                    n_top_clusters = 3,
+                                    soft_power     = 6,
+                                    network_type   = "signed",
+                                    genie3_ntrees  = 100,
+                                    n_cores        = 4,
+                                    min_var_filter = 0.01,
+                                    cor_min        = 0.90,
+                                    tom_min        = 0.15) {
+
+  dir.create(output_dir, recursive = TRUE, showWarnings = FALSE)
+
+  exprMatr_full <- load_pseudobulk_matrix(pseudobulk_dir, normalize = TRUE)
+  message("Pseudobulk matrix: ", nrow(exprMatr_full), " genes x ",
+          ncol(exprMatr_full), " samples (CPM + log2)")
+
+  tf_list <- if (!is.null(custom_tfs)) unique(custom_tfs) else get_tfs_from_orgdb(orgdb, keytype)
+  if (!length(tf_list)) stop("Empty TF list — provide custom_tfs or check OrgDb/keytype")
+  message("TFs available (organism-wide): ", length(tf_list))
+
+  ca <- cluster_assignments[cluster_assignments$cluster != "grey", ]
+  cluster_sizes <- sort(table(ca$cluster), decreasing = TRUE)
+  top_clusters  <- names(cluster_sizes)[seq_len(min(n_top_clusters, length(cluster_sizes)))]
+
+  rank_norm <- function(x) rank(x, ties.method = "average") / length(x)
+
+  results <- list()
+  for (clust_id in top_clusters) {
+    message("\n── Synergistic analysis on cluster: ", clust_id, " ──")
+    genes_ok <- intersect(ca$gene_id[ca$cluster == clust_id], rownames(exprMatr_full))
+    expr     <- exprMatr_full[genes_ok, , drop = FALSE]
+    expr     <- expr[apply(expr, 1, var) > min_var_filter, , drop = FALSE]
+    if (nrow(expr) < 10) { message("  Skip (<10 genes)"); next }
+
+    TFreg   <- intersect(tf_list, rownames(expr))
+    targets <- setdiff(rownames(expr), TFreg)
+    if (!length(TFreg) || !length(targets)) { message("  Skip (no TFs/targets)"); next }
+    message("  Genes: ", nrow(expr), " | TFs: ", length(TFreg),
+            " | Targets: ", length(targets))
+
+    # WGCNA layer (coexpression backbone)
+    adj <- adjacency(t(expr), power = soft_power, type = network_type)
+    TOM <- TOMsimilarity(adj, TOMType = network_type, verbose = 0)
+    rownames(TOM) <- colnames(TOM) <- rownames(expr)
+    cor_matrix <- cor(t(expr), method = "pearson")
+
+    # GENIE3 layer (directed TF -> target)
+    set.seed(123)
+    weightMat <- GENIE3(expr, regulators = TFreg, targets = targets,
+                        treeMethod = "RF", K = "sqrt",
+                        nCores = n_cores, verbose = FALSE)
+    linkList <- getLinkList(weightMat)
+    colnames(linkList) <- c("source", "target", "weight_genie3")
+    dt <- data.table::as.data.table(linkList)
+    dt[, source := as.character(source)]
+    dt[, target := as.character(target)]
+    dt <- dt[weight_genie3 > 0]
+
+    # Lookup WGCNA metrics for each directed edge
+    dt[, TOM         := TOM[cbind(source, target)]]
+    dt[, adjacency   := adj[cbind(source, target)]]
+    dt[, pearson_cor := abs(cor_matrix[cbind(source, target)])]
+
+    # Synergistic score: geometric mean of rank-normalized values
+    dt[, score_synergy := sqrt(rank_norm(weight_genie3) * rank_norm(TOM))]
+    data.table::setorder(dt, -score_synergy)
+
+    # Filter: BOTH layers must pass their own threshold
+    final <- dt[pearson_cor >= cor_min & TOM >= tom_min]
+    data.table::setorder(final, -score_synergy)
+    message("  All TF->target edges: ", nrow(dt),
+            " | Filtered (|r|>=", cor_min, " AND TOM>=", tom_min, "): ",
+            nrow(final))
+
+    write.table(dt[, .(source, target, weight_genie3, TOM, adjacency,
+                       pearson_cor, score_synergy)],
+                file.path(output_dir, paste0("SYNERGY_", clust_id, "_all_edges.tsv")),
+                sep = "\t", quote = FALSE, row.names = FALSE)
+    write.table(final[, .(source, target, weight_genie3, TOM, adjacency,
+                          pearson_cor, score_synergy)],
+                file.path(output_dir, paste0("SYNERGY_", clust_id, "_filtered.tsv")),
+                sep = "\t", quote = FALSE, row.names = FALSE)
+
+    results[[clust_id]] <- list(
+      cluster    = clust_id,
+      n_genes    = nrow(expr),
+      n_tfs      = length(TFreg),
+      n_targets  = length(targets),
+      all_edges  = dt,
+      filtered   = final,
+      n_all      = nrow(dt),
+      n_filtered = nrow(final)
+    )
+  }
+
+  saveRDS(results, file.path(output_dir, "synergy_results.rds"))
+  message("\n✓ Synergistic outputs saved to: ", output_dir)
+
+  invisible(results)
+}

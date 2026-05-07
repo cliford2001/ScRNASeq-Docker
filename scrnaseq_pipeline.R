@@ -917,4 +917,25 @@ wgcna_results <- run_wgcna_per_cluster(
   min_var_filter      = min_var_filter
 )
 
+# ── Run SYNERGISTIC analysis (GENIE3 + WGCNA, complementary) ─────────────────
+# Uses GENIE3 directionality (TF -> target) AND WGCNA TOM as a coexpression
+# robustness layer. Edges are kept only when BOTH layers pass their threshold.
+# The synergy score is the geometric mean of rank-normalized GENIE3 and TOM.
+synergy_results <- run_synergistic_network(
+  cluster_assignments = heatmap_results,
+  pseudobulk_dir      = file.path(dir_09, "pseudobulk_replicas"),
+  output_dir          = file.path(dir_14, diff_tag, "SYNERGY"),
+  orgdb               = net_orgdb,
+  keytype             = net_keytype,
+  custom_tfs          = custom_tfs,
+  n_top_clusters      = n_top_clusters,
+  soft_power          = soft_power,
+  network_type        = network_type,
+  genie3_ntrees       = genie3_ntrees,
+  n_cores             = n_cores,
+  min_var_filter      = min_var_filter,
+  cor_min             = cor_min,
+  tom_min             = tom_threshold
+)
+
 
