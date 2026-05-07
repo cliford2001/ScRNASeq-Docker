@@ -938,4 +938,15 @@ synergy_results <- run_synergistic_network(
   tom_min             = tom_threshold
 )
 
+# ── Network visualization PDFs (one per method) ──────────────────────────────
+generate_network_pdf(genie3_results,  file.path(dir_14, diff_tag, "GENIE3"),
+                     method_name = "GENIE3",  weight_col = "weight",
+                     directed = TRUE,  edge_color = "#2ca02c")
+generate_network_pdf(wgcna_results,   file.path(dir_14, diff_tag, "WGCNA"),
+                     method_name = "WGCNA",   weight_col = "TOM",
+                     directed = FALSE, edge_color = "#1f77b4")
+generate_network_pdf(synergy_results, file.path(dir_14, diff_tag, "SYNERGY"),
+                     method_name = "SYNERGY", weight_col = "score_synergy",
+                     directed = TRUE,  edge_color = "#d62728")
+
 

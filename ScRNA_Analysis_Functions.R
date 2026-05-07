@@ -3516,3 +3516,99 @@ run_synergistic_network <- function(cluster_assignments,
 
   invisible(results)
 }
+
+
+# =============================================================================
+# generate_network_pdf
+# =============================================================================
+# Generic PDF report for any of the three network methods (GENIE3, WGCNA, SYNERGY).
+# Per cluster: network plot, top hubs bar chart, summary text.
+#
+# Expects results = list-of-clusters with each cluster providing:
+#   $cluster, $n_genes, $filtered (data.frame/data.table with source, target,
+#                                  + a "weight_col" used for edge width)
+generate_network_pdf <- function(results,
+                                 output_dir,
+                                 method_name,
+                                 weight_col,
+                                 directed     = FALSE,
+                                 n_top_hubs   = 10,
+                                 max_nodes    = 80,
+                                 edge_color   = "#1f78b4") {
+
+  if (!length(results)) { message("No results to plot for ", method_name); return(invisible(NULL)) }
+
+  pdf_path <- file.path(output_dir, paste0(method_name, "_network_report.pdf"))
+  pdf(pdf_path, width = 12, height = 10)
+
+  # Cover page
+  grid::grid.newpage()
+  grid::grid.text(paste0(method_name, " — Network Analysis"),
+                  y = 0.85, gp = grid::gpar(fontsize = 22, fontface = "bold"))
+  grid::grid.text(paste0(length(results), " clusters analyzed"),
+                  y = 0.78, gp = grid::gpar(fontsize = 12))
+
+  # Summary table
+  summary_df <- do.call(rbind, lapply(results, function(r) data.frame(
+    Cluster        = r$cluster,
+    Genes          = r$n_genes,
+    Edges_total    = r$n_all,
+    Edges_filtered = r$n_filtered
+  )))
+  grid::grid.newpage()
+  grid::grid.text("Summary across clusters",
+                  y = 0.95, gp = grid::gpar(fontsize = 16, fontface = "bold"))
+  grid::grid.draw(gridExtra::tableGrob(summary_df, rows = NULL,
+                                       theme = gridExtra::ttheme_default(base_size = 11)))
+
+  # Per-cluster pages
+  for (r in results) {
+    edges <- as.data.frame(r$filtered)
+    if (nrow(edges) == 0) next
+
+    g <- igraph::graph_from_data_frame(
+      edges[, c("source", "target", weight_col)],
+      directed = directed
+    )
+
+    # Subset to top hubs by degree
+    if (length(igraph::V(g)) > max_nodes) {
+      keep <- names(sort(igraph::degree(g), decreasing = TRUE))[seq_len(max_nodes)]
+      g <- igraph::induced_subgraph(g, keep)
+    }
+    deg <- sort(igraph::degree(g), decreasing = TRUE)
+    hubs <- names(deg)[seq_len(min(n_top_hubs, length(deg)))]
+
+    # Network plot
+    igraph::V(g)$color <- ifelse(igraph::V(g)$name %in% hubs, "#ff7f0e", "#cccccc")
+    igraph::V(g)$size  <- ifelse(igraph::V(g)$name %in% hubs, 8, 3)
+    igraph::V(g)$label <- ifelse(igraph::V(g)$name %in% hubs, igraph::V(g)$name, "")
+    par(mar = c(0, 0, 3, 0))
+    plot(g, layout = igraph::layout_with_fr(g),
+         vertex.label.cex   = 0.6,
+         vertex.label.color = "black",
+         vertex.frame.color = NA,
+         edge.color = adjustcolor(edge_color, alpha.f = 0.4),
+         edge.width = scales::rescale(igraph::edge_attr(g, weight_col), to = c(0.3, 1.8)),
+         edge.arrow.size = if (directed) 0.3 else 0,
+         main = sprintf("%s — Cluster '%s'  (%d nodes, %d edges)",
+                        method_name, r$cluster,
+                        length(igraph::V(g)), length(igraph::E(g))))
+
+    # Hubs bar chart
+    hubs_df <- data.frame(gene = hubs, degree = deg[seq_len(length(hubs))])
+    print(ggplot2::ggplot(hubs_df,
+                          ggplot2::aes(x = stats::reorder(gene, degree), y = degree)) +
+          ggplot2::geom_col(fill = edge_color) +
+          ggplot2::coord_flip() +
+          ggplot2::labs(title    = sprintf("Top %d hubs — cluster '%s'",
+                                            n_top_hubs, r$cluster),
+                        subtitle = paste0("Method: ", method_name),
+                        x = NULL, y = "Degree") +
+          ggplot2::theme_bw(base_size = 12))
+  }
+
+  dev.off()
+  message("✓ PDF saved: ", pdf_path)
+  invisible(pdf_path)
+}
