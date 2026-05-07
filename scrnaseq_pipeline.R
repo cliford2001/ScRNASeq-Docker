@@ -838,35 +838,76 @@ for (clust_id in unique(heatmap_results$cluster)) {
 
 
 # =============================================================================
-# SECTION 22 — COMBINED NETWORK INFERENCE (WGCNA + GENIE3)
+# SECTION 22 — NETWORK INFERENCE PER CLUSTER
 # =============================================================================
-# For each cluster from Section 20, builds a CONSENSUS network combining:
-#   - WGCNA  : correlation-based score (undirected)
-#   - GENIE3 : Random Forest importance score (collapsed to undirected)
-# Edges are labeled by support: "both", "wgcna_only", "genie3_only".
-# Edges supported by BOTH methods are the highest-confidence interactions.
+# Two independent network inference analyses per cluster from Section 20:
 #
-# ┌─ NETWORK PARAMETERS ─────────────────────────────────────────────────────────
+#   - GENIE3 (TF -> target, directed)
+#       TFs are extracted automatically from the OrgDb via GO:0003700
+#       (DNA-binding transcription factor activity), or you can pass a custom
+#       list with `custom_tfs`. Edges filtered by absolute Pearson correlation.
+#
+#   - WGCNA (undirected coexpression)
+#       Builds a TOM-based network. Edges filtered by TOM threshold.
+#
+# Both functions read pseudobulk replicate counts from Section 16, normalize
+# (CPM + log2) and run independently. Outputs are saved in dir_14/<contrast>/.
+#
+# ┌─ COMMON PARAMETERS ──────────────────────────────────────────────────────────
 #   n_top_clusters : how many largest clusters to analyze
-#   top_edge_pct   : fraction of strongest edges to retain per method
-#   n_top_hubs     : top-N hub genes by degree on the combined graph
-#   genie3_ntrees  : trees for Random Forest (more = slower, more stable)
-#   min_var_filter : drop genes with variance below this across pseudobulk samples
+#   min_var_filter : drop genes with variance below this across samples
+# ├─ GENIE3 PARAMETERS ──────────────────────────────────────────────────────────
+#   net_orgdb      : Bioconductor OrgDb (e.g. org.At.tair.db, org.Hs.eg.db)
+#   net_keytype    : key type matching gene IDs (e.g. "TAIR", "ENSEMBL")
+#   custom_tfs     : optional vector of TF IDs to override GO-based detection
+#   cor_min        : Pearson correlation threshold for filtered output
+#   genie3_ntrees  : Random Forest trees (more = stabler, slower)
+#   n_cores        : parallel cores for GENIE3
+# ├─ WGCNA PARAMETERS ───────────────────────────────────────────────────────────
+#   soft_power     : adjacency power
+#   network_type   : "signed" or "unsigned"
+#   tom_threshold  : TOM threshold for filtered output
 # └─────────────────────────────────────────────────────────────────────────────
 n_top_clusters <- 3
-top_edge_pct   <- 0.05
-n_top_hubs     <- 10
-genie3_ntrees  <- 100
-min_var_filter <- 0.5
+min_var_filter <- 0.01
 
-network_results <- infer_combined_networks(
+# GENIE3
+net_orgdb     <- org.At.tair.db
+net_keytype   <- "TAIR"
+custom_tfs    <- NULL          # set to a vector of IDs to override GO detection
+cor_min       <- 0.90
+genie3_ntrees <- 100
+n_cores       <- 4
+
+# WGCNA
+soft_power    <- 6
+network_type  <- "signed"
+tom_threshold <- 0.10
+
+# ── Run GENIE3 (TF -> target) ────────────────────────────────────────────────
+genie3_results <- run_genie3_per_cluster(
   cluster_assignments = heatmap_results,
   pseudobulk_dir      = file.path(dir_09, "pseudobulk_replicas"),
-  output_dir          = file.path(dir_14, diff_tag),
+  output_dir          = file.path(dir_14, diff_tag, "GENIE3"),
+  orgdb               = net_orgdb,
+  keytype             = net_keytype,
+  custom_tfs          = custom_tfs,
   n_top_clusters      = n_top_clusters,
-  top_edge_pct        = top_edge_pct,
-  n_top_hubs          = n_top_hubs,
+  cor_min             = cor_min,
   genie3_ntrees       = genie3_ntrees,
+  n_cores             = n_cores,
+  min_var_filter      = min_var_filter
+)
+
+# ── Run WGCNA (TOM coexpression) ─────────────────────────────────────────────
+wgcna_results <- run_wgcna_per_cluster(
+  cluster_assignments = heatmap_results,
+  pseudobulk_dir      = file.path(dir_09, "pseudobulk_replicas"),
+  output_dir          = file.path(dir_14, diff_tag, "WGCNA"),
+  n_top_clusters      = n_top_clusters,
+  soft_power          = soft_power,
+  network_type        = network_type,
+  tom_threshold       = tom_threshold,
   min_var_filter      = min_var_filter
 )
 

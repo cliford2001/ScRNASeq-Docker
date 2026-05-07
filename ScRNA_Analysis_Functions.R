@@ -3163,404 +3163,233 @@ build_logfc_heatmap <- function(logfc_table,
 }
 
 
-# =============================================================================
-# infer_combined_networks
-# =============================================================================
-# For each cluster from build_logfc_heatmap(), builds a CONSENSUS gene network
-# combining WGCNA (correlation) and GENIE3 (random forest) inferences.
-#
-# An edge is included if its score is in the top fraction in EITHER method.
-# Edges supported by both methods (intersection) are flagged as "both" and are
-# considered the highest-confidence relationships.
-#
-# The combined edge weight is the mean of the rank-normalized scores from
-# each method. Hubs are computed on the consensus graph.
-infer_combined_networks <- function(cluster_assignments,
-                                    pseudobulk_dir,
-                                    output_dir,
-                                    n_top_clusters = 3,
-                                    top_edge_pct   = 0.05,
-                                    n_top_hubs     = 10,
-                                    genie3_ntrees  = 100,
-                                    min_var_filter = 0.5) {
 
-  dir.create(output_dir, recursive = TRUE, showWarnings = FALSE)
+# =============================================================================
+# get_tfs_from_orgdb
+# =============================================================================
+# Generic helper: returns transcription factor IDs from any Bioconductor OrgDb
+# using GO:0003700 (DNA-binding transcription factor activity).
+# Works for any organism with GO annotation (Arabidopsis, human, mouse, etc.).
+get_tfs_from_orgdb <- function(orgdb, keytype = "TAIR") {
+  tryCatch({
+    tfs <- AnnotationDbi::select(orgdb,
+                                  keys    = "GO:0003700",
+                                  columns = keytype,
+                                  keytype = "GO")[[keytype]]
+    unique(stats::na.omit(tfs))
+  }, error = function(e) {
+    message("Could not retrieve TFs via GO:0003700 (", e$message, ")")
+    character(0)
+  })
+}
 
-  # ── Load & merge pseudobulk counts ──────────────────────────────────────────
-  pb_files <- list.files(pseudobulk_dir, pattern = "^Pseudobulk_Reps_.*\\.csv$",
+
+# =============================================================================
+# load_pseudobulk_matrix
+# =============================================================================
+# Internal helper: loads and merges pseudobulk replicate counts from a directory
+# of files named Pseudobulk_Reps_<celltype>.csv. Returns a CPM + log2 matrix.
+load_pseudobulk_matrix <- function(pseudobulk_dir, normalize = TRUE) {
+  pb_files <- list.files(pseudobulk_dir,
+                         pattern = "^Pseudobulk_Reps_.*\\.csv$",
                          full.names = TRUE)
+  if (!length(pb_files)) stop("No Pseudobulk_Reps_*.csv files in: ", pseudobulk_dir)
   pb_list <- lapply(pb_files, function(f) {
     df <- read.csv(f, row.names = 1, check.names = FALSE)
     ct <- gsub("Pseudobulk_Reps_|\\.csv$", "", basename(f))
     colnames(df) <- paste0(ct, "_", colnames(df))
     df
   })
-  common_genes <- Reduce(intersect, lapply(pb_list, rownames))
-  pb_log <- log2(as.matrix(do.call(cbind, lapply(pb_list, function(d) d[common_genes, ]))) + 1)
+  common <- Reduce(intersect, lapply(pb_list, rownames))
+  mat    <- as.matrix(do.call(cbind, lapply(pb_list, function(d) d[common, ])))
 
-  message("Pseudobulk matrix: ", nrow(pb_log), " genes x ", ncol(pb_log), " samples")
+  if (normalize) {
+    lib_sizes <- colSums(mat)
+    mat <- sweep(mat, 2, lib_sizes / 1e6, FUN = "/")
+    mat <- log2(mat + 1)
+  }
+  mat
+}
 
-  # ── Select top clusters ─────────────────────────────────────────────────────
+
+# =============================================================================
+# run_genie3_per_cluster
+# =============================================================================
+# GENIE3-only analysis per cluster. Uses transcription factors as regulators
+# (TF -> target directed edges) and filters edges by absolute Pearson correlation.
+#
+# Generic across organisms: provide an OrgDb (org.At.tair.db, org.Hs.eg.db, ...)
+# and a matching keytype, or pass a custom_tfs vector to override.
+run_genie3_per_cluster <- function(cluster_assignments,
+                                   pseudobulk_dir,
+                                   output_dir,
+                                   orgdb,
+                                   keytype        = "TAIR",
+                                   custom_tfs     = NULL,
+                                   n_top_clusters = 3,
+                                   cor_min        = 0.90,
+                                   genie3_ntrees  = 100,
+                                   n_cores        = 4,
+                                   min_var_filter = 0.01) {
+
+  dir.create(output_dir, recursive = TRUE, showWarnings = FALSE)
+
+  # ── Pseudobulk: CPM + log2 ──────────────────────────────────────────────────
+  exprMatr_full <- load_pseudobulk_matrix(pseudobulk_dir, normalize = TRUE)
+  message("Pseudobulk matrix: ", nrow(exprMatr_full), " genes x ",
+          ncol(exprMatr_full), " samples (CPM + log2)")
+
+  # ── Transcription factor list ───────────────────────────────────────────────
+  tf_list <- if (!is.null(custom_tfs)) {
+    unique(custom_tfs)
+  } else {
+    get_tfs_from_orgdb(orgdb, keytype)
+  }
+  if (!length(tf_list)) stop("Empty TF list — provide custom_tfs or check OrgDb/keytype")
+  message("TFs available (organism-wide): ", length(tf_list))
+
+  # ── Top clusters ────────────────────────────────────────────────────────────
   ca <- cluster_assignments[cluster_assignments$cluster != "grey", ]
   cluster_sizes <- sort(table(ca$cluster), decreasing = TRUE)
   top_clusters  <- names(cluster_sizes)[seq_len(min(n_top_clusters, length(cluster_sizes)))]
 
-  # ── Helper functions ────────────────────────────────────────────────────────
-  pair_key <- function(a, b) paste(pmin(a, b), pmax(a, b), sep = "|")
-
-  build_combined_net <- function(expr) {
-    if (nrow(expr) < 5) return(NULL)
-
-    # WGCNA edges (all pairs, scored)
-    cor_mat <- cor(t(expr), method = "pearson", use = "pairwise.complete.obs")
-    adj <- abs(cor_mat) ^ 6; diag(adj) <- 0
-    idx <- which(upper.tri(adj), arr.ind = TRUE)
-    w_df <- data.frame(
-      from = rownames(adj)[idx[, 1]],
-      to   = colnames(adj)[idx[, 2]],
-      weight_wgcna = adj[idx],
-      stringsAsFactors = FALSE
-    )
-
-    # GENIE3 edges (all pairs, scored)
-    wm <- GENIE3(as.matrix(expr), nTrees = genie3_ntrees, verbose = FALSE)
-    g_df <- getLinkList(wm)
-    colnames(g_df) <- c("from", "to", "weight_genie3")
-    # Force character (getLinkList may return factors, breaking pmin/pmax)
-    g_df$from <- as.character(g_df$from)
-    g_df$to   <- as.character(g_df$to)
-    w_df$from <- as.character(w_df$from)
-    w_df$to   <- as.character(w_df$to)
-    # GENIE3 returns directed pairs — collapse to undirected by max
-    g_df$key <- pair_key(g_df$from, g_df$to)
-    g_df <- aggregate(weight_genie3 ~ key, data = g_df, FUN = max)
-
-    w_df$key <- pair_key(w_df$from, w_df$to)
-
-    # Threshold each method individually
-    thr_w <- quantile(w_df$weight_wgcna,  1 - top_edge_pct, na.rm = TRUE)
-    thr_g <- quantile(g_df$weight_genie3, 1 - top_edge_pct, na.rm = TRUE)
-    w_df$top_w <- w_df$weight_wgcna  >= thr_w
-    g_df$top_g <- g_df$weight_genie3 >= thr_g
-
-    # Merge by gene pair
-    merged <- merge(w_df, g_df[, c("key", "weight_genie3", "top_g")],
-                    by = "key", all = TRUE)
-    merged$top_w[is.na(merged$top_w)] <- FALSE
-    merged$top_g[is.na(merged$top_g)] <- FALSE
-
-    # Keep edges that pass threshold in EITHER method
-    keep <- merged$top_w | merged$top_g
-    merged <- merged[keep, ]
-    if (nrow(merged) == 0) return(NULL)
-
-    # Recover from/to (some may be NA after merge — fill from key)
-    fill_pair <- do.call(rbind, strsplit(merged$key, "\\|"))
-    merged$from <- ifelse(is.na(merged$from), fill_pair[, 1], merged$from)
-    merged$to   <- ifelse(is.na(merged$to),   fill_pair[, 2], merged$to)
-
-    # Rank-normalize weights to [0,1] within each method
-    merged$weight_wgcna[is.na(merged$weight_wgcna)]   <- 0
-    merged$weight_genie3[is.na(merged$weight_genie3)] <- 0
-    norm_w <- rank(merged$weight_wgcna)  / nrow(merged)
-    norm_g <- rank(merged$weight_genie3) / nrow(merged)
-    merged$weight_combined <- (norm_w + norm_g) / 2
-
-    # Support label
-    merged$support <- ifelse(merged$top_w & merged$top_g, "both",
-                      ifelse(merged$top_w, "wgcna_only", "genie3_only"))
-
-    merged[order(-merged$weight_combined),
-           c("from", "to", "weight_wgcna", "weight_genie3",
-             "weight_combined", "support")]
-  }
-
-  get_hubs <- function(edges, n) {
-    if (is.null(edges) || nrow(edges) == 0) return(data.frame())
-    g <- igraph::graph_from_data_frame(edges[, c("from", "to")], directed = FALSE)
-    deg <- sort(igraph::degree(g), decreasing = TRUE)
-    data.frame(gene = names(deg)[seq_len(min(n, length(deg)))],
-               degree = deg[seq_len(min(n, length(deg)))])
-  }
-
-  plot_consensus_net <- function(edges, title, hubs, max_nodes = 100) {
-    if (is.null(edges) || nrow(edges) == 0) {
-      grid::grid.text(paste0(title, "\n(empty)")); return()
-    }
-    g <- igraph::graph_from_data_frame(
-      edges[, c("from", "to", "weight_combined", "support")],
-      directed = FALSE
-    )
-    if (length(igraph::V(g)) > max_nodes) {
-      keep <- names(sort(igraph::degree(g), decreasing = TRUE))[seq_len(max_nodes)]
-      g <- igraph::induced_subgraph(g, keep)
-    }
-    edge_color <- ifelse(igraph::E(g)$support == "both",        "#d62728",  # red — confirmed
-                  ifelse(igraph::E(g)$support == "wgcna_only",  "#1f77b4",  # blue
-                         "#2ca02c"))                                         # green — genie3
-    igraph::V(g)$color <- ifelse(igraph::V(g)$name %in% hubs, "#ff7f0e", "#cccccc")
-    igraph::V(g)$size  <- ifelse(igraph::V(g)$name %in% hubs, 7, 3)
-    igraph::V(g)$label <- ifelse(igraph::V(g)$name %in% hubs, igraph::V(g)$name, "")
-    par(mar = c(0, 0, 2.5, 0))
-    plot(g, layout = igraph::layout_with_fr(g),
-         vertex.label.cex   = 0.55,
-         vertex.label.color = "black",
-         vertex.frame.color = NA,
-         edge.color         = adjustcolor(edge_color, alpha.f = 0.5),
-         edge.width         = scales::rescale(igraph::E(g)$weight_combined,
-                                              to = c(0.3, 1.8)),
-         main = title)
-    legend("bottomleft", legend = c("Both methods", "WGCNA only", "GENIE3 only"),
-           col = c("#d62728", "#1f77b4", "#2ca02c"), lty = 1, lwd = 2,
-           bty = "n", cex = 0.75)
-  }
-
-  # ── Plotter for a single-method network (no support coloring) ───────────────
-  plot_single_net <- function(edges, title, hubs, color = "#1f78b4", max_nodes = 80) {
-    if (is.null(edges) || nrow(edges) == 0) {
-      par(mar = c(0, 0, 2, 0)); plot.new(); title(title)
-      return()
-    }
-    g <- igraph::graph_from_data_frame(edges[, c("from", "to")], directed = FALSE)
-    if (length(igraph::V(g)) > max_nodes) {
-      keep <- names(sort(igraph::degree(g), decreasing = TRUE))[seq_len(max_nodes)]
-      g <- igraph::induced_subgraph(g, keep)
-    }
-    igraph::V(g)$color <- ifelse(igraph::V(g)$name %in% hubs, "#ff7f0e", "#cccccc")
-    igraph::V(g)$size  <- ifelse(igraph::V(g)$name %in% hubs, 7, 3)
-    igraph::V(g)$label <- ifelse(igraph::V(g)$name %in% hubs, igraph::V(g)$name, "")
-    par(mar = c(0, 0, 2.5, 0))
-    plot(g, layout = igraph::layout_with_fr(g),
-         vertex.label.cex   = 0.55,
-         vertex.label.color = "black",
-         vertex.frame.color = NA,
-         edge.color = adjustcolor(color, alpha.f = 0.4),
-         main = title)
-  }
-
-  # ── Analysis per cluster ────────────────────────────────────────────────────
+  # ── Per-cluster GENIE3 ──────────────────────────────────────────────────────
   results <- list()
   for (clust_id in top_clusters) {
-    message("Analyzing cluster: ", clust_id)
-    genes <- intersect(ca$gene_id[ca$cluster == clust_id], rownames(pb_log))
-    expr  <- pb_log[genes, , drop = FALSE]
-    expr  <- expr[apply(expr, 1, var) >= min_var_filter, , drop = FALSE]
-    if (nrow(expr) < 10) { message("  Skip (<10 genes)"); next }
+    message("\n── GENIE3 on cluster: ", clust_id, " ──")
+    genes_ok <- intersect(ca$gene_id[ca$cluster == clust_id], rownames(exprMatr_full))
+    expr     <- exprMatr_full[genes_ok, , drop = FALSE]
+    expr     <- expr[apply(expr, 1, var) > min_var_filter, , drop = FALSE]
 
-    edges <- build_combined_net(expr)
-    if (is.null(edges)) { message("  Skip (no edges)"); next }
+    TFreg   <- intersect(tf_list, rownames(expr))
+    targets <- setdiff(rownames(expr), TFreg)
+    message("  Genes: ", nrow(expr), " | TFs: ", length(TFreg), " | Targets: ", length(targets))
 
-    # Split into 3 networks
-    edges_wgcna   <- edges[edges$support %in% c("both", "wgcna_only"), ]
-    edges_genie3  <- edges[edges$support %in% c("both", "genie3_only"), ]
-    edges_consen  <- edges[edges$support == "both", ]
+    if (length(TFreg) == 0 || length(targets) == 0) {
+      message("  Skip (no TFs or no targets)"); next
+    }
 
-    hubs_wgcna   <- get_hubs(edges_wgcna,  n_top_hubs)
-    hubs_genie3  <- get_hubs(edges_genie3, n_top_hubs)
-    hubs_consen  <- get_hubs(edges_consen, n_top_hubs)
+    set.seed(123)
+    weightMat <- GENIE3(expr,
+                        regulators = TFreg, targets = targets,
+                        treeMethod = "RF", K = "sqrt",
+                        nCores = n_cores, verbose = FALSE)
+
+    linkList <- getLinkList(weightMat)
+    colnames(linkList) <- c("source", "target", "weight")
+    dt <- data.table::as.data.table(linkList)
+    dt[, source := as.character(source)]
+    dt[, target := as.character(target)]
+    dt <- dt[weight > 0]
+
+    cor_matrix <- cor(t(expr), method = "pearson")
+    dt[, pearson_cor := abs(cor_matrix[cbind(source, target)])]
+
+    final <- dt[pearson_cor >= cor_min]
+    data.table::setorder(final, -pearson_cor, -weight)
+    message("  All edges (weight > 0): ", nrow(dt),
+            " | Filtered (|r| >= ", cor_min, "): ", nrow(final))
+
+    # Save outputs
+    write.table(dt[, .(source, target, weight, pearson_cor)],
+                file.path(output_dir, paste0("GENIE3_", clust_id, "_all_edges.tsv")),
+                sep = "\t", quote = FALSE, row.names = FALSE)
+    write.table(final[, .(source, target, weight, pearson_cor)],
+                file.path(output_dir,
+                          paste0("GENIE3_", clust_id,
+                                 "_cor", round(cor_min * 100), ".tsv")),
+                sep = "\t", quote = FALSE, row.names = FALSE)
 
     results[[clust_id]] <- list(
       cluster      = clust_id,
       n_genes      = nrow(expr),
-      edges        = edges,
-      edges_wgcna  = edges_wgcna,
-      edges_genie3 = edges_genie3,
-      edges_consen = edges_consen,
-      hubs_wgcna   = hubs_wgcna,
-      hubs_genie3  = hubs_genie3,
-      hubs_consen  = hubs_consen,
-      n_wgcna      = nrow(edges_wgcna),
-      n_genie3     = nrow(edges_genie3),
-      n_consen     = nrow(edges_consen),
-      hub_overlap_wg  = length(intersect(hubs_wgcna$gene,  hubs_genie3$gene)),
-      consensus_pct   = if (nrow(edges) > 0) round(100 * nrow(edges_consen) / nrow(edges), 1) else 0
+      n_tfs        = length(TFreg),
+      n_targets    = length(targets),
+      all_edges    = dt,
+      filtered     = final,
+      n_all        = nrow(dt),
+      n_filtered   = nrow(final)
     )
-
-    write.table(edges_wgcna,  file.path(output_dir, paste0("edges_WGCNA_",     clust_id, ".tsv")), sep = "\t", quote = FALSE, row.names = FALSE)
-    write.table(edges_genie3, file.path(output_dir, paste0("edges_GENIE3_",    clust_id, ".tsv")), sep = "\t", quote = FALSE, row.names = FALSE)
-    write.table(edges_consen, file.path(output_dir, paste0("edges_CONSENSUS_", clust_id, ".tsv")), sep = "\t", quote = FALSE, row.names = FALSE)
   }
 
-  # ── Build PDF report ────────────────────────────────────────────────────────
-  pdf(file.path(output_dir, "network_inference_report.pdf"), width = 16, height = 11)
-
-  # Cover
-  grid::grid.newpage()
-  grid::grid.text("Network Inference per Cluster",
-                  y = 0.85, gp = grid::gpar(fontsize = 24, fontface = "bold"))
-  grid::grid.text("WGCNA  ·  GENIE3  ·  Consensus",
-                  y = 0.80, gp = grid::gpar(fontsize = 16))
-  grid::grid.text(paste0(length(results), " clusters analyzed · ",
-                         ncol(pb_log), " pseudobulk samples"),
-                  y = 0.76, gp = grid::gpar(fontsize = 12, fontface = "italic"))
-
-  intro <- paste(
-    "METHODS — three networks per cluster",
-    "",
-    "  1. WGCNA      Pearson correlation^6 (undirected co-expression)",
-    "  2. GENIE3     Random Forest importance (collapsed to undirected)",
-    "  3. CONSENSUS  Edges supported by BOTH methods (intersection)",
-    "",
-    paste0("Edges retained per method: top ", top_edge_pct * 100, "% by score."),
-    paste0("Hubs: top ", n_top_hubs, " genes by degree centrality in each network."),
-    "",
-    "INTERPRETATION",
-    "",
-    "  - WGCNA hubs       genes that co-vary widely with the cluster",
-    "  - GENIE3 hubs      genes whose expression best predicts others",
-    "  - Consensus hubs   genes that satisfy BOTH criteria — strongest candidates",
-    "",
-    "The consensus network is the most conservative and the most reliable.",
-    "WGCNA-only or GENIE3-only edges are still informative as secondary signals.",
-    sep = "\n"
-  )
-  grid::grid.text(intro, x = 0.05, y = 0.42, just = c("left", "center"),
-                  gp = grid::gpar(fontsize = 11, fontfamily = "mono"))
-
-  # Summary table
-  if (length(results) > 0) {
-    grid::grid.newpage()
-    grid::grid.text("Summary across clusters",
-                    y = 0.95, gp = grid::gpar(fontsize = 18, fontface = "bold"))
-    smry <- do.call(rbind, lapply(results, function(r) data.frame(
-      Cluster      = r$cluster,
-      Genes        = r$n_genes,
-      WGCNA_edges  = r$n_wgcna,
-      GENIE3_edges = r$n_genie3,
-      Consensus    = r$n_consen,
-      `Consensus%` = paste0(r$consensus_pct, "%"),
-      Hub_overlap  = paste0(r$hub_overlap_wg, "/", n_top_hubs),
-      check.names  = FALSE
-    )))
-    grid::grid.draw(gridExtra::tableGrob(smry, rows = NULL,
-                                         theme = gridExtra::ttheme_default(base_size = 12)))
-  }
-
-  # Per-cluster pages
-  for (r in results) {
-    # Page A: 3 networks side-by-side
-    layout(matrix(1:3, 1, 3))
-    par(oma = c(0, 0, 3, 0))
-    plot_single_net(r$edges_wgcna,
-                    sprintf("WGCNA — %d edges", r$n_wgcna),
-                    r$hubs_wgcna$gene, color = "#1f77b4")
-    plot_single_net(r$edges_genie3,
-                    sprintf("GENIE3 — %d edges", r$n_genie3),
-                    r$hubs_genie3$gene, color = "#2ca02c")
-    plot_single_net(r$edges_consen,
-                    sprintf("CONSENSUS — %d edges", r$n_consen),
-                    r$hubs_consen$gene, color = "#d62728")
-    mtext(sprintf("Cluster '%s'  (%d genes)", r$cluster, r$n_genes),
-          outer = TRUE, cex = 1.4, font = 2)
-    layout(1)
-
-    # Page B: hubs comparison (3 facets)
-    hubs_all <- rbind(
-      cbind(r$hubs_wgcna,  method = "WGCNA"),
-      cbind(r$hubs_genie3, method = "GENIE3"),
-      cbind(r$hubs_consen, method = "CONSENSUS")
-    )
-    if (nrow(hubs_all) > 0) {
-      hubs_all$method <- factor(hubs_all$method, levels = c("WGCNA", "GENIE3", "CONSENSUS"))
-      print(ggplot2::ggplot(hubs_all,
-                            ggplot2::aes(x = stats::reorder(gene, degree), y = degree, fill = method)) +
-            ggplot2::geom_col() +
-            ggplot2::coord_flip() +
-            ggplot2::facet_wrap(~ method, scales = "free") +
-            ggplot2::scale_fill_manual(values = c(WGCNA = "#1f77b4",
-                                                  GENIE3 = "#2ca02c",
-                                                  CONSENSUS = "#d62728")) +
-            ggplot2::labs(title = sprintf("Top hubs by method — cluster '%s'", r$cluster),
-                          subtitle = sprintf("Hub overlap WGCNA/GENIE3: %d / %d",
-                                              r$hub_overlap_wg, n_top_hubs),
-                          x = NULL, y = "Degree") +
-            ggplot2::theme_bw(base_size = 12) +
-            ggplot2::theme(legend.position = "none",
-                           strip.text = ggplot2::element_text(face = "bold")))
-    }
-
-    # Page C: discussion
-    grid::grid.newpage()
-    grid::grid.text(sprintf("Cluster '%s' - Interpretation", r$cluster),
-                    y = 0.95, gp = grid::gpar(fontsize = 18, fontface = "bold"))
-
-    confidence_msg <- if (r$consensus_pct >= 30) {
-      "HIGH confidence: a large fraction of relationships is supported by both methods."
-    } else if (r$consensus_pct >= 10) {
-      "MODERATE confidence: methods partially agree; focus on consensus edges."
-    } else {
-      "LOW confidence: methods diverge; treat the network as exploratory."
-    }
-
-    top_consen <- head(r$edges_consen, 5)
-    top_lines <- if (nrow(top_consen) > 0) {
-      apply(top_consen, 1, function(e) sprintf("  %s -- %s   (combined=%.2f)",
-                                                e["from"], e["to"],
-                                                as.numeric(e["weight_combined"])))
-    } else "  (none)"
-
-    disc <- paste(
-      sprintf("Genes (after variance filter): %d", r$n_genes),
-      "",
-      sprintf("WGCNA edges:     %d", r$n_wgcna),
-      sprintf("GENIE3 edges:    %d", r$n_genie3),
-      sprintf("Consensus edges: %d  (%.1f%% of union)", r$n_consen, r$consensus_pct),
-      sprintf("Hub overlap (WGCNA vs GENIE3): %d / %d", r$hub_overlap_wg, n_top_hubs),
-      "",
-      "INTERPRETATION",
-      "",
-      confidence_msg,
-      "",
-      "TOP HUBS",
-      sprintf("  WGCNA      : %s", paste(head(r$hubs_wgcna$gene,  5), collapse = ", ")),
-      sprintf("  GENIE3     : %s", paste(head(r$hubs_genie3$gene, 5), collapse = ", ")),
-      sprintf("  CONSENSUS  : %s", paste(head(r$hubs_consen$gene, 5), collapse = ", ")),
-      "",
-      "Strongest consensus edges:",
-      paste(top_lines, collapse = "\n"),
-      sep = "\n"
-    )
-    grid::grid.text(disc, x = 0.05, y = 0.5, just = c("left", "center"),
-                    gp = grid::gpar(fontsize = 11, fontfamily = "mono"))
-  }
-
-  # Final conclusions
-  grid::grid.newpage()
-  grid::grid.text("Overall conclusions",
-                  y = 0.95, gp = grid::gpar(fontsize = 20, fontface = "bold"))
-
-  mean_consensus <- mean(sapply(results, function(r) r$consensus_pct))
-  total_consen <- sum(sapply(results, function(r) r$n_consen))
-
-  final <- paste(
-    "GENERAL OBSERVATIONS",
-    "",
-    sprintf("Clusters analyzed: %d", length(results)),
-    sprintf("Total consensus edges across all clusters: %d", total_consen),
-    sprintf("Mean per-cluster consensus rate: %.1f%%", mean_consensus),
-    "",
-    "WHAT TO USE",
-    "",
-    "  • CONSENSUS network  — most reliable; use for biological hypothesis generation",
-    "  • WGCNA network      — broadest co-expression view; useful for module exploration",
-    "  • GENIE3 network     — best for identifying putative regulators",
-    "",
-    "RECOMMENDED FOLLOW-UP",
-    "",
-    "  1. Cross-check consensus hubs against PlantTFDB (Arabidopsis TFs)",
-    "  2. Run GO enrichment on consensus hub neighborhoods",
-    "  3. Recover edge directionality from raw GENIE3 output for top consensus edges",
-    "  4. Validate strongest consensus edges experimentally (DAP-seq, Y1H, ChIP)",
-    sep = "\n"
-  )
-  grid::grid.text(final, x = 0.05, y = 0.5, just = c("left", "center"),
-                  gp = grid::gpar(fontsize = 11, fontfamily = "mono"))
-
-  dev.off()
-
-  saveRDS(results, file.path(output_dir, "network_inference_results.rds"))
-  message("Report saved to: ", file.path(output_dir, "network_inference_report.pdf"))
+  saveRDS(results, file.path(output_dir, "GENIE3_results.rds"))
+  message("\n✓ GENIE3 outputs saved to: ", output_dir)
 
   invisible(results)
 }
 
+
+# =============================================================================
+# run_wgcna_per_cluster
+# =============================================================================
+# WGCNA-only coexpression analysis per cluster. Builds a TOM-based undirected
+# network and filters edges above a TOM threshold.
+run_wgcna_per_cluster <- function(cluster_assignments,
+                                  pseudobulk_dir,
+                                  output_dir,
+                                  n_top_clusters = 3,
+                                  soft_power     = 6,
+                                  network_type   = "signed",
+                                  tom_threshold  = 0.10,
+                                  min_var_filter = 0.01) {
+
+  dir.create(output_dir, recursive = TRUE, showWarnings = FALSE)
+
+  exprMatr_full <- load_pseudobulk_matrix(pseudobulk_dir, normalize = TRUE)
+  message("Pseudobulk matrix: ", nrow(exprMatr_full), " genes x ",
+          ncol(exprMatr_full), " samples (CPM + log2)")
+
+  ca <- cluster_assignments[cluster_assignments$cluster != "grey", ]
+  cluster_sizes <- sort(table(ca$cluster), decreasing = TRUE)
+  top_clusters  <- names(cluster_sizes)[seq_len(min(n_top_clusters, length(cluster_sizes)))]
+
+  results <- list()
+  for (clust_id in top_clusters) {
+    message("\n── WGCNA on cluster: ", clust_id, " ──")
+    genes_ok <- intersect(ca$gene_id[ca$cluster == clust_id], rownames(exprMatr_full))
+    expr     <- exprMatr_full[genes_ok, , drop = FALSE]
+    expr     <- expr[apply(expr, 1, var) > min_var_filter, , drop = FALSE]
+    if (nrow(expr) < 10) { message("  Skip (<10 genes)"); next }
+
+    adj <- adjacency(t(expr), power = soft_power, type = network_type)
+    TOM <- TOMsimilarity(adj, TOMType = network_type, verbose = 0)
+    rownames(TOM) <- colnames(TOM) <- rownames(expr)
+
+    idx <- which(upper.tri(TOM), arr.ind = TRUE)
+    edges <- data.frame(
+      source = rownames(TOM)[idx[, 1]],
+      target = colnames(TOM)[idx[, 2]],
+      adjacency = adj[idx],
+      TOM       = TOM[idx],
+      stringsAsFactors = FALSE
+    )
+    final <- edges[edges$TOM >= tom_threshold, ]
+    final <- final[order(-final$TOM), ]
+    message("  Total pairs: ", nrow(edges),
+            " | Filtered (TOM >= ", tom_threshold, "): ", nrow(final))
+
+    write.table(edges,
+                file.path(output_dir, paste0("WGCNA_", clust_id, "_all_edges.tsv")),
+                sep = "\t", quote = FALSE, row.names = FALSE)
+    write.table(final,
+                file.path(output_dir,
+                          paste0("WGCNA_", clust_id,
+                                 "_TOM", gsub("\\.", "", as.character(tom_threshold)),
+                                 ".tsv")),
+                sep = "\t", quote = FALSE, row.names = FALSE)
+
+    results[[clust_id]] <- list(
+      cluster    = clust_id,
+      n_genes    = nrow(expr),
+      all_edges  = edges,
+      filtered   = final,
+      n_all      = nrow(edges),
+      n_filtered = nrow(final)
+    )
+  }
+
+  saveRDS(results, file.path(output_dir, "WGCNA_results.rds"))
+  message("\n✓ WGCNA outputs saved to: ", output_dir)
+
+  invisible(results)
+}
