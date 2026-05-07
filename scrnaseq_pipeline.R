@@ -871,18 +871,24 @@ for (clust_id in unique(heatmap_results$cluster)) {
 n_top_clusters <- 3
 min_var_filter <- 0.01
 
+# Severity equivalence between methods (used to set thresholds below)
+#   Pearson |r|       Adjacency r^6     TOM         GENIE3 weight (rank)
+#   strict  >= 0.95   >= 0.74           >= 0.25     top  1%
+#   moderate>= 0.90   >= 0.53           >= 0.15     top  5%
+#   loose   >= 0.80   >= 0.26           >= 0.08     top 10%
+
 # GENIE3
 net_orgdb     <- org.At.tair.db
 net_keytype   <- "TAIR"
 custom_tfs    <- NULL          # set to a vector of IDs to override GO detection
-cor_min       <- 0.90
+cor_min       <- 0.90          # MODERATE — Pearson |r| >= 0.90
 genie3_ntrees <- 100
 n_cores       <- 4
 
 # WGCNA
 soft_power    <- 6
 network_type  <- "signed"
-tom_threshold <- 0.10
+tom_threshold <- 0.15          # MODERATE — equivalent severity to Pearson |r| >= 0.90
 
 # ── Run GENIE3 (TF -> target) ────────────────────────────────────────────────
 genie3_results <- run_genie3_per_cluster(
