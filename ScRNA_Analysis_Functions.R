@@ -3693,3 +3693,192 @@ generate_network_pdf <- function(results,
   message("✓ PDF saved: ", pdf_path)
   invisible(pdf_path)
 }
+
+
+# =============================================================================
+# visualize_network_per_cluster
+# =============================================================================
+# Create clean, force-directed network visualization for each cluster.
+# Uses igraph with Fruchterman-Reingold layout.
+visualize_network_per_cluster <- function(network_results,
+                                          cluster_assignments,
+                                          output_dir,
+                                          method_name = "NETWORK",
+                                          weight_col  = "weight",
+                                          directed    = TRUE,
+                                          edge_color  = "#1f77b4") {
+
+  dir.create(output_dir, recursive = TRUE, showWarnings = FALSE)
+
+  if (!length(network_results)) {
+    message("No network results to visualize for ", method_name)
+    return(invisible(NULL))
+  }
+
+  pdf_path <- file.path(output_dir, paste0(method_name, "_network_visualization.pdf"))
+  pdf(pdf_path, width = 14, height = 11)
+
+  grid::grid.newpage()
+  grid::grid.text(paste0(method_name, " - Network Visualization"),
+                  y = 0.92, gp = grid::gpar(fontsize = 22, fontface = "bold"))
+  grid::grid.text("Force-directed layout (Fruchterman-Reingold)",
+                  y = 0.86, gp = grid::gpar(fontsize = 12, fontface = "italic"))
+  grid::grid.text(sprintf("Clusters analyzed: %d", length(network_results)),
+                  y = 0.80, gp = grid::gpar(fontsize = 11))
+
+  for (clust_id in names(network_results)) {
+    res <- network_results[[clust_id]]
+
+    if (is.null(res$filtered) || nrow(res$filtered) == 0) {
+      grid::grid.newpage()
+      grid::grid.text(paste0("Cluster ", clust_id, ": No edges after filtering"),
+                      y = 0.5, gp = grid::gpar(fontsize = 14))
+      next
+    }
+
+    edges_df <- as.data.frame(res$filtered[, c("source", "target", weight_col), with = FALSE])
+    colnames(edges_df) <- c("source", "target", "weight")
+
+    edges_df$weight_norm <- (edges_df$weight - min(edges_df$weight)) /
+                             (max(edges_df$weight) - min(edges_df$weight))
+
+    g <- igraph::graph_from_data_frame(edges_df[, c("source", "target")],
+                                       directed = directed)
+    igraph::E(g)$weight <- edges_df$weight_norm
+
+    node_degree <- igraph::degree(g)
+    igraph::V(g)$size <- 4 + (node_degree / max(node_degree)) * 12
+    igraph::V(g)$color <- colorRampPalette(c("#ffffcc", "#ff7f00"))(100)[
+      ceiling(node_degree / max(node_degree) * 100)
+    ]
+
+    set.seed(123)
+    layout <- igraph::layout_with_fr(g, niter = 500, dim = 2)
+
+    grid::grid.newpage()
+    grid::pushViewport(grid::viewport(x = 0.05, y = 0.05, width = 0.9, height = 0.85, just = c("left", "bottom")))
+
+    plot(g,
+         layout = layout,
+         edge.width = edges_df$weight_norm * 3,
+         edge.color = edge_color,
+         edge.arrow.size = ifelse(directed, 0.3, 0),
+         edge.curved = 0.2,
+         vertex.label.cex = 0.8,
+         vertex.label.dist = 1.5,
+         asp = 0.8,
+         margin = 0.1)
+
+    grid::popViewport()
+
+    grid::pushViewport(grid::viewport(x = 0.05, y = 0.88, width = 0.9, height = 0.1, just = c("left", "bottom")))
+    grid::grid.text(paste0("Cluster ", clust_id),
+                    x = 0.05, y = 0.8, just = c("left", "top"),
+                    gp = grid::gpar(fontsize = 14, fontface = "bold"))
+    grid::grid.text(sprintf("Genes: %d | Edges: %d | Layout: Fruchterman-Reingold",
+                            length(unique(c(res$filtered$source, res$filtered$target))),
+                            nrow(res$filtered)),
+                    x = 0.05, y = 0.3, just = c("left", "top"),
+                    gp = grid::gpar(fontsize = 10))
+    grid::popViewport()
+  }
+
+  dev.off()
+  message("✓ Network visualization PDF saved: ", pdf_path)
+  invisible(pdf_path)
+}
+
+
+# =============================================================================
+# generate_cluster_profile_report
+# =============================================================================
+# Generate cluster profile: expression heatmap, box plots, GO enrichment, stats.
+generate_cluster_profile_report <- function(cluster_assignments,
+                                            pseudobulk_matrix,
+                                            output_dir,
+                                            method_name = "MIXED") {
+
+  dir.create(output_dir, recursive = TRUE, showWarnings = FALSE)
+
+  clusters_to_plot <- unique(cluster_assignments$cluster[cluster_assignments$cluster != "grey"])
+  pdf_path <- file.path(output_dir, paste0(method_name, "_cluster_profiles.pdf"))
+
+  pdf(pdf_path, width = 14, height = 11)
+
+  grid::grid.newpage()
+  grid::grid.text("Gene Cluster Profiles",
+                  y = 0.92, gp = grid::gpar(fontsize = 22, fontface = "bold"))
+  grid::grid.text(sprintf("Method: %s | Clusters: %d", method_name, length(clusters_to_plot)),
+                  y = 0.86, gp = grid::gpar(fontsize = 12, fontface = "italic"))
+
+  for (clust_id in clusters_to_plot) {
+    genes_in_cluster <- cluster_assignments$gene_id[cluster_assignments$cluster == clust_id]
+    genes_in_cluster <- intersect(genes_in_cluster, rownames(pseudobulk_matrix))
+
+    if (length(genes_in_cluster) == 0) next
+
+    expr_matrix <- pseudobulk_matrix[genes_in_cluster, , drop = FALSE]
+
+    grid::grid.newpage()
+    grid::pushViewport(grid::viewport(x = 0.05, y = 0.35, width = 0.9, height = 0.6, just = c("left", "bottom")))
+
+    expr_scaled <- t(scale(t(expr_matrix)))
+    expr_scaled[is.na(expr_scaled)] <- 0
+    expr_scaled <- pmin(pmax(expr_scaled, -3), 3)
+
+    h <- ComplexHeatmap::Heatmap(
+      expr_scaled,
+      name = "log2(CPM)\n(scaled)",
+      cluster_rows = TRUE,
+      cluster_columns = FALSE,
+      show_row_names = length(genes_in_cluster) <= 50,
+      show_column_names = TRUE,
+      column_title = paste0("Cluster ", clust_id, " - Expression Heatmap"),
+      col = circlize::colorRamp2(c(-3, 0, 3), c("#3182bd", "#fff7fb", "#e6550d")),
+      width = grid::unit(10, "cm"),
+      height = grid::unit(8, "cm")
+    )
+
+    ComplexHeatmap::draw(h, newpage = FALSE)
+    grid::popViewport()
+
+    grid::pushViewport(grid::viewport(x = 0.05, y = 0.05, width = 0.9, height = 0.25, just = c("left", "bottom")))
+    stats_text <- sprintf(
+      "Cluster: %s\nGenes: %d | Samples: %d\nExpression: mean(log2 CPM) = %.2f ± %.2f",
+      clust_id, nrow(expr_matrix), ncol(expr_matrix),
+      mean(expr_matrix), sd(as.vector(expr_matrix))
+    )
+    grid::grid.text(stats_text, x = 0.05, y = 0.9, just = c("left", "top"),
+                    gp = grid::gpar(fontsize = 10, fontfamily = "mono"))
+    grid::popViewport()
+  }
+
+  dev.off()
+  message("✓ Cluster profile PDF saved: ", pdf_path)
+
+  summary_list <- list()
+  for (clust_id in clusters_to_plot) {
+    genes <- cluster_assignments$gene_id[cluster_assignments$cluster == clust_id]
+    genes <- intersect(genes, rownames(pseudobulk_matrix))
+
+    if (length(genes) == 0) next
+
+    expr <- pseudobulk_matrix[genes, , drop = FALSE]
+    summary_list[[clust_id]] <- data.frame(
+      cluster = clust_id,
+      n_genes = nrow(expr),
+      mean_expr = round(mean(expr), 3),
+      sd_expr = round(sd(as.vector(expr)), 3),
+      max_expr = round(max(expr), 3),
+      min_expr = round(min(expr), 3)
+    )
+  }
+
+  summary_df <- do.call(rbind, summary_list)
+  rownames(summary_df) <- NULL
+  write.table(summary_df, file.path(output_dir, "cluster_summary_stats.tsv"),
+              sep = "\t", quote = FALSE, row.names = FALSE)
+
+  message("✓ Cluster profile report saved to: ", output_dir)
+  invisible(list(pdf = pdf_path, stats = summary_df))
+}

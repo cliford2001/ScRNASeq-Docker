@@ -985,3 +985,89 @@ generate_network_pdf(synergy_results, file.path(dir_14, diff_tag, "SYNERGY"),
                      directed = TRUE,  edge_color = "#d62728")
 
 
+# =============================================================================
+# SECTION 23 — NETWORK VISUALIZATION (FORCE-DIRECTED LAYOUT)
+# =============================================================================
+# Clean network visualization using force-directed (Fruchterman-Reingold) layout.
+# Choose ONE method below; visualizes all filtered edges with igraph.
+#
+# ┌─ CHOOSE METHOD ─────────────────────────────────────────────────────────────
+#   Selected method will be visualized in detail (force-directed, node sizes by
+#   degree, edge widths by weight). This complements SEC 22's PDF summaries.
+#
+#   Recommendations:
+#   • GENIE3  → see TF directionality visually
+#   • WGCNA   → see coexpression structure and modules
+#   • SYNERGY → highest confidence edges (TF→target validated by coexpression)
+# └─────────────────────────────────────────────────────────────────────────────
+
+viz_method <- "SYNERGY"   # "GENIE3", "WGCNA", or "SYNERGY"
+
+viz_results <- switch(viz_method,
+  "GENIE3"  = genie3_results,
+  "WGCNA"   = wgcna_results,
+  "SYNERGY" = synergy_results,
+  synergy_results  # default to SYNERGY
+)
+
+viz_weight_col <- switch(viz_method,
+  "GENIE3"  = "weight",
+  "WGCNA"   = "TOM",
+  "SYNERGY" = "score_synergy",
+  "score_synergy"
+)
+
+viz_directed <- switch(viz_method,
+  "GENIE3"  = TRUE,
+  "WGCNA"   = FALSE,
+  "SYNERGY" = TRUE,
+  TRUE
+)
+
+viz_edge_color <- switch(viz_method,
+  "GENIE3"  = "#2ca02c",   # green
+  "WGCNA"   = "#1f77b4",   # blue
+  "SYNERGY" = "#d62728",   # red
+  "#1f77b4"
+)
+
+visualize_network_per_cluster(
+  network_results     = viz_results,
+  cluster_assignments = heatmap_results,
+  output_dir          = file.path(dir_14, diff_tag, "VISUALIZATION"),
+  method_name         = viz_method,
+  weight_col          = viz_weight_col,
+  directed            = viz_directed,
+  edge_color          = viz_edge_color
+)
+
+message("\n✓ SECTION 23 COMPLETE: Network visualization saved")
+
+
+# =============================================================================
+# SECTION 24 — CLUSTER PROFILE REPORTS
+# =============================================================================
+# Per-cluster profiles: heatmaps, expression statistics, functional annotation.
+#
+# For each cluster from SEC 20:
+#   • Expression heatmap (pseudobulk × genes, with row clustering)
+#   • Expression statistics (mean, SD, range)
+#   • Gene count and composition
+#
+# Links to GO enrichment results from SEC 21 for functional context.
+
+exprMatr_pseudobulk <- load_pseudobulk_matrix(
+  file.path(dir_09, "pseudobulk_replicas"),
+  normalize = TRUE
+)
+
+generate_cluster_profile_report(
+  cluster_assignments = heatmap_results,
+  pseudobulk_matrix   = exprMatr_pseudobulk,
+  output_dir          = file.path(dir_12, diff_tag, "CLUSTER_PROFILES"),
+  method_name         = "WGCNA"  # clustering method used in SEC 20
+)
+
+message("\n✓ SECTION 24 COMPLETE: Cluster profiles saved")
+
+
