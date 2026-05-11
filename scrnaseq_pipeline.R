@@ -911,14 +911,14 @@ min_var_filter <- 0.01
 net_orgdb     <- org.At.tair.db
 net_keytype   <- "TAIR"
 custom_tfs    <- NULL
-cor_min       <- 0.90
+cor_min       <- 0.75        # EXPLORATORY — top 15% (Pearson |r| >= 0.75)
 genie3_ntrees <- 100
 n_cores       <- 4
 
 # WGCNA parameters
 soft_power    <- 6
 network_type  <- "signed"
-tom_threshold <- 0.15
+tom_threshold <- 0.05        # EXPLORATORY — top 15% (TOM >= 0.05)
 
 # ── Run all selected methods in one call ─────────────────────────────────────
 net_pipeline <- run_network_inference_pipeline(
