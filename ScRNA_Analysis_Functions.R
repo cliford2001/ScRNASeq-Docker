@@ -4020,3 +4020,188 @@ run_network_inference_pipeline <- function(heatmap_results,
 
   invisible(list(results = results, pdfs = pdf_paths))
 }
+
+
+# =============================================================================
+# test_network_thresholds
+# =============================================================================
+# Test multiple threshold combinations and generate comparison report.
+# Helps identify optimal thresholds for network inference.
+#
+# Generates a PDF with:
+#   - Table of thresholds and edge counts per cluster
+#   - Recommendation based on cluster coverage
+#
+test_network_thresholds <- function(heatmap_results,
+                                     pseudobulk_dir,
+                                     output_dir,
+                                     method = "SYNERGY",
+                                     orgdb = org.At.tair.db,
+                                     keytype = "TAIR",
+                                     custom_tfs = NULL,
+                                     genie3_ntrees = 100,
+                                     n_cores = 4,
+                                     soft_power = 6,
+                                     network_type = "signed",
+                                     n_top_clusters = 3,
+                                     min_var_filter = 0.01) {
+
+  dir.create(output_dir, recursive = TRUE, showWarnings = FALSE)
+
+  # Define 5 threshold combinations (increasing permissiveness)
+  thresholds <- list(
+    list(name = "Strict (top 5%)",     cor = 0.90, tom = 0.15),
+    list(name = "Moderate (top 10%)",  cor = 0.80, tom = 0.08),
+    list(name = "Exploratory (top 15%)", cor = 0.75, tom = 0.05),
+    list(name = "Permissive (top 20%)", cor = 0.70, tom = 0.03),
+    list(name = "Very Lax (top 25%)",  cor = 0.65, tom = 0.01)
+  )
+
+  results_summary <- list()
+
+  # Test each threshold
+  for (t in thresholds) {
+    message("\nTesting: ", t$name)
+
+    if (method == "SYNERGY") {
+      res <- run_synergistic_network(
+        cluster_assignments = heatmap_results,
+        pseudobulk_dir      = pseudobulk_dir,
+        output_dir          = file.path(output_dir, "temp"),
+        orgdb               = orgdb,
+        keytype             = keytype,
+        custom_tfs          = custom_tfs,
+        n_top_clusters      = n_top_clusters,
+        soft_power          = soft_power,
+        network_type        = network_type,
+        genie3_ntrees       = genie3_ntrees,
+        n_cores             = n_cores,
+        min_var_filter      = min_var_filter,
+        cor_min             = t$cor,
+        tom_min             = t$tom
+      )
+    } else if (method == "GENIE3") {
+      res <- run_genie3_per_cluster(
+        cluster_assignments = heatmap_results,
+        pseudobulk_dir      = pseudobulk_dir,
+        output_dir          = file.path(output_dir, "temp"),
+        orgdb               = orgdb,
+        keytype             = keytype,
+        custom_tfs          = custom_tfs,
+        n_top_clusters      = n_top_clusters,
+        cor_min             = t$cor,
+        genie3_ntrees       = genie3_ntrees,
+        n_cores             = n_cores,
+        min_var_filter      = min_var_filter
+      )
+    } else if (method == "WGCNA") {
+      res <- run_wgcna_per_cluster(
+        cluster_assignments = heatmap_results,
+        pseudobulk_dir      = pseudobulk_dir,
+        output_dir          = file.path(output_dir, "temp"),
+        n_top_clusters      = n_top_clusters,
+        soft_power          = soft_power,
+        network_type        = network_type,
+        tom_threshold       = t$tom,
+        min_var_filter      = min_var_filter
+      )
+    }
+
+    # Summarize results
+    edge_counts <- sapply(res, function(x) nrow(x$filtered))
+    clusters_with_edges <- sum(edge_counts > 0)
+
+    results_summary[[t$name]] <- list(
+      threshold = t,
+      n_clusters_with_edges = clusters_with_edges,
+      total_edges = sum(edge_counts),
+      edge_counts = edge_counts
+    )
+
+    message(sprintf("  Clusters with edges: %d/%d | Total edges: %d",
+                    clusters_with_edges, length(res), sum(edge_counts)))
+  }
+
+  # Generate comparison PDF
+  pdf_path <- file.path(output_dir, paste0(method, "_threshold_comparison.pdf"))
+  pdf(pdf_path, width = 14, height = 11)
+
+  # Title page
+  grid::grid.newpage()
+  grid::grid.text("Network Threshold Comparison",
+                  y = 0.92, gp = grid::gpar(fontsize = 22, fontface = "bold"))
+  grid::grid.text(paste0("Method: ", method, " | Testing 5 threshold combinations"),
+                  y = 0.86, gp = grid::gpar(fontsize = 12, fontface = "italic"))
+
+  # Summary table
+  grid::grid.newpage()
+  grid::grid.text("Threshold Summary Table",
+                  y = 0.95, gp = grid::gpar(fontsize = 16, fontface = "bold"))
+
+  table_data <- do.call(rbind, lapply(names(results_summary), function(name) {
+    r <- results_summary[[name]]
+    c(
+      Threshold = name,
+      "Cor/TOM" = sprintf("%.2f / %.2f", r$threshold$cor, r$threshold$tom),
+      "Clusters w/ edges" = r$n_clusters_with_edges,
+      "Total edges" = r$total_edges
+    )
+  }))
+
+  gridExtra::grid.table(
+    as.data.frame(table_data),
+    rows = NULL,
+    cols = colnames(table_data),
+    gp = grid::gpar(fontsize = 11)
+  )
+
+  # Per-cluster detail pages
+  for (name in names(results_summary)) {
+    grid::grid.newpage()
+    r <- results_summary[[name]]
+
+    grid::grid.text(name, y = 0.95, gp = grid::gpar(fontsize = 14, fontface = "bold"))
+    grid::grid.text(sprintf("Pearson: %.2f | TOM: %.2f", r$threshold$cor, r$threshold$tom),
+                    y = 0.90, gp = grid::gpar(fontsize = 10, fontface = "italic"))
+
+    # Edge count per cluster
+    cluster_names <- names(r$edge_counts)
+    cluster_text <- sprintf("%s: %d edges\n", cluster_names, r$edge_counts)
+
+    detail_text <- sprintf(
+      "Total clusters tested: %d\nClusters with edges: %d\nTotal edges: %d\n\nPer-cluster breakdown:\n%s",
+      length(r$edge_counts),
+      r$n_clusters_with_edges,
+      r$total_edges,
+      paste(cluster_text, collapse = "")
+    )
+
+    grid::grid.text(detail_text, x = 0.1, y = 0.75, just = c("left", "top"),
+                    gp = grid::gpar(fontsize = 11, fontfamily = "mono"))
+  }
+
+  # Recommendation page
+  grid::grid.newpage()
+  grid::grid.text("Recommendation",
+                  y = 0.95, gp = grid::gpar(fontsize = 16, fontface = "bold"))
+
+  best_name <- names(results_summary)[which.max(sapply(results_summary, function(x) x$n_clusters_with_edges))]
+  best <- results_summary[[best_name]]
+
+  rec_text <- sprintf(
+    "RECOMMENDED THRESHOLD: %s\n\nReason:\n• Covers %d clusters (most coverage)\n• Total edges: %d\n• Balance: not too strict, not too lax\n\nYou can adjust based on your needs:\n- Need fewer but high-confidence edges → use stricter\n- Need more exploratory edges → use more permissive",
+    best_name,
+    best$n_clusters_with_edges,
+    best$total_edges
+  )
+
+  grid::grid.text(rec_text, x = 0.1, y = 0.8, just = c("left", "top"),
+                  gp = grid::gpar(fontsize = 12, fontfamily = "mono"))
+
+  dev.off()
+
+  message("\n✓ Threshold comparison PDF saved: ", pdf_path)
+  message("✓ Recommendation: ", best_name)
+
+  invisible(list(pdf = pdf_path, summary = results_summary, recommendation = best_name))
+}

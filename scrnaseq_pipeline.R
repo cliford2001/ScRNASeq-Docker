@@ -946,6 +946,43 @@ synergy_results <- net_pipeline$results$SYNERGY
 
 
 # =============================================================================
+# SECTION 22B — THRESHOLD TESTING (OPTIONAL)
+# =============================================================================
+# Test 5 different threshold combinations to find optimal settings.
+# Generates PDF comparing edge counts and cluster coverage.
+#
+# ┌─ UNCOMMENT TO RUN ────────────────────────────────────────────────────────
+#   Set RUN_THRESHOLD_TEST <- TRUE below to execute
+# └─────────────────────────────────────────────────────────────────────────────
+
+RUN_THRESHOLD_TEST <- FALSE  # Set to TRUE to run threshold exploration
+
+if (RUN_THRESHOLD_TEST) {
+  message("\n🔬 TESTING NETWORK THRESHOLDS (5 combinations)...")
+
+  threshold_test <- test_network_thresholds(
+    heatmap_results = heatmap_results,
+    pseudobulk_dir  = file.path(dir_09, "pseudobulk_replicas"),
+    output_dir      = file.path(dir_14, diff_tag, "THRESHOLD_TEST"),
+    method          = "SYNERGY",  # Change to "GENIE3" or "WGCNA" if desired
+    orgdb           = net_orgdb,
+    keytype         = net_keytype,
+    custom_tfs      = custom_tfs,
+    genie3_ntrees   = genie3_ntrees,
+    n_cores         = n_cores,
+    soft_power      = soft_power,
+    network_type    = network_type,
+    n_top_clusters  = n_top_clusters,
+    min_var_filter  = min_var_filter
+  )
+
+  message("\n✓ Threshold test complete.")
+  message("  PDF: ", threshold_test$pdf)
+  message("  Recommendation: ", threshold_test$recommendation)
+}
+
+
+# =============================================================================
 # SECTION 23 — NETWORK VISUALIZATION (FORCE-DIRECTED LAYOUT)
 # =============================================================================
 # Clean network visualization using force-directed (Fruchterman-Reingold) layout.
