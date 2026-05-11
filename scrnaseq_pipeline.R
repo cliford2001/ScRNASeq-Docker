@@ -838,17 +838,43 @@ for (clust_id in unique(heatmap_results$cluster)) {
 
 
 # =============================================================================
-# SECTION 22 — NETWORK INFERENCE PER CLUSTER
+# SECTION 22 — NETWORK INFERENCE PER CLUSTER (3-METHOD MIX STRATEGY)
 # =============================================================================
-# Two independent network inference analyses per cluster from Section 20:
+# THREE COMPLEMENTARY network inference analyses per cluster from Section 20:
+# (Analogous to Sección 20's dual-clustering strategy: hclust vs WGCNA)
 #
-#   - GENIE3 (TF -> target, directed)
-#       TFs are extracted automatically from the OrgDb via GO:0003700
-#       (DNA-binding transcription factor activity), or you can pass a custom
-#       list with `custom_tfs`. Edges filtered by absolute Pearson correlation.
+# ┌─ THE MIX STRATEGY ────────────────────────────────────────────────────────────
+#   We do NOT choose between GENIE3, WGCNA, and SYNERGY. Instead, we run all 3
+#   because they answer different questions:
 #
-#   - WGCNA (undirected coexpression)
-#       Builds a TOM-based network. Edges filtered by TOM threshold.
+#   • GENIE3 (directed, like hclust geometry):
+#       Finds TF → target edges with predictive power.
+#       Filter: Pearson |r| ≥ 0.90 (avoids noise via correlation).
+#       ✓ Strength: directionality, interpretable as causality.
+#       ⚠ Weakness: only TFs regulate; less robust to outliers.
+#
+#   • WGCNA (undirected, like WGCNA coexpression):
+#       Finds coexpressed gene pairs via TOM (Topological Overlap).
+#       Filter: TOM ≥ 0.15 (genes that share ≥15% of neighbors).
+#       ✓ Strength: coexpression robustness; ANY gene can regulate ANY gene.
+#       ⚠ Weakness: no directionality; local structure matters, not global.
+#
+#   • SYNERGY (mix, high-confidence):
+#       Combines GENIE3 directionality + WGCNA coexpression validation.
+#       Filter: Pearson ≥0.90 AND TOM ≥0.15 (both layers must pass).
+#       Score: geometric mean of rank-normalized GENIE3 × TOM.
+#       ✓ Strength: high-confidence TF→target edges backed by coexpression.
+#       ⚠ Weakness: very restrictive; fewer edges (top tier only).
+#
+# ┌─ WHAT IS TOM? (Topological Overlap Matrix) ──────────────────────────────────
+#   TOM measures "robustness" of a gene pair's connection by counting shared
+#   neighbors: if gene A and gene B both correlate with genes {C, D, E, ...},
+#   they are truly connected, not by chance.
+#
+#   Formula:   TOM(A,B) = (# shared neighbors) / min(neighbors(A), neighbors(B))
+#   Range:     0 to 1 (0 = no shared neighbors, 1 = identical neighborhoods)
+#   Severity:  TOM ≥ 0.25 is "strict", 0.15 is "moderate", 0.08 is "loose"
+#   Your threshold (0.15) = top 5% of edge confidences = MODERATE
 #
 # Both functions read pseudobulk replicate counts from Section 16, normalize
 # (CPM + log2) and run independently. Outputs are saved in dir_14/<contrast>/.
@@ -860,13 +886,13 @@ for (clust_id in unique(heatmap_results$cluster)) {
 #   net_orgdb      : Bioconductor OrgDb (e.g. org.At.tair.db, org.Hs.eg.db)
 #   net_keytype    : key type matching gene IDs (e.g. "TAIR", "ENSEMBL")
 #   custom_tfs     : optional vector of TF IDs to override GO-based detection
-#   cor_min        : Pearson correlation threshold for filtered output
+#   cor_min        : Pearson |r| correlation threshold (≥0.90 = MODERATE)
 #   genie3_ntrees  : Random Forest trees (more = stabler, slower)
 #   n_cores        : parallel cores for GENIE3
 # ├─ WGCNA PARAMETERS ───────────────────────────────────────────────────────────
-#   soft_power     : adjacency power
-#   network_type   : "signed" or "unsigned"
-#   tom_threshold  : TOM threshold for filtered output
+#   soft_power     : power for adjacency (default 6; higher = fewer edges)
+#   network_type   : "signed" (correlation direction matters) or "unsigned"
+#   tom_threshold  : TOM threshold (≥0.15 = MODERATE, equivalent to Pearson 0.90)
 # └─────────────────────────────────────────────────────────────────────────────
 n_top_clusters <- 3
 min_var_filter <- 0.01
@@ -889,6 +915,15 @@ n_cores       <- 4
 soft_power    <- 6
 network_type  <- "signed"
 tom_threshold <- 0.15          # MODERATE — equivalent severity to Pearson |r| >= 0.90
+
+# ──────────────────────────────────────────────────────────────────────────────
+# ✓ READY TO RUN ALL 3 METHODS
+# ──────────────────────────────────────────────────────────────────────────────
+# GENIE3     → find TFs (directed)
+# WGCNA      → find coexpression modules (undirected)
+# SYNERGY    → high-confidence TF→target (both layers)
+# Use all 3 outputs for comprehensive GRN inference.
+# ──────────────────────────────────────────────────────────────────────────────
 
 # ── Run GENIE3 (TF -> target) ────────────────────────────────────────────────
 genie3_results <- run_genie3_per_cluster(
