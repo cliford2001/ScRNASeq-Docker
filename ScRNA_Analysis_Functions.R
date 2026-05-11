@@ -3739,12 +3739,21 @@ visualize_network_per_cluster <- function(network_results,
     edges_df <- as.data.frame(res$filtered[, c("source", "target", weight_col), with = FALSE])
     colnames(edges_df) <- c("source", "target", "weight")
 
-    edges_df$weight_norm <- (edges_df$weight - min(edges_df$weight)) /
-                             (max(edges_df$weight) - min(edges_df$weight))
+    # Normalize to [0.1, 1] to ensure all weights are positive for FR layout
+    w_min <- min(edges_df$weight, na.rm = TRUE)
+    w_max <- max(edges_df$weight, na.rm = TRUE)
+    if (w_min == w_max) {
+      edges_df$weight_norm <- rep(0.5, nrow(edges_df))
+    } else {
+      edges_df$weight_norm <- 0.1 + 0.9 * (edges_df$weight - w_min) / (w_max - w_min)
+    }
+    edges_df$weight_norm <- pmax(edges_df$weight_norm, 0.01)  # Ensure > 0
 
     g <- igraph::graph_from_data_frame(edges_df[, c("source", "target")],
                                        directed = directed)
+    # Assign normalized weights (FR layout needs positive weights)
     igraph::E(g)$weight <- edges_df$weight_norm
+    igraph::E(g)$original_weight <- edges_df$weight
 
     node_degree <- igraph::degree(g)
     igraph::V(g)$size <- 4 + (node_degree / max(node_degree)) * 12
@@ -3753,7 +3762,7 @@ visualize_network_per_cluster <- function(network_results,
     ]
 
     set.seed(123)
-    layout <- igraph::layout_with_fr(g, niter = 500, dim = 2)
+    layout <- igraph::layout_with_fr(g, niter = 500, dim = 2, weights = igraph::E(g)$weight)
 
     grid::grid.newpage()
     grid::pushViewport(grid::viewport(x = 0.05, y = 0.05, width = 0.9, height = 0.85, just = c("left", "bottom")))
