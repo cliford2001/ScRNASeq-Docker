@@ -3882,3 +3882,132 @@ generate_cluster_profile_report <- function(cluster_assignments,
   message("✓ Cluster profile report saved to: ", output_dir)
   invisible(list(pdf = pdf_path, stats = summary_df))
 }
+
+
+# =============================================================================
+# run_network_inference_pipeline
+# =============================================================================
+# Encapsulates network inference (GENIE3, WGCNA, SYNERGY) with method selection.
+# Returns all results in a named list for downstream use.
+#
+# Parameters:
+#   heatmap_results      : cluster assignments from Section 20
+#   pseudobulk_dir       : directory with pseudobulk replicas (Section 9)
+#   output_base_dir      : base directory for results (dir_14/<contrast>)
+#   methods              : vector of methods to run ("GENIE3", "WGCNA", "SYNERGY")
+#   orgdb, keytype, custom_tfs : for GENIE3/SYNERGY
+#   cor_min, genie3_ntrees, n_cores : GENIE3/SYNERGY parameters
+#   soft_power, network_type, tom_threshold : WGCNA parameters
+#   n_top_clusters, min_var_filter : common parameters
+#
+# Returns: list with $results and $pdfs (named by method)
+#
+run_network_inference_pipeline <- function(heatmap_results,
+                                           pseudobulk_dir,
+                                           output_base_dir,
+                                           methods = c("GENIE3", "WGCNA", "SYNERGY"),
+                                           orgdb = org.At.tair.db,
+                                           keytype = "TAIR",
+                                           custom_tfs = NULL,
+                                           cor_min = 0.90,
+                                           genie3_ntrees = 100,
+                                           n_cores = 4,
+                                           soft_power = 6,
+                                           network_type = "signed",
+                                           tom_threshold = 0.15,
+                                           n_top_clusters = 3,
+                                           min_var_filter = 0.01) {
+
+  message("\n═══════════════════════════════════════════════════════════════════")
+  message("NETWORK INFERENCE PIPELINE")
+  message("Methods: ", paste(methods, collapse = ", "))
+  message("═══════════════════════════════════════════════════════════════════\n")
+
+  results <- list()
+  pdf_paths <- list()
+
+  # ── Run GENIE3 ──────────────────────────────────────────────────────────────
+  if ("GENIE3" %in% methods) {
+    message("\n▶ Running GENIE3...")
+    results$GENIE3 <- run_genie3_per_cluster(
+      cluster_assignments = heatmap_results,
+      pseudobulk_dir      = pseudobulk_dir,
+      output_dir          = file.path(output_base_dir, "GENIE3"),
+      orgdb               = orgdb,
+      keytype             = keytype,
+      custom_tfs          = custom_tfs,
+      n_top_clusters      = n_top_clusters,
+      cor_min             = cor_min,
+      genie3_ntrees       = genie3_ntrees,
+      n_cores             = n_cores,
+      min_var_filter      = min_var_filter
+    )
+    pdf_paths$GENIE3 <- generate_network_pdf(
+      results[[1]],
+      file.path(output_base_dir, "GENIE3"),
+      method_name = "GENIE3",
+      weight_col = "weight",
+      directed = TRUE,
+      edge_color = "#2ca02c"
+    )
+  }
+
+  # ── Run WGCNA ───────────────────────────────────────────────────────────────
+  if ("WGCNA" %in% methods) {
+    message("\n▶ Running WGCNA...")
+    results$WGCNA <- run_wgcna_per_cluster(
+      cluster_assignments = heatmap_results,
+      pseudobulk_dir      = pseudobulk_dir,
+      output_dir          = file.path(output_base_dir, "WGCNA"),
+      n_top_clusters      = n_top_clusters,
+      soft_power          = soft_power,
+      network_type        = network_type,
+      tom_threshold       = tom_threshold,
+      min_var_filter      = min_var_filter
+    )
+    pdf_paths$WGCNA <- generate_network_pdf(
+      results$WGCNA,
+      file.path(output_base_dir, "WGCNA"),
+      method_name = "WGCNA",
+      weight_col = "TOM",
+      directed = FALSE,
+      edge_color = "#1f77b4"
+    )
+  }
+
+  # ── Run SYNERGY ─────────────────────────────────────────────────────────────
+  if ("SYNERGY" %in% methods) {
+    message("\n▶ Running SYNERGY...")
+    results$SYNERGY <- run_synergistic_network(
+      cluster_assignments = heatmap_results,
+      pseudobulk_dir      = pseudobulk_dir,
+      output_dir          = file.path(output_base_dir, "SYNERGY"),
+      orgdb               = orgdb,
+      keytype             = keytype,
+      custom_tfs          = custom_tfs,
+      n_top_clusters      = n_top_clusters,
+      soft_power          = soft_power,
+      network_type        = network_type,
+      genie3_ntrees       = genie3_ntrees,
+      n_cores             = n_cores,
+      min_var_filter      = min_var_filter,
+      cor_min             = cor_min,
+      tom_min             = tom_threshold
+    )
+    pdf_paths$SYNERGY <- generate_network_pdf(
+      results$SYNERGY,
+      file.path(output_base_dir, "SYNERGY"),
+      method_name = "SYNERGY",
+      weight_col = "score_synergy",
+      directed = TRUE,
+      edge_color = "#d62728"
+    )
+  }
+
+  message("\n═══════════════════════════════════════════════════════════════════")
+  message("✓ NETWORK INFERENCE COMPLETE")
+  message("  Methods run: ", paste(names(results), collapse = ", "))
+  message("═══════════════════════════════════════════════════════════════════\n")
+
+  invisible(list(results = results, pdfs = pdf_paths))
+}

@@ -894,95 +894,55 @@ for (clust_id in unique(heatmap_results$cluster)) {
 #   network_type   : "signed" (correlation direction matters) or "unsigned"
 #   tom_threshold  : TOM threshold (≥0.15 = MODERATE, equivalent to Pearson 0.90)
 # └─────────────────────────────────────────────────────────────────────────────
+# ┌─ CHOOSE WHICH METHODS TO RUN ────────────────────────────────────────────────
+#   Edit the line below to run only desired methods. Options:
+#   c("GENIE3", "WGCNA", "SYNERGY")  — run all 3
+#   c("GENIE3", "SYNERGY")            — skip WGCNA
+#   c("SYNERGY")                      — only high-confidence
+#   c("GENIE3", "WGCNA")             — skip SYNERGY
+# └─────────────────────────────────────────────────────────────────────────────
+network_methods <- c("GENIE3", "WGCNA", "SYNERGY")  # CHANGE AS NEEDED
+
+# ── Common parameters ────────────────────────────────────────────────────────
 n_top_clusters <- 3
 min_var_filter <- 0.01
 
-# Severity equivalence between methods (used to set thresholds below)
-#   Pearson |r|       Adjacency r^6     TOM         GENIE3 weight (rank)
-#   strict  >= 0.95   >= 0.74           >= 0.25     top  1%
-#   moderate>= 0.90   >= 0.53           >= 0.15     top  5%
-#   loose   >= 0.80   >= 0.26           >= 0.08     top 10%
-
-# GENIE3
+# GENIE3 parameters
 net_orgdb     <- org.At.tair.db
 net_keytype   <- "TAIR"
-custom_tfs    <- NULL          # set to a vector of IDs to override GO detection
-cor_min       <- 0.90          # MODERATE — Pearson |r| >= 0.90
+custom_tfs    <- NULL
+cor_min       <- 0.90
 genie3_ntrees <- 100
 n_cores       <- 4
 
-# WGCNA
+# WGCNA parameters
 soft_power    <- 6
 network_type  <- "signed"
-tom_threshold <- 0.15          # MODERATE — equivalent severity to Pearson |r| >= 0.90
+tom_threshold <- 0.15
 
-# ──────────────────────────────────────────────────────────────────────────────
-# ✓ READY TO RUN ALL 3 METHODS
-# ──────────────────────────────────────────────────────────────────────────────
-# GENIE3     → find TFs (directed)
-# WGCNA      → find coexpression modules (undirected)
-# SYNERGY    → high-confidence TF→target (both layers)
-# Use all 3 outputs for comprehensive GRN inference.
-# ──────────────────────────────────────────────────────────────────────────────
-
-# ── Run GENIE3 (TF -> target) ────────────────────────────────────────────────
-genie3_results <- run_genie3_per_cluster(
-  cluster_assignments = heatmap_results,
-  pseudobulk_dir      = file.path(dir_09, "pseudobulk_replicas"),
-  output_dir          = file.path(dir_14, diff_tag, "GENIE3"),
-  orgdb               = net_orgdb,
-  keytype             = net_keytype,
-  custom_tfs          = custom_tfs,
-  n_top_clusters      = n_top_clusters,
-  cor_min             = cor_min,
-  genie3_ntrees       = genie3_ntrees,
-  n_cores             = n_cores,
-  min_var_filter      = min_var_filter
+# ── Run all selected methods in one call ─────────────────────────────────────
+net_pipeline <- run_network_inference_pipeline(
+  heatmap_results      = heatmap_results,
+  pseudobulk_dir       = file.path(dir_09, "pseudobulk_replicas"),
+  output_base_dir      = file.path(dir_14, diff_tag),
+  methods              = network_methods,
+  orgdb                = net_orgdb,
+  keytype              = net_keytype,
+  custom_tfs           = custom_tfs,
+  cor_min              = cor_min,
+  genie3_ntrees        = genie3_ntrees,
+  n_cores              = n_cores,
+  soft_power           = soft_power,
+  network_type         = network_type,
+  tom_threshold        = tom_threshold,
+  n_top_clusters       = n_top_clusters,
+  min_var_filter       = min_var_filter
 )
 
-# ── Run WGCNA (TOM coexpression) ─────────────────────────────────────────────
-wgcna_results <- run_wgcna_per_cluster(
-  cluster_assignments = heatmap_results,
-  pseudobulk_dir      = file.path(dir_09, "pseudobulk_replicas"),
-  output_dir          = file.path(dir_14, diff_tag, "WGCNA"),
-  n_top_clusters      = n_top_clusters,
-  soft_power          = soft_power,
-  network_type        = network_type,
-  tom_threshold       = tom_threshold,
-  min_var_filter      = min_var_filter
-)
-
-# ── Run SYNERGISTIC analysis (GENIE3 + WGCNA, complementary) ─────────────────
-# Uses GENIE3 directionality (TF -> target) AND WGCNA TOM as a coexpression
-# robustness layer. Edges are kept only when BOTH layers pass their threshold.
-# The synergy score is the geometric mean of rank-normalized GENIE3 and TOM.
-synergy_results <- run_synergistic_network(
-  cluster_assignments = heatmap_results,
-  pseudobulk_dir      = file.path(dir_09, "pseudobulk_replicas"),
-  output_dir          = file.path(dir_14, diff_tag, "SYNERGY"),
-  orgdb               = net_orgdb,
-  keytype             = net_keytype,
-  custom_tfs          = custom_tfs,
-  n_top_clusters      = n_top_clusters,
-  soft_power          = soft_power,
-  network_type        = network_type,
-  genie3_ntrees       = genie3_ntrees,
-  n_cores             = n_cores,
-  min_var_filter      = min_var_filter,
-  cor_min             = cor_min,
-  tom_min             = tom_threshold
-)
-
-# ── Network visualization PDFs (one per method) ──────────────────────────────
-generate_network_pdf(genie3_results,  file.path(dir_14, diff_tag, "GENIE3"),
-                     method_name = "GENIE3",  weight_col = "weight",
-                     directed = TRUE,  edge_color = "#2ca02c")
-generate_network_pdf(wgcna_results,   file.path(dir_14, diff_tag, "WGCNA"),
-                     method_name = "WGCNA",   weight_col = "TOM",
-                     directed = FALSE, edge_color = "#1f77b4")
-generate_network_pdf(synergy_results, file.path(dir_14, diff_tag, "SYNERGY"),
-                     method_name = "SYNERGY", weight_col = "score_synergy",
-                     directed = TRUE,  edge_color = "#d62728")
+# ── Extract results for downstream sections ─────────────────────────────────
+genie3_results  <- net_pipeline$results$GENIE3
+wgcna_results   <- net_pipeline$results$WGCNA
+synergy_results <- net_pipeline$results$SYNERGY
 
 
 # =============================================================================
