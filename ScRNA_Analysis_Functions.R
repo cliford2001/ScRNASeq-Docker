@@ -4194,15 +4194,21 @@ test_network_thresholds <- function(heatmap_results,
   grid::grid.text("Recommendation",
                   y = 0.95, gp = grid::gpar(fontsize = 16, fontface = "bold"))
 
-  best_name <- names(results_summary)[which.max(sapply(results_summary, function(x) x$n_clusters_with_edges))]
-  best <- results_summary[[best_name]]
+  # Guard against empty results
+  if (!length(results_summary)) {
+    rec_text <- "No results found for any threshold combination.\nPlease check the parameters and data."
+  } else {
+    best_idx <- which.max(sapply(results_summary, function(x) x$n_clusters_with_edges))
+    best_name <- names(results_summary)[best_idx]
+    best <- results_summary[[best_name]]
 
-  rec_text <- sprintf(
-    "RECOMMENDED THRESHOLD: %s\n\nReason:\n• Covers %d clusters (most coverage)\n• Total edges: %d\n• Balance: not too strict, not too lax\n\nYou can adjust based on your needs:\n- Need fewer but high-confidence edges → use stricter\n- Need more exploratory edges → use more permissive",
-    best_name,
-    best$n_clusters_with_edges,
-    best$total_edges
-  )
+    rec_text <- sprintf(
+      "RECOMMENDED THRESHOLD: %s\n\nReason:\n• Covers %d clusters (most coverage)\n• Total edges: %d\n• Balance: not too strict, not too lax\n\nYou can adjust based on your needs:\n- Need fewer but high-confidence edges → use stricter\n- Need more exploratory edges → use more permissive",
+      best_name,
+      best$n_clusters_with_edges,
+      best$total_edges
+    )
+  }
 
   grid::grid.text(rec_text, x = 0.1, y = 0.8, just = c("left", "top"),
                   gp = grid::gpar(fontsize = 12, fontfamily = "mono"))
