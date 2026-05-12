@@ -3102,7 +3102,13 @@ build_logfc_heatmap <- function(logfc_table,
     clust_labels <- merged$colors
     names(clust_labels) <- rownames(mat)
     wgcna_order  <- gene_tree$order
-    row_order    <- rownames(mat)[wgcna_order][order(clust_labels[wgcna_order])]
+    # Safe row ordering: filter out NAs and ensure valid indices
+    valid_idx <- wgcna_order[!is.na(wgcna_order) & wgcna_order > 0 & wgcna_order <= length(clust_labels)]
+    row_order <- rownames(mat)[valid_idx][order(clust_labels[valid_idx])]
+    # If no valid order, use all rows
+    if (length(row_order) == 0) {
+      row_order <- rownames(mat)[order(clust_labels)]
+    }
 
   }
 
