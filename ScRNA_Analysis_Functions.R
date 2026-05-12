@@ -4148,22 +4148,21 @@ test_network_thresholds <- function(heatmap_results,
   grid::grid.text("Threshold Summary Table",
                   y = 0.95, gp = grid::gpar(fontsize = 16, fontface = "bold"))
 
-  table_data <- do.call(rbind, lapply(names(results_summary), function(name) {
-    r <- results_summary[[name]]
-    c(
-      Threshold = name,
-      "Cor/TOM" = sprintf("%.2f / %.2f", r$threshold$cor, r$threshold$tom),
-      "Clusters w/ edges" = r$n_clusters_with_edges,
-      "Total edges" = r$total_edges
-    )
-  }))
-
-  gridExtra::grid.table(
-    as.data.frame(table_data),
-    rows = NULL,
-    cols = colnames(table_data),
-    gp = grid::gpar(fontsize = 11)
+  # Summary table as text instead of grid.table (simpler, more reliable)
+  table_text <- sprintf(
+    "Threshold Summary:\n\n%s",
+    paste(sapply(names(results_summary), function(name) {
+      r <- results_summary[[name]]
+      sprintf(
+        "%-30s | Cor=%.2f TOM=%.2f | Clusters=%d | Edges=%d",
+        name, r$threshold$cor, r$threshold$tom,
+        r$n_clusters_with_edges, r$total_edges
+      )
+    }), collapse = "\n")
   )
+
+  grid::grid.text(table_text, x = 0.1, y = 0.8, just = c("left", "top"),
+                  gp = grid::gpar(fontsize = 10, fontfamily = "mono"))
 
   # Per-cluster detail pages
   for (name in names(results_summary)) {
