@@ -4109,18 +4109,27 @@ test_network_thresholds <- function(heatmap_results,
     }
 
     # Summarize results
-    edge_counts <- sapply(res, function(x) nrow(x$filtered))
-    clusters_with_edges <- sum(edge_counts > 0)
+    if (is.null(res) || !length(res)) {
+      message("  No results for this threshold")
+      next
+    }
+
+    edge_counts <- sapply(res, function(x) {
+      if (is.null(x$filtered)) return(0)
+      nrow(x$filtered)
+    })
+    edge_counts <- as.numeric(edge_counts)  # Ensure numeric
+    clusters_with_edges <- sum(edge_counts > 0, na.rm = TRUE)
 
     results_summary[[t$name]] <- list(
       threshold = t,
       n_clusters_with_edges = clusters_with_edges,
-      total_edges = sum(edge_counts),
+      total_edges = sum(edge_counts, na.rm = TRUE),
       edge_counts = edge_counts
     )
 
     message(sprintf("  Clusters with edges: %d/%d | Total edges: %d",
-                    clusters_with_edges, length(res), sum(edge_counts)))
+                    clusters_with_edges, length(res), sum(edge_counts, na.rm = TRUE)))
   }
 
   # Generate comparison PDF
