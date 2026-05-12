@@ -3151,7 +3151,7 @@ build_logfc_heatmap <- function(logfc_table,
 
   pdf(file.path(output_dir, paste0("heatmap_", method, "_", contrast_tag, ".pdf")),
       width = 12, height = 16)
-  draw(ht, merge_legend = TRUE, padding = unit(c(2, 2, 2, 10), "mm"))
+  ComplexHeatmap::draw(ht, merge_legend = TRUE, padding = grid::unit(c(2, 2, 2, 10), "mm"))
   dev.off()
 
   # ── Save cluster assignments ─────────────────────────────────────────────────
