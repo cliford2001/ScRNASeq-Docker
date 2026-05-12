@@ -3115,18 +3115,18 @@ build_logfc_heatmap <- function(logfc_table,
     u_clust
   )
 
-  left_ha <- rowAnnotation(
+  left_ha <- ComplexHeatmap::rowAnnotation(
     Cluster = clust_labels,
     col     = list(Cluster = pal_clust),
-    annotation_name_gp = gpar(fontsize = 11, fontface = "bold"),
-    annotation_width   = unit(0.5, "cm")
+    annotation_name_gp = grid::gpar(fontsize = 11, fontface = "bold"),
+    annotation_width   = grid::unit(0.5, "cm")
   )
 
   # ── Heatmap ──────────────────────────────────────────────────────────────────
-  ht <- Heatmap(
+  ht <- ComplexHeatmap::Heatmap(
     mat,
     name = "log2FC",
-    col  = colorRamp2(c(limits[1], 0, limits[2]), c("blue", "black", "yellow")),
+    col  = circlize::colorRamp2(c(limits[1], 0, limits[2]), c("blue", "black", "yellow")),
 
     cluster_rows    = FALSE,
     row_order       = row_order,
@@ -3135,7 +3135,7 @@ build_logfc_heatmap <- function(logfc_table,
     left_annotation   = left_ha,
     show_row_names    = FALSE,
     show_column_names = TRUE,
-    column_names_gp   = gpar(fontsize = 14, fontface = "bold"),
+    column_names_gp   = grid::gpar(fontsize = 14, fontface = "bold"),
     column_names_rot  = 45,
 
     column_title    = sprintf("[%s] log2FC — %s  (%d genes)", method, contrast_tag, nrow(mat)),
