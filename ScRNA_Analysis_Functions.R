@@ -3130,8 +3130,7 @@ build_logfc_heatmap <- function(logfc_table,
     name = "log2FC",
     col  = circlize::colorRamp2(c(limits[1], 0, limits[2]), c("blue", "black", "yellow")),
 
-    cluster_rows    = FALSE,
-    row_order       = row_order,
+    cluster_rows    = TRUE,  # Let ComplexHeatmap cluster rows automatically
     cluster_columns = FALSE,
 
     left_annotation   = left_ha,
