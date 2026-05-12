@@ -3101,13 +3101,10 @@ build_logfc_heatmap <- function(logfc_table,
                                       cutHeight = merge_cut, verbose = 0)
     clust_labels <- merged$colors
     names(clust_labels) <- rownames(mat)
-    wgcna_order  <- gene_tree$order
-    # Safe row ordering: ensure no NAs in final result
-    all_genes <- rownames(mat)
-    clust_order <- as.character(clust_labels[all_genes])
-    clust_order[is.na(clust_order)] <- "0"  # Replace NAs with "0"
-    # Order by cluster, then by gene name for stability
-    row_order <- all_genes[order(clust_order, all_genes)]
+    # Use tree order directly (simplest and most robust)
+    row_order    <- rownames(mat)[gene_tree$order]
+    # Remove any NA entries
+    row_order <- row_order[!is.na(row_order)]
 
   }
 
