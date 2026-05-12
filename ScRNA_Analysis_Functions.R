@@ -4216,7 +4216,12 @@ test_network_thresholds <- function(heatmap_results,
   dev.off()
 
   message("\n✓ Threshold comparison PDF saved: ", pdf_path)
-  message("✓ Recommendation: ", best_name)
+  if (length(results_summary)) {
+    message("✓ Recommendation: ", best_name)
+  } else {
+    message("⚠ No results found for threshold testing")
+    best_name <- NA
+  }
 
   invisible(list(pdf = pdf_path, summary = results_summary, recommendation = best_name))
 }
