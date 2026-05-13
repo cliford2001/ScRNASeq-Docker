@@ -259,10 +259,12 @@ for (clust_id in unique(heatmap_results$cluster)) {
 # THREE COMPLEMENTARY network inference analyses per cluster from Section 20:
 # (Analogous to Section 20's dual-clustering strategy: hclust vs WGCNA)
 #
-# Three complementary methods — run all 3 or choose a subset:
-#   GENIE3  : directed TF → target inference (Random Forest)
-#   WGCNA   : undirected coexpression via TOM (Topological Overlap)
-#   SYNERGY : high-confidence edges requiring both GENIE3 + WGCNA support
+# Two complementary methods — run both or choose one:
+#   GENIE3 : directed TF → target inference (Random Forest)
+#             use when you want to know which TF drives each gene
+#   WGCNA  : undirected coexpression network (Topological Overlap Matrix)
+#             use when you want co-expressed gene modules and hub genes
+#             requires ≥ 15 pseudobulk samples per cell type to be reliable
 # Outputs saved in dir_08/<contrast>/.
 #
 # ┌─ COMMON PARAMETERS ──────────────────────────────────────────────────────────
@@ -281,13 +283,11 @@ for (clust_id in unique(heatmap_results$cluster)) {
 #   tom_threshold  : TOM threshold (≥0.15 = MODERATE, equivalent to Pearson 0.90)
 # └─────────────────────────────────────────────────────────────────────────────
 # ┌─ CHOOSE WHICH METHODS TO RUN ────────────────────────────────────────────────
-#   Edit the line below to run only desired methods. Options:
-#   c("GENIE3", "WGCNA", "SYNERGY")  — run all 3
-#   c("GENIE3", "SYNERGY")            — skip WGCNA
-#   c("SYNERGY")                      — only high-confidence
-#   c("GENIE3", "WGCNA")             — skip SYNERGY
+#   c("GENIE3", "WGCNA")  — run both (recommended)
+#   c("GENIE3")            — directed only (use with few samples)
+#   c("WGCNA")             — coexpression only
 # └─────────────────────────────────────────────────────────────────────────────
-network_methods <- c("GENIE3", "WGCNA", "SYNERGY")  # CHANGE AS NEEDED
+network_methods <- c("GENIE3", "WGCNA")  # CHANGE AS NEEDED
 
 # ┌─ COMMON ────────────────────────────────────────────────────────────────────
 n_top_clusters <- 3      # how many largest clusters to analyze
@@ -330,9 +330,8 @@ net_pipeline <- run_network_inference_pipeline(
 )
 
 # ── Extract results for downstream sections ─────────────────────────────────
-genie3_results  <- net_pipeline$results$GENIE3
-wgcna_results   <- net_pipeline$results$WGCNA
-synergy_results <- net_pipeline$results$SYNERGY
+genie3_results <- net_pipeline$results$GENIE3
+wgcna_results  <- net_pipeline$results$WGCNA
 
 
 # =============================================================================
@@ -354,7 +353,7 @@ if (RUN_THRESHOLD_TEST) {
     heatmap_results = heatmap_results,
     pseudobulk_dir  = file.path(dir_objects, "pseudobulk_replicas"),
     output_dir      = file.path(dir_08, volcano_tag, "THRESHOLD_TEST"),
-    method          = "SYNERGY",  # Change to "GENIE3" or "WGCNA" if desired
+    method          = "GENIE3",   # "GENIE3" or "WGCNA"
     orgdb           = net_orgdb,
     keytype         = net_keytype,
     custom_tfs      = custom_tfs,
@@ -383,17 +382,15 @@ if (RUN_THRESHOLD_TEST) {
 #   degree, edge widths by weight). This complements SEC 22's PDF summaries.
 #
 #   Recommendations:
-#   • GENIE3  → see TF directionality visually
-#   • WGCNA   → see coexpression structure and modules
-#   • SYNERGY → highest confidence edges (TF→target validated by coexpression)
+#   • GENIE3 → see which TFs drive each cluster (directed arrows)
+#   • WGCNA  → see coexpression structure and hub genes (undirected modules)
 # └─────────────────────────────────────────────────────────────────────────────
 
-viz_method <- "SYNERGY"   # "GENIE3", "WGCNA", or "SYNERGY"
+viz_method <- "GENIE3"   # "GENIE3" or "WGCNA"
 
 viz_settings <- list(
-  GENIE3  = list(results = genie3_results,  weight_col = "weight",        directed = TRUE,  edge_color = "#2ca02c"),
-  WGCNA   = list(results = wgcna_results,   weight_col = "TOM",           directed = FALSE, edge_color = "#1f77b4"),
-  SYNERGY = list(results = synergy_results, weight_col = "score_synergy", directed = TRUE,  edge_color = "#d62728")
+  GENIE3 = list(results = genie3_results, weight_col = "weight", directed = TRUE,  edge_color = "#2ca02c"),
+  WGCNA  = list(results = wgcna_results,  weight_col = "TOM",    directed = FALSE, edge_color = "#1f77b4")
 )
 viz <- viz_settings[[viz_method]]
 
