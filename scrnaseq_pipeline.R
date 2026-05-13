@@ -204,16 +204,15 @@ saveRDS(pbmc_harmony, file.path(dir_objects, "pbmc_harmony_preharmony.rds"))
 # Harmony adjusts cell embeddings to remove sample-level batch effects while
 # preserving biological variation. All downstream steps use the "harmony"
 # reduction instead of "pca".
-#
-# ┌─ DIMENSIONALITY PARAMETERS ─────────────────────────────────────────────────
-#   dims_use : how many Harmony dimensions to use downstream (default 1:30)
-#   k_param  : number of nearest neighbors for the cell graph (default 30)
-# └─────────────────────────────────────────────────────────────────────────────
-dims_use <- 1:30
-k_param  <- 30
+
+output_dir <- dir_03
 
 pbmc_harmony <- pbmc_harmony %>%
-  RunHarmony("orig.ident", plot_convergence = FALSE)
+  RunHarmony("orig.ident", plot_convergence = FALSE) %>%
+  RunUMAP(reduction = "harmony", dims = dims_use, verbose = FALSE)
+
+save_pdf(DimPlot(pbmc_harmony, group.by = "orig.ident", cols = colors),
+         "umap_postharmony.pdf")
 
 # Checkpoint — restore with: pbmc_harmony <- readRDS(file.path(dir_objects, "pbmc_harmony_postharmony.rds"))
 saveRDS(pbmc_harmony, file.path(dir_objects, "pbmc_harmony_postharmony.rds"))
@@ -223,24 +222,29 @@ saveRDS(pbmc_harmony, file.path(dir_objects, "pbmc_harmony_postharmony.rds"))
 # SECTION 5 — RESOLUTION OPTIMIZATION
 # =============================================================================
 # Two diagnostics guide the choice of clustering resolution:
-#   (a) Elbow plot — k-means within-cluster sum of squares across k = 2-40.
+#   (a) Elbow plot — k-means within-cluster sum of squares across k values.
 #       The inflection point suggests the number of major cell types.
 #   (b) Clustree  — tracks cluster stability across Leiden resolutions.
 #       Choose the lowest resolution where clusters stop merging.
 #
-# ┌─ RESOLUTIONS TO TEST ───────────────────────────────────────────────────────
-#   Inspect 04_clustering/clustree.pdf and elbow_plot.pdf before choosing
-#   cluster_resolution in Section 6.
+# ┌─ PARAMETERS ────────────────────────────────────────────────────────────────
+#   dims_use         : Harmony dimensions used downstream (default 1:30)
+#   k_param          : nearest neighbors for the cell graph (default 30)
+#   k_range          : k values tested in the elbow plot
+#   resolutions_test : Leiden resolutions swept by clustree
+#   → Inspect elbow_plot.pdf and clustree.pdf before setting cluster_resolution
+#     in Section 6.
 # └─────────────────────────────────────────────────────────────────────────────
+dims_use         <- 1:30
+k_param          <- 30
+k_range          <- 1:31
 resolutions_test <- c(0.15, 0.30, 0.50, 0.8, 1.0)
+
 output_dir <- dir_04
 
 # ── 5a. Elbow plot ────────────────────────────────────────────────────────────
-k_range  <- 2:40
 pca_data <- Embeddings(pbmc_harmony, "pca")[, dims_use]
-wss      <- sapply(k_range, function(k) {
-  kmeans(pca_data, centers = k, nstart = 10)$tot.withinss
-})
+wss      <- sapply(k_range, function(k) kmeans(pca_data, centers = k, nstart = 4)$tot.withinss)
 
 elbow_plot <- ggplot(data.frame(k = k_range, wss = wss), aes(k, wss)) +
   geom_line() + geom_point() +
@@ -265,8 +269,8 @@ save_pdf(clustree(clu, prefix = "RNA_snn_res."), "clustree.pdf", w = 14, h = 14)
 # SECTION 6 — FINAL CLUSTERING
 # =============================================================================
 # Apply the selected resolution for the final cluster assignment.
-# After clustering, a UMAP coloured by sample identity (umap_postharmony.pdf)
-# and a simple bar chart of cells per sample are saved.
+# After clustering, a UMAP coloured by Seurat cluster and a bar chart of
+# cells per sample are saved to 04_clustering/.
 #
 # ┌─ SET RESOLUTION AFTER INSPECTING elbow_plot.pdf AND clustree.pdf ──────────
 #   cluster_resolution : Leiden resolution for final clustering (default 0.3)
@@ -274,15 +278,12 @@ save_pdf(clustree(clu, prefix = "RNA_snn_res."), "clustree.pdf", w = 14, h = 14)
 cluster_resolution <- 0.3
 output_dir <- dir_04
 
+# clu (Section 5) was temporary — re-run on pbmc_harmony to embed the final clusters
 pbmc_harmony <- pbmc_harmony %>%
   RunUMAP(reduction = "harmony", dims = dims_use, verbose = FALSE) %>%
   FindNeighbors(reduction = "harmony", dims = dims_use,
                 k.param = k_param, verbose = FALSE) %>%
   FindClusters(resolution = cluster_resolution, algorithm = 4, verbose = FALSE)
-
-
-save_pdf(DimPlot(pbmc_harmony, group.by = "orig.ident", cols = colors),
-         "umap_postharmony.pdf")
 
 colors_clusters <- sample(colors(distinct = TRUE),
                           length(unique(pbmc_harmony$seurat_clusters)))
