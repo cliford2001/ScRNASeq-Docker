@@ -137,14 +137,8 @@ plot_pipeline_workflow(file.path(dir_00, "pipeline_workflow.pdf"))
 # └─────────────────────────────────────────────────────────────────────────────
 output_dir <- dir_01
 
-# ── Organism-specific gene patterns ───────────────────────────────────────────
-# Define mitochondrial (mt) and chloroplast (cp) gene patterns for your organism
-# These are used throughout the pipeline for QC filtering
 mt_pattern <- "^ATMG"  # Arabidopsis mitochondrial genes
 cp_pattern <- "^ATCG"  # Arabidopsis chloroplast genes
-# For other organisms, use:
-#   Human: mt_pattern <- "^MT-", cp_pattern <- NULL
-#   Mouse: mt_pattern <- "^mt-", cp_pattern <- NULL
 
 
 # Load all samples using the helper function
@@ -187,7 +181,7 @@ saveRDS(seurat_list, file.path(dir_objects, "seurat_list_postfilter.rds"))
 
 output_dir <- dir_03
 
-pbmc_harmony <- reduce(seurat_list, merge) %>%
+pbmc_harmony <- reduce(seurat_list, merge) %>%  # merge all samples into one object
   NormalizeData(verbose = FALSE) %>%
   FindVariableFeatures(selection.method = "vst", nfeatures = 2000, verbose = FALSE) %>%
   ScaleData(verbose = FALSE) %>%
@@ -284,8 +278,8 @@ pbmc_harmony <- pbmc_harmony %>%
                 k.param = k_param, verbose = FALSE) %>%
   FindClusters(resolution = cluster_resolution, algorithm = 4, verbose = FALSE)
 
-colors_clusters <- sample(colors(distinct = TRUE),
-                          length(unique(pbmc_harmony$seurat_clusters)))
+# one random color per cluster
+colors_clusters <- sample(colors(distinct = TRUE), length(unique(pbmc_harmony$seurat_clusters)))
 Idents(pbmc_harmony) <- "seurat_clusters"
 save_pdf(DimPlot(pbmc_harmony, group.by = "seurat_clusters", cols = colors_clusters),
          "umap_seuratclusters.pdf")
@@ -346,9 +340,9 @@ plot_marker_dotplot(
 )
 
 # ── 8b. Reference-based annotation ────────────────────────────────────────────
-esp          <- readRDS(file.path(base_dir, "../GSE273033_seuratObj_for_publication.rds"))
+reference_obj <- readRDS(file.path(DATA_DIR, "metodologia/GSE273033_seuratObj_for_publication.rds"))
 pbmc_harmony <- annotate_by_reference(pbmc_harmony,
-                                      reference_obj = esp,
+                                      reference_obj = reference_obj,
                                       reference_col = "annotation")
 
 plot_marker_dotplot(
@@ -369,6 +363,7 @@ plot_marker_dotplot(
 
 output_dir <- dir_05
 
+# Mode: returns the most frequent value in a vector
 Mode <- function(x) { ux <- unique(x); ux[which.max(tabulate(match(x, ux)))] }
 
 clu <- pbmc_harmony %>%
@@ -446,6 +441,7 @@ grouping <- c(
 
 output_dir <- dir_07
 
+# !!! unpacks the grouping vector as named arguments to recode()
 pbmc_harmony$celltype_grouped <- recode(pbmc_harmony$celltype_reference, !!!grouping)
 
 save_pdf(
