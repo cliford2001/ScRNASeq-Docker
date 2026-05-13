@@ -84,6 +84,12 @@ table(cell_type_subsets_replicates$Pavement_Cell$orig.ident)
 #   comparisons : each entry must contain
 #                   conds = c("reference", "treatment")
 #                   tag   = output folder / file label
+#
+#   log2FC interpretation:
+#     positive → gene is upregulated in treatment vs reference
+#     negative → gene is upregulated in reference vs treatment
+#
+#   Example: conds = c("0.5N", "5N")  →  log2FC = log2(5N / 0.5N)
 # └─────────────────────────────────────────────────────────────────────────────
 comparisons <- list(
   list(conds = c("0.5N", "5N"), tag = "0.5N_vs_5N"),
