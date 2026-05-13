@@ -421,10 +421,11 @@ save_pdf(FeaturePlot(sub_obj, features = genes_of_interest), "feature_geneset_ce
 
 
 # =============================================================================
-# SECTION 11 — CELL-TYPE GROUPING
+# SECTION 11 — CELL-TYPE GROUPING  [OPTIONAL]
 # =============================================================================
 # Fine-grained labels are collapsed into broader categories for downstream
 # analyses. Cell types NOT listed in 'grouping' keep their original label.
+# Skip this section if you do not need to merge cell types.
 #
 # ┌─ EDIT THIS MAP TO MATCH YOUR CELL TYPES ───────────────────────────────────
 #   Left side  : original label (must match exactly)
@@ -445,17 +446,18 @@ output_dir <- dir_07
 pbmc_harmony$celltype_grouped <- recode(pbmc_harmony$celltype_reference, !!!grouping)
 
 save_pdf(
-  DimPlot(pbmc_harmony, group.by = "celltype_grouped",
+  DimPlot(pbmc_harmony, group.by = "celltype_grouped",  # grouped broad cell types
           label = TRUE, repel = TRUE, raster = FALSE),
-  "umap_annotated.pdf"
+  "umap_grouped.pdf"
 )
 
 
 # =============================================================================
-# SECTION 12 — INTERACTIVE CELL-TYPE CURATION
+# SECTION 12 — INTERACTIVE CELL-TYPE CURATION  [OPTIONAL]
 # =============================================================================
 # !!! WARNING: Run this section interactively, step by step.
 # !!! Do NOT source the entire script with this section active.
+# Skip this section if you are satisfied with the annotation from Section 8.
 #
 # Purpose: subcluster populations that appear heterogeneous in the UMAP,
 # inspect them, and reassign cells to the correct cell type manually.
