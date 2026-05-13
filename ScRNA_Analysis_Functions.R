@@ -107,6 +107,13 @@ load_cellbender_filtered_h5 <- function(h5_path, project = "Sample") {
 #' @param color Color for plotting.
 #' @return A ggplot object.
 #' @export
+plot_qc_batch <- function(seurat_list, colors, file) {
+  plots <- imap(seurat_list, ~ plot_qc_violin_grid(.x, .y, colors[[.y]]))
+  save_qc(plots, file)
+  invisible(plots)
+}
+
+
 plot_qc_violin_grid <- function(obj1, label, color) {
 
   n1        <- ncol(obj1)
@@ -376,6 +383,13 @@ load_sample <- function(sample_info,
 #' @param run_doubletfinder Whether to run DoubletFinder (default TRUE).
 #' @return Filtered Seurat object.
 #' @export
+filter_seurat_samples <- function(seurat_list, ...) {
+  result        <- lapply(seurat_list, filter_sample, ...)
+  names(result) <- names(seurat_list)
+  result
+}
+
+
 filter_sample <- function(obj,
                           min_features      = 200,
                           max_features      = Inf,
@@ -2806,73 +2820,115 @@ run_pseudobulk_pipeline <- function(obj,
 #' @export
 plot_pipeline_workflow <- function(outfile) {
 
-  top <- data.frame(
-    x     = 1:10,
-    y     = rep(2, 10),
-    label = c("FASTQ\nFiles", "CellRanger\nCount", "CellBender\n(optional)",
-              "Load &\nQC", "Filter +\nDoubletFinder",
-              "Merge &\nNormalize", "Harmony\nIntegration",
-              "Clustree +\nElbow plot", "Final\nClustering", "Annotate\n+ Export"),
-    group = c(rep("Pre-processing", 3), rep("Chapter 1", 7)),
+  # \u2500\u2500 Node positions \u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500
+  # Layout: inverted-Y
+  #   Stem  (Part 1) \u2014 center column x = 5, y = 9 \u2192 1
+  #   Junction        \u2014 Export h5ad at (5, 1)
+  #   Left  branch    \u2014 Pseudotime,  x = 2,  y = -1 \u2192 -3
+  #   Right branch    \u2014 Part 2 DE/Networks, x = 8, y = -1 \u2192 -5
+
+  trunk <- data.frame(
+    x = 5,
+    y = c(9, 8, 7, 6, 5, 4, 3, 2, 1),
+    label = c(
+      "FASTQ\n+ CellRanger", "CellBender\n(optional)",
+      "Load &\nQC", "Filter +\nDoubletFinder",
+      "Merge &\nNormalize", "Harmony\nIntegration",
+      "Clustering", "Annotate &\nCurate",
+      "Export\nh5ad"
+    ),
+    group    = c("Pre-processing", "Pre-processing", rep("Part 1", 6), "Junction"),
+    optional = c(FALSE, TRUE, rep(FALSE, 7)),
     stringsAsFactors = FALSE
   )
 
-  bot <- data.frame(
-    x     = 9:5,
-    y     = rep(0, 5),
+  left_nodes <- data.frame(
+    x = 2, y = c(-1, -2, -3),
+    label = c("Load h5ad\n(Python)", "Trajectory\nInference", "Pseudotime\nPlots"),
+    group = "Pseudotime", optional = FALSE,
+    stringsAsFactors = FALSE
+  )
+
+  right_nodes <- data.frame(
+    x = 8, y = c(-1, -2, -3, -4, -5),
     label = c("Cell-type\nSubsets", "Pseudobulk\n+ Replicates",
-              "DESeq2\nDE", "Volcano +\nHeatmap", "GO\nEnrichment"),
-    group = rep("Chapter 2", 5),
+              "DESeq2\nDE", "Volcano +\nHeatmap + GO", "Network\nInference"),
+    group = "Part 2", optional = FALSE,
     stringsAsFactors = FALSE
   )
 
-  nodes <- rbind(top, bot)
+  nodes <- rbind(trunk[, c("x","y","label","group","optional")],
+                 left_nodes, right_nodes)
 
+  # \u2500\u2500 Edges \u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500
+  trunk_edges <- data.frame(x1 = 5, y1 = 9:2, x2 = 5, y2 = 8:1)
+
+  fork_edges  <- data.frame(      # Export \u2192 branch starts
+    x1 = c(5, 5), y1 = c(1, 1),
+    x2 = c(2, 8), y2 = c(-1, -1)
+  )
+
+  left_edges  <- data.frame(x1 = 2, y1 = c(-1,-2), x2 = 2, y2 = c(-2,-3))
+  right_edges <- data.frame(x1 = 8, y1 = -1:-4,    x2 = 8, y2 = -2:-5)
+
+  edges <- rbind(trunk_edges, fork_edges, left_edges, right_edges)
+
+  # \u2500\u2500 Colors \u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500
   group_colors <- c(
     "Pre-processing" = "#d9d9d9",
-    "Chapter 1"      = "#b3cde3",
-    "Chapter 2"      = "#ccebc5"
+    "Part 1"         = "#b3cde3",
+    "Junction"       = "#fdcdac",
+    "Pseudotime"     = "#e0c8f0",
+    "Part 2"         = "#ccebc5"
   )
 
-  edges_top <- data.frame(x1 = 1:9, y1 = rep(2, 9), x2 = 2:10, y2 = rep(2, 9))
-  edge_down <- data.frame(x1 = 10,  y1 = 2,          x2 = 9,    y2 = 0)
-  edges_bot <- data.frame(x1 = 9:6, y1 = rep(0, 4),  x2 = 8:5,  y2 = rep(0, 4))
-  edges     <- rbind(edges_top, edge_down, edges_bot)
+  w <- 0.82; h <- 0.52
 
-  w <- 0.85; h <- 0.50
+  req  <- nodes[!nodes$optional, ]
+  opt  <- nodes[ nodes$optional, ]
 
   p <- ggplot() +
-    annotate("rect", xmin = 0.4, xmax = 3.6, ymin = 1.4, ymax = 2.6,
-             fill = "#f5f5f5", color = "grey75", linetype = "dashed", linewidth = 0.4) +
-    annotate("text", x = 2,   y = 2.70,
-             label = "Pre-processing  (bash)", size = 3, color = "grey55", fontface = "italic") +
-    annotate("text", x = 6.5, y = 2.70,
-             label = "CHAPTER 1 \u2014 Single-Cell Analysis",
+    # Section labels
+    annotate("text", x = 5,   y = 9.65,
+             label = "PART 1 \u2014 Single-Cell Analysis",
              size = 3.5, color = "#1565c0", fontface = "bold") +
-    annotate("text", x = 7,   y = -0.70,
-             label = "CHAPTER 2 \u2014 Pseudobulk DE & GO Enrichment",
-             size = 3.5, color = "#2e7d32", fontface = "bold") +
+    annotate("text", x = 2,   y = -0.3,
+             label = "Pseudotime", size = 3.2, color = "#6a1b9a", fontface = "bold") +
+    annotate("text", x = 8,   y = -0.3,
+             label = "PART 2 \u2014 Pseudobulk DE & Networks",
+             size = 3.2, color = "#2e7d32", fontface = "bold") +
+    # Background bands
+    annotate("rect", xmin = 3.9, xmax = 6.1, ymin = 0.35, ymax = 9.45,
+             fill = "#f0f4ff", color = NA) +
+    annotate("rect", xmin = 0.7, xmax = 3.3, ymin = -3.65, ymax = -0.45,
+             fill = "#f8f0ff", color = NA) +
+    annotate("rect", xmin = 6.7, xmax = 9.3, ymin = -5.65, ymax = -0.45,
+             fill = "#f0fff4", color = NA) +
+    # Edges
     geom_segment(data = edges,
                  aes(x = x1, y = y1, xend = x2, yend = y2),
-                 arrow     = arrow(length = unit(0.22, "cm"), type = "closed"),
-                 linewidth = 0.55, color = "grey40", lineend = "round") +
-    geom_rect(data = nodes,
-              aes(xmin = x - w/2, xmax = x + w/2,
-                  ymin = y - h/2, ymax = y + h/2, fill = group),
+                 arrow     = arrow(length = unit(0.20, "cm"), type = "closed"),
+                 linewidth = 0.55, color = "grey45", lineend = "round") +
+    # Required nodes
+    geom_rect(data = req,
+              aes(xmin = x-w/2, xmax = x+w/2, ymin = y-h/2, ymax = y+h/2, fill = group),
               color = "grey35", linewidth = 0.4) +
+    # Optional nodes (dashed border)
+    geom_rect(data = opt,
+              aes(xmin = x-w/2, xmax = x+w/2, ymin = y-h/2, ymax = y+h/2, fill = group),
+              color = "grey55", linewidth = 0.4, linetype = "dashed") +
+    geom_text(data = nodes, aes(x = x, y = y, label = label),
+              size = 2.6, lineheight = 0.9) +
     scale_fill_manual(values = group_colors, name = NULL,
                       guide  = guide_legend(nrow = 1)) +
-    geom_text(data = nodes, aes(x = x, y = y, label = label),
-              size = 2.7, lineheight = 0.9) +
     theme_void() +
     theme(legend.position = "bottom",
-          legend.text      = element_text(size = 10),
-          plot.margin      = margin(20, 10, 20, 10)) +
-    coord_fixed(ratio = 1.5) +
-    xlim(0.3, 10.7) + ylim(-1.1, 3.1)
+          legend.text     = element_text(size = 9),
+          plot.margin     = margin(15, 20, 15, 20)) +
+    xlim(0, 10) + ylim(-6.3, 10.2)
 
   dir.create(dirname(outfile), recursive = TRUE, showWarnings = FALSE)
-  ggsave(outfile, p, width = 18, height = 7, dpi = 300)
+  ggsave(outfile, p, width = 12, height = 20, dpi = 300)
   message("Workflow figure saved: ", outfile)
   invisible(p)
 }

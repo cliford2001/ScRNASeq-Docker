@@ -68,16 +68,16 @@ USE_CELLBENDER <- FALSE
 samples <- list(
   list(file = "cellranger/Sample_0N/outs/filtered_feature_bc_matrix",      label = "0N",      condition = "0N"),
   list(file = "cellranger/Sample_05N/outs/filtered_feature_bc_matrix",     label = "0.5N_R1", condition = "0.5N"),
-  list(file = "cellranger/Sample_05N_2/outs/filtered_feature_bc_matrix",   label = "0.5N_R2", condition = "0.5N"),
-  list(file = "cellranger/Sample_5N/outs/filtered_feature_bc_matrix",      label = "5N_R1",   condition = "5N"),
-  list(file = "cellranger/Sample_5N_2/outs/filtered_feature_bc_matrix",    label = "5N_R2",   condition = "5N")
+  #list(file = "cellranger/Sample_05N_2/outs/filtered_feature_bc_matrix",   label = "0.5N_R2", condition = "0.5N"),
+  list(file = "cellranger/Sample_5N/outs/filtered_feature_bc_matrix",      label = "5N_R1",   condition = "5N")#,
+  #list(file = "cellranger/Sample_5N_2/outs/filtered_feature_bc_matrix",    label = "5N_R2",   condition = "5N")
 )
 
 # ── Plot colors (one color per sample label) ───────────────────────────────────
 colors <- c(
   "0N"      = "#66c2a5",
-  "0.5N_R1" = "#fc8d62", "0.5N_R2" = "#fc8d62",
-  "5N_R1"   = "#8da0cb", "5N_R2"   = "#8da0cb"
+  "0.5N_R1" = "#fc8d62",# "0.5N_R2" = "#fc8d62",
+  "5N_R1"   = "#8da0cb"#, "5N_R2"   = "#8da0cb"
 )
 
 
@@ -149,8 +149,7 @@ seurat_list_raw <- load_seurat_samples(samples = samples,
                                        mt_pattern = mt_pattern,
                                        cp_pattern = cp_pattern)
 
-plots_pre <- imap(seurat_list_raw, ~ plot_qc_violin_grid(.x, .y, colors[[.y]]))
-save_qc(plots_pre, "qc_prefilter.pdf")
+plot_qc_batch(seurat_list_raw, colors, "qc_prefilter.pdf")
 
 
 # =============================================================================
@@ -164,18 +163,14 @@ save_qc(plots_pre, "qc_prefilter.pdf")
 #   min_features : minimum number of detected genes per cell (default 200)
 #   max_mt       : maximum mitochondrial read percentage  (default 5 %)
 # └─────────────────────────────────────────────────────────────────────────────
-output_dir <- dir_02
+output_dir <- dir_01   # both pre- and post-filter QC plots go to 01_qc/
 
-seurat_list <- lapply(seurat_list_raw, filter_sample,
-                      min_features= 200, max_mt = 5)
+seurat_list <- filter_seurat_samples(seurat_list_raw, min_features = 200, max_mt = 5)
 
-names(seurat_list) <- sapply(samples, `[[`, "label")
+plot_qc_batch(seurat_list, colors, "qc_postfilter.pdf")
 
-plots_post <- imap(seurat_list, ~ plot_qc_violin_grid(.x, .y, colors[[.y]]))
-save_qc(plots_post, "qc_postfilter.pdf")
-
-# Checkpoint — restore with: seurat_list <- readRDS(file.path(dir_02, "seurat_list_postfilter.rds"))
-#readRDS(file.path(dir_02, "seurat_list_postfilter.rds"))
+# Checkpoint — restore with: seurat_list <- readRDS(file.path(dir_01, "seurat_list_postfilter.rds"))
+saveRDS(seurat_list, file.path(dir_01, "seurat_list_postfilter.rds"))
 
 
 # =============================================================================
