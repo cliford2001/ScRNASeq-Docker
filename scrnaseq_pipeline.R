@@ -73,6 +73,11 @@ samples <- list(
   list(file = "cellranger/Sample_5N_2/outs/filtered_feature_bc_matrix",    label = "5N_R2",   condition = "5N")
 )
 
+# ── Dimensionality reduction ───────────────────────────────────────────────────
+# Used across Sections 4-6 (UMAP, FindNeighbors, FindClusters).
+dims_use <- 1:30   # Harmony dimensions to use downstream
+k_param  <- 30     # nearest neighbors for the cell graph
+
 # ── Plot colors (one color per sample label) ───────────────────────────────────
 colors <- c(
   "0N"      = "#66c2a5",
@@ -228,15 +233,11 @@ saveRDS(pbmc_harmony, file.path(dir_objects, "pbmc_harmony_postharmony.rds"))
 #       Choose the lowest resolution where clusters stop merging.
 #
 # ┌─ PARAMETERS ────────────────────────────────────────────────────────────────
-#   dims_use         : Harmony dimensions used downstream (default 1:30)
-#   k_param          : nearest neighbors for the cell graph (default 30)
 #   k_range          : k values tested in the elbow plot
 #   resolutions_test : Leiden resolutions swept by clustree
 #   → Inspect elbow_plot.pdf and clustree.pdf before setting cluster_resolution
 #     in Section 6.
 # └─────────────────────────────────────────────────────────────────────────────
-dims_use         <- 1:30
-k_param          <- 30
 k_range          <- 1:31
 resolutions_test <- c(0.15, 0.30, 0.50, 0.8, 1.0)
 
