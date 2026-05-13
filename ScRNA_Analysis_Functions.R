@@ -2607,9 +2607,10 @@ create_pipeline_dirs <- function(base_dir) {
     dir_02      = mkd("02_clustering"),
     dir_03      = mkd("03_annotation"),
     dir_04      = mkd("04_expression"),
-    dir_05      = mkd("05_de_results"),
-    dir_06      = mkd("06_go"),
-    dir_07      = mkd("07_networks"),
+    dir_curacion = mkd("05_curacion"),
+    dir_05      = mkd("06_de_results"),
+    dir_06      = mkd("07_go"),
+    dir_07      = mkd("08_networks"),
     dir_objects = mkd("objects")
   )
 }

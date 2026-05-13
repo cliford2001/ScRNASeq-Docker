@@ -442,7 +442,7 @@ grouping <- c(
   "Meristemoid"       = "Stomatal Line"
 )
 
-output_dir <- dir_04
+output_dir <- dir_curacion
 
 # !!! unpacks the grouping vector as named arguments to recode()
 pbmc_harmony$celltype_grouped <- recode(pbmc_harmony$celltype_reference, !!!grouping)
@@ -469,7 +469,7 @@ save_pdf(
 # Step 3 → fill in the reassignment table below
 # Step 4 → apply corrections to the global object
 
-output_dir   <- dir_04
+output_dir   <- dir_curacion
 curation_col <- "celltype_grouped"   # starting annotation column for curation
 Idents(pbmc_harmony) <- curation_col
 table(pbmc_harmony[[curation_col]])
