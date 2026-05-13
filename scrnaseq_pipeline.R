@@ -302,8 +302,8 @@ save_pdf(DimPlot(pbmc_harmony, group.by = "seurat_clusters", cols = colors_clust
 # Dot size = fraction of expressing cells; color = mean expression level.
 output_dir <- dir_05
 
-marker_table <- read.table(file.path(DATA_DIR, "metodologia/biblio_marks.txt"),
-                         header = TRUE, sep = "\t", quote = "")
+biblio_marks_file <- file.path(DATA_DIR, "metodologia/biblio_marks.txt")
+marker_table      <- read.table(biblio_marks_file, header = TRUE, sep = "\t", quote = "")
 
 plot_marker_dotplot(
   pbmc_harmony,
@@ -334,7 +334,7 @@ markers <- find_markers(pbmc_harmony,
                         output_file = file.path(output_dir, "FindAllMarkers.tsv"))
 
 pbmc_harmony <- annotate_by_markers(pbmc_harmony, markers,
-                                    reference_file = file.path(DATA_DIR, "metodologia/biblio_marks.txt"))
+                                    reference_file = biblio_marks_file)
 # Annotation stored in: pbmc_harmony$celltype
 
 plot_marker_dotplot(
