@@ -1139,9 +1139,9 @@ apply_subcluster_reassignment <- function(obj, subcluster_list, reassign,
 #' Assign Pseudo-replicates
 #'
 #' Randomly assigns cells within each condition to pseudo-replicate groups.
-#' Conditions are auto-detected from orig.ident_uni unless explicitly provided.
+#' Conditions are auto-detected from the 'condition' column unless explicitly provided.
 #'
-#' @param obj         Seurat object with orig.ident_uni metadata.
+#' @param obj         Seurat object with a 'condition' metadata column.
 #' @param conditions Character vector of condition names to include. NULL
 #'   (default) uses all conditions present in the data.
 #' @param n_reps      Number of pseudo-replicates per condition.
@@ -1157,14 +1157,14 @@ assign_pseudo_replicates <- function(obj,
   set.seed(seed)
 
   # Auto-detect conditions from data if not provided
-  all_conds <- unique(obj$orig.ident_uni)
+  all_conds <- unique(obj$condition)
   present_conditions <- if (!is.null(conditions)) intersect(all_conds, conditions) else all_conds
 
   if (length(present_conditions) < 2) return(NULL)
 
   obj$replicate <- NA
   for (cond in present_conditions) {
-    idx              <- obj$orig.ident_uni == cond
+    idx              <- obj$condition == cond
     obj$replicate[idx] <- sample(paste0(cond, "_rep", 1:n_reps), sum(idx), replace = TRUE)
   }
 

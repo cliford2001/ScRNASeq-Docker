@@ -1,9 +1,9 @@
 # =============================================================================
-# 01_single_cell.R — Single-Cell RNA-seq Analysis (Part 1)
+# capitulo1_single_cell.R — Single-Cell RNA-seq Analysis (Part 1)
 # =============================================================================
 # Covers QC, integration, clustering, annotation, and export to h5ad.
-# Output: pbmc_harmony_curated.rds  (used by 02_pseudobulk_de.R)
-#         pbmc_harmony_curated.h5ad (used by 03_pseudotime.py)
+# Output: pbmc_harmony_curated.rds  (used by capitulo2_pseudobulk_de.R)
+#         pbmc_harmony_curated.h5ad (used by capitulo3_pseudotime.py)
 # =============================================================================
 
 # =============================================================================
