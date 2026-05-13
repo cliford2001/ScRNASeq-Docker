@@ -408,23 +408,21 @@ output_dir <- dir_06
 pbmc_harmony <- JoinLayers(pbmc_harmony)
 Idents(pbmc_harmony) <- "celltype_reference"
 
+n_genes <- length(genes_of_interest)
+
 # ── 10a. All cell types ───────────────────────────────────────────────────────
-save_vln(VlnPlot(pbmc_harmony, features = gene),                    "vln_gene_all.pdf")
-save_pdf(FeaturePlot(pbmc_harmony, features = gene),                "feature_gene_all.pdf")
-save_vln(VlnPlot(pbmc_harmony, features = genes_of_interest),       "vln_geneset_all.pdf",
-         n = length(genes_of_interest))
-save_pdf(FeaturePlot(pbmc_harmony, features = genes_of_interest),   "feature_geneset_all.pdf",
-         h = 8 * length(genes_of_interest))
+save_vln(VlnPlot(pbmc_harmony, features = gene),                  "vln_gene_all.pdf")
+save_pdf(FeaturePlot(pbmc_harmony, features = gene),              "feature_gene_all.pdf")
+save_vln(VlnPlot(pbmc_harmony, features = genes_of_interest),     "vln_geneset_all.pdf",     n = n_genes)
+save_pdf(FeaturePlot(pbmc_harmony, features = genes_of_interest), "feature_geneset_all.pdf", h = 8 * n_genes)
 
 # ── 10b. Cell type of interest ────────────────────────────────────────────────
 sub_obj <- subset(pbmc_harmony, idents = celltype)
 
-save_vln(VlnPlot(sub_obj, features = gene),                         "vln_gene_celltype.pdf")
-save_pdf(FeaturePlot(sub_obj, features = gene),                     "feature_gene_celltype.pdf")
-save_vln(VlnPlot(sub_obj, features = genes_of_interest),            "vln_geneset_celltype.pdf",
-         n = length(genes_of_interest))
-save_pdf(FeaturePlot(sub_obj, features = genes_of_interest),        "feature_geneset_celltype.pdf",
-         h = 8 * length(genes_of_interest))
+save_vln(VlnPlot(sub_obj, features = gene),                  "vln_gene_celltype.pdf")
+save_pdf(FeaturePlot(sub_obj, features = gene),              "feature_gene_celltype.pdf")
+save_vln(VlnPlot(sub_obj, features = genes_of_interest),     "vln_geneset_celltype.pdf",     n = n_genes)
+save_pdf(FeaturePlot(sub_obj, features = genes_of_interest), "feature_geneset_celltype.pdf", h = 8 * n_genes)
 
 
 # =============================================================================
