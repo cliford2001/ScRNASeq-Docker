@@ -404,17 +404,20 @@ celltype          <- "Guard Cell"
 
 output_dir <- dir_06
 
-pbmc_harmony     <- JoinLayers(pbmc_harmony)
+# JoinLayers is required in Seurat 5 before subsetting after merge
+pbmc_harmony <- JoinLayers(pbmc_harmony)
 Idents(pbmc_harmony) <- "celltype_reference"
 
-sub_obj <- subset(pbmc_harmony, idents = celltype)
-
+# ── 10a. All cell types ───────────────────────────────────────────────────────
 save_vln(VlnPlot(pbmc_harmony, features = gene),                    "vln_gene_all.pdf")
 save_pdf(FeaturePlot(pbmc_harmony, features = gene),                "feature_gene_all.pdf")
 save_vln(VlnPlot(pbmc_harmony, features = genes_of_interest),       "vln_geneset_all.pdf",
          n = length(genes_of_interest))
 save_pdf(FeaturePlot(pbmc_harmony, features = genes_of_interest),   "feature_geneset_all.pdf",
          h = 8 * length(genes_of_interest))
+
+# ── 10b. Cell type of interest ────────────────────────────────────────────────
+sub_obj <- subset(pbmc_harmony, idents = celltype)
 
 save_vln(VlnPlot(sub_obj, features = gene),                         "vln_gene_celltype.pdf")
 save_pdf(FeaturePlot(sub_obj, features = gene),                     "feature_gene_celltype.pdf")
