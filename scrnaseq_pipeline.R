@@ -290,21 +290,6 @@ Idents(pbmc_harmony) <- "seurat_clusters"
 save_pdf(DimPlot(pbmc_harmony, group.by = "seurat_clusters", cols = colors_clusters),
          "umap_seuratclusters.pdf")
 
-# ── Cell count per sample ─────────────────────────────────────────────────────
-cell_count_plot <- ggplot(pbmc_harmony@meta.data,
-                          aes(x = orig.ident, fill = orig.ident)) +
-  geom_bar() +
-  geom_text(stat = "count", aes(label = after_stat(count)),
-            vjust = -0.4, size = 4) +
-  scale_fill_manual(values = colors) +
-  theme_bw(base_size = 14) +
-  labs(title = "Total cells per sample after filtering and integration",
-       x = "Sample", y = "Cell count") +
-  theme(legend.position = "none",
-        axis.text.x = element_text(angle = 45, hjust = 1))
-
-save_pdf(cell_count_plot, "cell_count_per_sample.pdf", w = 8, h = 6)
-
 
 # =============================================================================
 # SECTION 7 — DOTPLOT: MARKER GENES BY CLUSTER (pre-annotation guide)
