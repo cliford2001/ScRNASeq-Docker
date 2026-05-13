@@ -69,7 +69,7 @@ cell_type_subsets_replicates <- assign_pseudoreplicates_batch(cell_type_subsets,
                                                              n_pseudoreps = n_pseudoreps)
 
 
-# Example QC checks for one subset:
+# QC check — replace Pavement_Cell with any cell type name from your data:
 table(cell_type_subsets_replicates$Pavement_Cell$replicate)
 table(cell_type_subsets_replicates$Pavement_Cell$orig.ident)
 
@@ -81,16 +81,14 @@ table(cell_type_subsets_replicates$Pavement_Cell$orig.ident)
 # count tables, and runs DESeq2 for the user-defined pairwise contrasts.
 #
 # ┌─ DEFINE YOUR CONDITION CONTRASTS HERE ──────────────────────────────────────
-#   contrasts : each entry must contain
+#   comparisons : each entry must contain
 #                   conds = c("reference", "treatment")
 #                   tag   = output folder / file label
 # └─────────────────────────────────────────────────────────────────────────────
-contrasts <- list(
+comparisons <- list(
   list(conds = c("0.5N", "5N"), tag = "0.5N_vs_5N"),
   list(conds = c("0N",   "5N"), tag = "0N_vs_5N")
 )
-
-output_dir <- dir_06
 
 # ┌─ SELECT WHICH CELL TYPES TO ANALYZE ────────────────────────────────────────
 #   NULL = analyze all cell types
@@ -98,10 +96,12 @@ output_dir <- dir_06
 # └─────────────────────────────────────────────────────────────────────────────
 cell_types_to_analyze <- NULL  # Change to c("Epidermis", "Cortex") to filter
 
+output_dir <- dir_06
+
 # Run pseudobulk aggregation and DESeq2 analysis
 deseq2_results <- run_pseudobulk_deseq2_analysis(
   cell_type_subsets_replicates = cell_type_subsets_replicates,
-  comparisons = contrasts,
+  comparisons = comparisons,
   output_dir = output_dir,
   cell_types = cell_types_to_analyze,
   pseudobulk_dir = file.path(dir_objects, "pseudobulk_replicas")
@@ -115,7 +115,7 @@ deseq2_results <- run_pseudobulk_deseq2_analysis(
 # combines them into a single PDF.
 #
 # ┌─ VOLCANO PARAMETERS ─────────────────────────────────────────────────────────
-#   volcano_tag : tag of the contrast to visualize (must match contrasts)
+#   volcano_tag : tag of the contrast to visualize (must match comparisons)
 #   padj_cut    : adjusted p-value threshold
 #   lfc_cut     : absolute log2 fold-change threshold
 # └─────────────────────────────────────────────────────────────────────────────
@@ -139,15 +139,13 @@ render_volcano_plots(
 # contrast across all cell types.
 #
 # ┌─ DIFFERENTIAL TABLE PARAMETERS ──────────────────────────────────────────────
-#   diff_tag    : tag of the contrast to summarize
 #   diff_prefix : output filename prefix for the discrete matrix
 # └─────────────────────────────────────────────────────────────────────────────
-diff_tag    <- volcano_tag
-diff_prefix <- paste0("diff_table_", diff_tag)
+diff_prefix <- paste0("diff_table_", volcano_tag)
 
 diff_tables <- build_differential_tables(
-  results_dir = file.path(dir_06, diff_tag),
-  output_dir  = file.path(dir_06, diff_tag),
+  results_dir = file.path(dir_06, volcano_tag),
+  output_dir  = file.path(dir_06, volcano_tag),
   padj_cut    = padj_cut,
   lfc_cut     = lfc_cut,
   prefix      = diff_prefix
@@ -162,7 +160,7 @@ diff_tables <- build_differential_tables(
 go_space    <- "BP"          # Change to "MF" or "CC" if desired
 padj_cutoff <- 0.05
 
-deseq2_files <- list.files(file.path(dir_06, diff_tag),
+deseq2_files <- list.files(file.path(dir_06, volcano_tag),
                            pattern = "^DESeq2_.*\\.csv$",
                            full.names = TRUE)
 
@@ -175,13 +173,13 @@ for (deseq2_file in deseq2_files) {
   if (length(sig_genes) > 0) {
     run_simple_go_enrichment(
       diff_table = data.frame(gene_id = sig_genes),
-      output_dir = file.path(dir_07, diff_tag),
+      output_dir = file.path(dir_07, volcano_tag),
       orgdb = org.At.tair.db,
       keytype = "TAIR",
       go_space = go_space,
       padj_cutoff = padj_cutoff,
       cell_type = cell_type,
-      contrast_tag = diff_tag
+      contrast_tag = volcano_tag
     )
   }
 }
@@ -203,8 +201,8 @@ wgcna_merge_cut <- 0.25
 
 heatmap_results <- build_logfc_heatmap(
   logfc_table  = diff_tables$logfc,
-  contrast_tag = diff_tag,
-  output_dir   = file.path(dir_06, diff_tag),
+  contrast_tag = volcano_tag,
+  output_dir   = file.path(dir_06, volcano_tag),
   method       = CLUSTER_METHOD,
   limits       = heatmap_limits,
   merge_cut    = wgcna_merge_cut
@@ -224,13 +222,13 @@ for (clust_id in unique(heatmap_results$cluster)) {
 
   run_simple_go_enrichment(
     diff_table   = data.frame(gene_id = genes),
-    output_dir   = file.path(dir_06, diff_tag, paste0("GO_clusters_", CLUSTER_METHOD)),
+    output_dir   = file.path(dir_06, volcano_tag, paste0("GO_clusters_", CLUSTER_METHOD)),
     orgdb        = org.At.tair.db,
     keytype      = "TAIR",
     go_space     = "BP",
     padj_cutoff  = go_clusters_padj,
     cell_type    = as.character(clust_id),
-    contrast_tag = diff_tag
+    contrast_tag = volcano_tag
   )
 }
 
@@ -271,28 +269,32 @@ for (clust_id in unique(heatmap_results$cluster)) {
 # └─────────────────────────────────────────────────────────────────────────────
 network_methods <- c("GENIE3", "WGCNA", "SYNERGY")  # CHANGE AS NEEDED
 
-# ── Common parameters ────────────────────────────────────────────────────────
-n_top_clusters <- 3
-min_var_filter <- 0.01
-
-# GENIE3 parameters
+# ┌─ COMMON ────────────────────────────────────────────────────────────────────
+n_top_clusters <- 3      # how many largest clusters to analyze
+min_var_filter <- 0.01   # drop genes with low variance across samples
+# ├─ GENIE3 ────────────────────────────────────────────────────────────────────
+#   ┌─ CHANGE FOR YOUR ORGANISM ──────────────────────────────────────────────
+#     Arabidopsis : net_orgdb = org.At.tair.db  |  net_keytype = "TAIR"
+#     Human       : net_orgdb = org.Hs.eg.db    |  net_keytype = "ENSEMBL"
+#     Mouse       : net_orgdb = org.Mm.eg.db    |  net_keytype = "ENSEMBL"
+#   └─────────────────────────────────────────────────────────────────────────
 net_orgdb     <- org.At.tair.db
 net_keytype   <- "TAIR"
-custom_tfs    <- NULL
-cor_min       <- 0.75        # EXPLORATORY — top 15% (Pearson |r| >= 0.75)
-genie3_ntrees <- 100
-n_cores       <- 4
-
-# WGCNA parameters
-soft_power    <- 6
-network_type  <- "signed"
-tom_threshold <- 0.05        # EXPLORATORY — top 15% (TOM >= 0.05)
+custom_tfs    <- NULL    # optional vector of TF gene IDs; NULL = auto-detect
+cor_min       <- 0.75    # Pearson |r| threshold for edge filtering
+genie3_ntrees <- 100     # Random Forest trees (more = stabler, slower)
+n_cores       <- 4       # parallel cores
+# ├─ WGCNA ─────────────────────────────────────────────────────────────────────
+soft_power    <- 6       # adjacency power (higher = fewer but stronger edges)
+network_type  <- "signed"  # "signed" keeps directionality, "unsigned" ignores it
+tom_threshold <- 0.05    # TOM edge threshold (higher = stricter)
+# └─────────────────────────────────────────────────────────────────────────────
 
 # ── Run all selected methods in one call ─────────────────────────────────────
 net_pipeline <- run_network_inference_pipeline(
   heatmap_results      = heatmap_results,
   pseudobulk_dir       = file.path(dir_objects, "pseudobulk_replicas"),
-  output_base_dir      = file.path(dir_08, diff_tag),
+  output_base_dir      = file.path(dir_08, volcano_tag),
   methods              = network_methods,
   orgdb                = net_orgdb,
   keytype              = net_keytype,
@@ -331,7 +333,7 @@ if (RUN_THRESHOLD_TEST) {
   threshold_test <- test_network_thresholds(
     heatmap_results = heatmap_results,
     pseudobulk_dir  = file.path(dir_objects, "pseudobulk_replicas"),
-    output_dir      = file.path(dir_08, diff_tag, "THRESHOLD_TEST"),
+    output_dir      = file.path(dir_08, volcano_tag, "THRESHOLD_TEST"),
     method          = "SYNERGY",  # Change to "GENIE3" or "WGCNA" if desired
     orgdb           = net_orgdb,
     keytype         = net_keytype,
@@ -378,7 +380,7 @@ viz <- viz_settings[[viz_method]]
 visualize_network_per_cluster(
   network_results     = viz$results,
   cluster_assignments = heatmap_results,
-  output_dir          = file.path(dir_08, diff_tag, "VISUALIZATION"),
+  output_dir          = file.path(dir_08, volcano_tag, "VISUALIZATION"),
   method_name         = viz_method,
   weight_col          = viz$weight_col,
   directed            = viz$directed,
@@ -408,7 +410,7 @@ exprMatr_pseudobulk <- load_pseudobulk_matrix(
 generate_cluster_profile_report(
   cluster_assignments = heatmap_results,
   pseudobulk_matrix   = exprMatr_pseudobulk,
-  output_dir          = file.path(dir_06, diff_tag, "CLUSTER_PROFILES"),
+  output_dir          = file.path(dir_06, volcano_tag, "CLUSTER_PROFILES"),
   method_name         = CLUSTER_METHOD
 )
 
