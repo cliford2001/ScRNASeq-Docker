@@ -55,7 +55,7 @@ base_dir   <- file.path(DATA_DIR, "metodologia/resultados")
 # If TRUE  → set samples$file to the .h5 file path relative to DATA_DIR
 # If FALSE → set samples$file to the filtered_feature_bc_matrix/ directory
 #            path relative to DATA_DIR
-USE_CELLBENDER <- FALSE
+USE_CELLBENDER <- TRUE
 
 # ── Sample manifest ───────────────────────────────────────────────────────────
 # Add one entry per sample. Each entry needs:
@@ -64,28 +64,28 @@ USE_CELLBENDER <- FALSE
 #   condition — experimental group this sample belongs to
 
 # ── OPTION 1: CellBender-filtered HDF5 files (USE_CELLBENDER = TRUE) ─────────
-# samples <- list(
-#   list(file = "cellbender/Sample_0N_cellbender_filtered.h5",      label = "0N",      condition = "0N"),
-#   list(file = "cellbender/Sample_05N_R1_cellbender_filtered.h5",  label = "0.5N_R1", condition = "0.5N"),
-#   list(file = "cellbender/Sample_05N_2_cellbender_filtered.h5",   label = "0.5N_R2", condition = "0.5N"),
-#   list(file = "cellbender/Sample_5N_R1_cellbender_filtered.h5",   label = "5N_R1",   condition = "5N"),
-#   list(file = "cellbender/Sample_5N_2_cellbender_filtered.h5",    label = "5N_R2",   condition = "5N")
-# )
+samples <- list(
+  list(file = "cellbender/Sample_0N_cellbender_filtered.h5",      label = "0N",      condition = "0N"),
+  list(file = "cellbender/Sample_05N_R1_cellbender_filtered.h5",  label = "0.5N_R1", condition = "0.5N"),
+  #list(file = "cellbender/Sample_05N_2_cellbender_filtered.h5",   label = "0.5N_R2", condition = "0.5N"),
+  list(file = "cellbender/Sample_5N_R1_cellbender_filtered.h5",   label = "5N_R1",   condition = "5N")#,
+  #list(file = "cellbender/Sample_5N_2_cellbender_filtered.h5",    label = "5N_R2",   condition = "5N")
+)
 
 # ── OPTION 2: CellRanger filtered_feature_bc_matrix (USE_CELLBENDER = FALSE) ─
-samples <- list(
-  list(file = "cellranger/Sample_0N/outs/filtered_feature_bc_matrix",      label = "0N",      condition = "0N"),
-  list(file = "cellranger/Sample_05N/outs/filtered_feature_bc_matrix",     label = "0.5N_R1", condition = "0.5N"),
-  #list(file = "cellranger/Sample_05N_2/outs/filtered_feature_bc_matrix",   label = "0.5N_R2", condition = "0.5N"),
-  list(file = "cellranger/Sample_5N/outs/filtered_feature_bc_matrix",      label = "5N_R1",   condition = "5N")#,
-  #list(file = "cellranger/Sample_5N_2/outs/filtered_feature_bc_matrix",    label = "5N_R2",   condition = "5N")
-)
+# samples <- list(
+#   list(file = "cellranger/Sample_0N/outs/filtered_feature_bc_matrix",      label = "0N",      condition = "0N"),
+#   list(file = "cellranger/Sample_05N/outs/filtered_feature_bc_matrix",     label = "0.5N_R1", condition = "0.5N"),
+#   list(file = "cellranger/Sample_05N_2/outs/filtered_feature_bc_matrix",   label = "0.5N_R2", condition = "0.5N"),
+#   list(file = "cellranger/Sample_5N/outs/filtered_feature_bc_matrix",      label = "5N_R1",   condition = "5N")#,
+#   list(file = "cellranger/Sample_5N_2/outs/filtered_feature_bc_matrix",    label = "5N_R2",   condition = "5N")
+# )
 
 
 # ── Plot colors (one color per sample label) ───────────────────────────────────
 colors <- c(
   "0N"      = "#66c2a5",
-  "0.5N_R1" = "#fc8d62"#, "0.5N_R2" = "#fc8d62",
+  "0.5N_R1" = "#fc8d62",# "0.5N_R2" = "#fc8d62",
   "5N_R1"   = "#8da0cb"#, "5N_R2"   = "#8da0cb"
 )
 
