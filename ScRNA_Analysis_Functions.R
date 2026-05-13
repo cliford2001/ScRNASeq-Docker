@@ -3280,11 +3280,20 @@ build_logfc_heatmap <- function(logfc_table,
   message("Clusters found: ", length(unique(clust_labels[clust_labels != "0"])))
 
   # ── Annotation ──────────────────────────────────────────────────────────────
+  # Order rows by cluster so genes of the same cluster are grouped together
+  row_order <- names(clust_labels)[order(clust_labels)]
+
   u_clust   <- sort(unique(clust_labels))
-  pal_clust <- setNames(
-    colorRampPalette(brewer.pal(min(length(u_clust), 12), "Dark2"))(length(u_clust)),
-    u_clust
-  )
+  # For WGCNA the label names are actual color names — use them directly.
+  # For hclust labels are numbers — assign a palette.
+  if (method == "wgcna") {
+    pal_clust <- setNames(u_clust, u_clust)
+  } else {
+    pal_clust <- setNames(
+      colorRampPalette(brewer.pal(min(length(u_clust), 12), "Dark2"))(length(u_clust)),
+      u_clust
+    )
+  }
 
   left_ha <- ComplexHeatmap::rowAnnotation(
     Cluster = clust_labels,
@@ -3299,7 +3308,8 @@ build_logfc_heatmap <- function(logfc_table,
     name = "log2FC",
     col  = circlize::colorRamp2(c(limits[1], 0, limits[2]), c("blue", "black", "yellow")),
 
-    cluster_rows    = TRUE,  # Let ComplexHeatmap cluster rows automatically
+    cluster_rows    = FALSE,  # rows ordered by clustering method, not dendrogram
+    row_order       = row_order,
     cluster_columns = FALSE,
 
     left_annotation   = left_ha,
