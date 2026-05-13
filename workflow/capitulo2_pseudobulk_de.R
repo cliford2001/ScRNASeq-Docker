@@ -163,7 +163,14 @@ diff_tables <- build_differential_tables(
 # =============================================================================
 # Gene Ontology enrichment per cell type for the selected contrast.
 
-go_space    <- "BP"          # Change to "MF" or "CC" if desired
+# ┌─ CHANGE FOR YOUR ORGANISM ────────────────────────────────────────────────
+#   Arabidopsis: go_orgdb = org.At.tair.db  |  go_keytype = "TAIR"
+#   Human:       go_orgdb = org.Hs.eg.db    |  go_keytype = "ENSEMBL"
+#   Mouse:       go_orgdb = org.Mm.eg.db    |  go_keytype = "ENSEMBL"
+# └─────────────────────────────────────────────────────────────────────────
+go_space    <- "BP"   # "MF" (function) or "CC" (component)
+go_orgdb    <- org.At.tair.db
+go_keytype  <- "TAIR"
 padj_cutoff <- 0.05
 
 deseq2_files <- list.files(file.path(dir_06, volcano_tag),
@@ -180,8 +187,8 @@ for (deseq2_file in deseq2_files) {
     run_simple_go_enrichment(
       diff_table = data.frame(gene_id = sig_genes),
       output_dir = file.path(dir_07, volcano_tag),
-      orgdb = org.At.tair.db,
-      keytype = "TAIR",
+      orgdb        = go_orgdb,
+      keytype      = go_keytype,
       go_space = go_space,
       padj_cutoff = padj_cutoff,
       cell_type = cell_type,
@@ -205,9 +212,9 @@ for (deseq2_file in deseq2_files) {
 #   min_cluster_size : minimum genes per cluster — hclust only (default 10)
 #   wgcna_merge_cut  : merge close WGCNA modules — wgcna only (default 0.25)
 # └─────────────────────────────────────────────────────────────────────────────
-CLUSTER_METHOD   <- "wgcna"  # "hclust" or "wgcna"
+CLUSTER_METHOD   <- "hclust"  # "hclust" or "wgcna"
 heatmap_limits   <- c(-5, 5)
-min_cluster_size <- 10       # hclust only — increase to get fewer, larger clusters
+min_cluster_size <- 100       # hclust only — increase to get fewer, larger clusters
 wgcna_merge_cut  <- 0.25     # wgcna only
 
 heatmap_results <- build_logfc_heatmap(
