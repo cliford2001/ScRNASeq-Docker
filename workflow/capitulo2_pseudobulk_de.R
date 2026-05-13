@@ -254,17 +254,16 @@ for (clust_id in unique(heatmap_results$cluster)) {
 
 
 # =============================================================================
-# SECTION 22 — NETWORK INFERENCE PER CLUSTER (3-METHOD MIX STRATEGY)
+# SECTION 22 — NETWORK INFERENCE PER CLUSTER (GENIE3)
 # =============================================================================
-# THREE COMPLEMENTARY network inference analyses per cluster from Section 20:
-# (Analogous to Section 20's dual-clustering strategy: hclust vs WGCNA)
+# Infers transcription factor → target gene regulatory edges using GENIE3
+# (Random Forest importance scores) for each cluster from Section 20.
 #
-# Two complementary methods — run both or choose one:
-#   GENIE3 : directed TF → target inference (Random Forest)
-#             use when you want to know which TF drives each gene
-#   WGCNA  : undirected coexpression network (Topological Overlap Matrix)
-#             use when you want co-expressed gene modules and hub genes
-#             requires ≥ 15 pseudobulk samples per cell type to be reliable
+# Results are hypothesis-generating — a ranked list of TF→target candidates,
+# not a statistically validated network. With ≤ 9 pseudobulk samples per
+# cell type, individual edge rankings have high variance across seeds.
+# Cross-reference top TFs with known biology before drawing conclusions.
+#
 # Outputs saved in dir_08/<contrast>/.
 #
 # ┌─ COMMON PARAMETERS ──────────────────────────────────────────────────────────
@@ -282,56 +281,49 @@ for (clust_id in unique(heatmap_results$cluster)) {
 #   network_type   : "signed" (correlation direction matters) or "unsigned"
 #   tom_threshold  : TOM threshold (≥0.15 = MODERATE, equivalent to Pearson 0.90)
 # └─────────────────────────────────────────────────────────────────────────────
-# ┌─ CHOOSE WHICH METHODS TO RUN ────────────────────────────────────────────────
-#   c("GENIE3", "WGCNA")  — run both (recommended)
-#   c("GENIE3")            — directed only (use with few samples)
-#   c("WGCNA")             — coexpression only
-# └─────────────────────────────────────────────────────────────────────────────
-network_methods <- c("GENIE3", "WGCNA")  # CHANGE AS NEEDED
+network_methods <- c("GENIE3")
 
-# ┌─ COMMON ────────────────────────────────────────────────────────────────────
-n_top_clusters <- 3      # how many largest clusters to analyze
-min_var_filter <- 0.01   # drop genes with low variance across samples
-# ├─ GENIE3 ────────────────────────────────────────────────────────────────────
+# ┌─ PARAMETERS ────────────────────────────────────────────────────────────────
+#   n_top_clusters : how many largest clusters to analyze
+#   cor_min        : Pearson |r| filter — only keep edges where TF and target
+#                    expression correlate strongly (0.85 = strict, 0.75 = lenient)
+#                    with few samples (n ≤ 9), use 0.85 to reduce false positives
+#   genie3_ntrees  : Random Forest trees per gene (more = stabler ranking, slower)
+#                    500+ recommended for reproducible edge rankings at small n
+#   n_cores        : parallel cores
 #   ┌─ CHANGE FOR YOUR ORGANISM ──────────────────────────────────────────────
 #     Arabidopsis : net_orgdb = org.At.tair.db  |  net_keytype = "TAIR"
 #     Human       : net_orgdb = org.Hs.eg.db    |  net_keytype = "ENSEMBL"
 #     Mouse       : net_orgdb = org.Mm.eg.db    |  net_keytype = "ENSEMBL"
 #   └─────────────────────────────────────────────────────────────────────────
-net_orgdb     <- org.At.tair.db
-net_keytype   <- "TAIR"
-custom_tfs    <- NULL    # optional vector of TF gene IDs; NULL = auto-detect
-cor_min       <- 0.75    # Pearson |r| threshold for edge filtering
-genie3_ntrees <- 100     # Random Forest trees (more = stabler, slower)
-n_cores       <- 4       # parallel cores
-# ├─ WGCNA ─────────────────────────────────────────────────────────────────────
-soft_power    <- 6       # adjacency power (higher = fewer but stronger edges)
-network_type  <- "signed"  # "signed" keeps directionality, "unsigned" ignores it
-tom_threshold <- 0.05    # TOM edge threshold (higher = stricter)
 # └─────────────────────────────────────────────────────────────────────────────
+n_top_clusters <- 3
+min_var_filter <- 0.01
+net_orgdb      <- org.At.tair.db
+net_keytype    <- "TAIR"
+custom_tfs     <- NULL   # NULL = auto-detect TFs from org.At.tair.db
+cor_min        <- 0.85   # strict filter — reduces false positives at small n
+genie3_ntrees  <- 500    # stable rankings; reduce to 100 for quick exploration
+n_cores        <- 4
 
 # ── Run all selected methods in one call ─────────────────────────────────────
 net_pipeline <- run_network_inference_pipeline(
-  heatmap_results      = heatmap_results,
-  pseudobulk_dir       = file.path(dir_objects, "pseudobulk_replicas"),
-  output_base_dir      = file.path(dir_08, volcano_tag),
-  methods              = network_methods,
-  orgdb                = net_orgdb,
-  keytype              = net_keytype,
-  custom_tfs           = custom_tfs,
-  cor_min              = cor_min,
-  genie3_ntrees        = genie3_ntrees,
-  n_cores              = n_cores,
-  soft_power           = soft_power,
-  network_type         = network_type,
-  tom_threshold        = tom_threshold,
-  n_top_clusters       = n_top_clusters,
-  min_var_filter       = min_var_filter
+  heatmap_results  = heatmap_results,
+  pseudobulk_dir   = file.path(dir_objects, "pseudobulk_replicas"),
+  output_base_dir  = file.path(dir_08, volcano_tag),
+  methods          = network_methods,
+  orgdb            = net_orgdb,
+  keytype          = net_keytype,
+  custom_tfs       = custom_tfs,
+  cor_min          = cor_min,
+  genie3_ntrees    = genie3_ntrees,
+  n_cores          = n_cores,
+  n_top_clusters   = n_top_clusters,
+  min_var_filter   = min_var_filter
 )
 
 # ── Extract results for downstream sections ─────────────────────────────────
 genie3_results <- net_pipeline$results$GENIE3
-wgcna_results  <- net_pipeline$results$WGCNA
 
 
 # =============================================================================
@@ -353,14 +345,12 @@ if (RUN_THRESHOLD_TEST) {
     heatmap_results = heatmap_results,
     pseudobulk_dir  = file.path(dir_objects, "pseudobulk_replicas"),
     output_dir      = file.path(dir_08, volcano_tag, "THRESHOLD_TEST"),
-    method          = "GENIE3",   # "GENIE3" or "WGCNA"
+    method          = "GENIE3",
     orgdb           = net_orgdb,
     keytype         = net_keytype,
     custom_tfs      = custom_tfs,
     genie3_ntrees   = genie3_ntrees,
     n_cores         = n_cores,
-    soft_power      = soft_power,
-    network_type    = network_type,
     n_top_clusters  = n_top_clusters,
     min_var_filter  = min_var_filter
   )
@@ -381,16 +371,14 @@ if (RUN_THRESHOLD_TEST) {
 #   Selected method will be visualized in detail (force-directed, node sizes by
 #   degree, edge widths by weight). This complements SEC 22's PDF summaries.
 #
-#   Recommendations:
-#   • GENIE3 → see which TFs drive each cluster (directed arrows)
-#   • WGCNA  → see coexpression structure and hub genes (undirected modules)
+#   Visualizes top TF → target edges as a force-directed graph.
+#   Node size = number of connections; edge width = GENIE3 importance score.
 # └─────────────────────────────────────────────────────────────────────────────
 
-viz_method <- "GENIE3"   # "GENIE3" or "WGCNA"
+viz_method <- "GENIE3"
 
 viz_settings <- list(
-  GENIE3 = list(results = genie3_results, weight_col = "weight", directed = TRUE,  edge_color = "#2ca02c"),
-  WGCNA  = list(results = wgcna_results,  weight_col = "TOM",    directed = FALSE, edge_color = "#1f77b4")
+  GENIE3 = list(results = genie3_results, weight_col = "weight", directed = TRUE, edge_color = "#2ca02c")
 )
 viz <- viz_settings[[viz_method]]
 
