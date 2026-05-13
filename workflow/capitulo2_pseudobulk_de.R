@@ -232,6 +232,7 @@ heatmap_results <- build_logfc_heatmap(
 # SECTION 21 — GO ENRICHMENT PER CLUSTER
 # =============================================================================
 # Runs GO enrichment for each cluster identified in Section 20.
+# Uses go_orgdb and go_keytype defined in Section 19 — change them there.
 # Uses the cluster assignments from heatmap_results.
 
 go_clusters_padj <- 0.05  # adjusted p-value threshold for GO enrichment per cluster
@@ -242,8 +243,8 @@ for (clust_id in unique(heatmap_results$cluster)) {
   run_simple_go_enrichment(
     diff_table   = data.frame(gene_id = genes),
     output_dir   = file.path(dir_06, volcano_tag, paste0("GO_clusters_", CLUSTER_METHOD)),
-    orgdb        = org.At.tair.db,
-    keytype      = "TAIR",
+    orgdb        = go_orgdb,
+    keytype      = go_keytype,
     go_space     = "BP",
     padj_cutoff  = go_clusters_padj,
     cell_type    = as.character(clust_id),
