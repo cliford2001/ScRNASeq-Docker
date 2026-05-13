@@ -3281,16 +3281,20 @@ build_logfc_heatmap <- function(logfc_table,
 
   # ── Annotation ──────────────────────────────────────────────────────────────
   # Order rows by cluster so genes of the same cluster are grouped together.
-  # hclust labels are numbers — sort numerically to avoid "1","10","2" order.
+  # Pass integer indices to ComplexHeatmap — character names are unreliable.
+  # hclust: sort numerically (1,2,3...) not alphabetically (1,10,11,2...).
+  # Cluster 0 = unassigned by cutreeDynamic — placed at the bottom.
   if (method == "hclust") {
-    row_order <- names(clust_labels)[order(as.numeric(clust_labels))]
+    numeric_labels <- as.numeric(clust_labels)
+    numeric_labels[numeric_labels == 0] <- Inf   # push unassigned to bottom
+    row_order <- order(numeric_labels)
     u_clust   <- as.character(sort(as.numeric(unique(clust_labels))))
     pal_clust <- setNames(
       colorRampPalette(brewer.pal(min(length(u_clust), 12), "Dark2"))(length(u_clust)),
       u_clust
     )
   } else {
-    row_order <- names(clust_labels)[order(clust_labels)]
+    row_order <- order(clust_labels)
     u_clust   <- sort(unique(clust_labels))
     pal_clust <- setNames(u_clust, u_clust)  # WGCNA label names are color names
   }
