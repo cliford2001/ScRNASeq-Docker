@@ -280,8 +280,6 @@ pbmc_harmony <- pbmc_harmony %>%
                 k.param = k_param, verbose = FALSE) %>%
   FindClusters(resolution = cluster_resolution, algorithm = 4, verbose = FALSE)
 
-message("Cells per cluster:")
-print(table(Idents(pbmc_harmony)))
 
 save_pdf(DimPlot(pbmc_harmony, group.by = "orig.ident", cols = colors),
          "umap_postharmony.pdf")
@@ -630,8 +628,6 @@ cell_type_subsets_replicates <- assign_pseudoreplicates_batch(cell_type_subsets,
                                                              pseudobulk_conditions = pseudobulk_conditions,
                                                              n_pseudoreps = n_pseudoreps)
 
-message("Cells per curated cell type:")
-print(table(pbmc_harmony@meta.data[[pseudobulk_annot_col]]))
 
 # Example QC checks for one subset:
 table(cell_type_subsets_replicates$Pavement_Cell$replicate)
