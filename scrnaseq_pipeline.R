@@ -98,11 +98,11 @@ source(file.path(PIPELINE_DIR, "custom_seurat.R"))           # plot_integrated_c
 source(file.path(PIPELINE_DIR, "ScRNA_Analysis_Functions.R"))# analysis functions
 
 set.seed(1807)
-options(Seurat.allow.s4 = FALSE)
+options(Seurat.allow.s4 = FALSE)  # required for Seurat 5 compatibility
 setwd(DATA_DIR)
 
 # ── Create per-step output directories ────────────────────────────────────────
-list2env(create_pipeline_dirs(base_dir), envir = .GlobalEnv)
+list2env(create_pipeline_dirs(base_dir), envir = .GlobalEnv)  # creates output folders and loads their paths as variables
 
 # output_dir is the global variable used by save_pdf / save_qc / save_vln helpers.
 # It is reassigned at the start of each section to the appropriate step directory.
@@ -335,7 +335,7 @@ plot_marker_dotplot(
   pbmc_harmony,
   marker_table,
   annot_col = "celltype", # uses the newly assigned annotation column
-  outfile   = file.path(output_dir, "dotplot_marker_table_anotacion_biblio.pdf"),
+  outfile   = file.path(output_dir, "dotplot_marker_table_annotation_biblio.pdf"),
   width = 20, height = 10
 )
 
@@ -349,7 +349,7 @@ plot_marker_dotplot(
   pbmc_harmony,
   marker_table,
   annot_col = "celltype_reference", # uses the newly assigned annotation column
-  outfile   = file.path(output_dir, "dotplot_marker_table_anotacion_referencia.pdf"),
+  outfile   = file.path(output_dir, "dotplot_marker_table_annotation_reference.pdf"),
   width = 20, height = 10
 )
 # Annotation stored in: pbmc_harmony$celltype_reference
