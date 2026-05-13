@@ -32,7 +32,6 @@ set.seed(1807)
 # Make sure 01_single_cell.R has been run and the checkpoint exists.
 
 pbmc_harmony <- readRDS(file.path(dir_objects, "pbmc_harmony_curated.rds"))
-pbmc_harmony$orig.ident_uni <- pbmc_harmony$condition  # required by pseudobulk functions
 
 
 # =============================================================================
