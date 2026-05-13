@@ -191,14 +191,11 @@ pbmc_harmony <- reduce(seurat_list, merge) %>%
 
 pbmc_harmony$orig.ident_uni <- pbmc_harmony$condition
 
-message("Cell counts per condition (pre-integration):")
-print(table(pbmc_harmony$condition))
-
 save_pdf(DimPlot(pbmc_harmony, group.by = "orig.ident", cols = colors),
          "umap_preharmony.pdf")
 
-# Checkpoint — restore with: pbmc_harmony <- pbmc_harmony.bkp
-pbmc_harmony.bkp <- pbmc_harmony
+# Checkpoint — restore with: pbmc_harmony <- readRDS(file.path(dir_objects, "pbmc_harmony_preharmony.rds"))
+saveRDS(pbmc_harmony, file.path(dir_objects, "pbmc_harmony_preharmony.rds"))
 
 
 # =============================================================================
@@ -220,7 +217,6 @@ pbmc_harmony <- pbmc_harmony %>%
 
 # Checkpoint — restore with: pbmc_harmony <- readRDS(file.path(dir_objects, "pbmc_harmony_postharmony.rds"))
 saveRDS(pbmc_harmony, file.path(dir_objects, "pbmc_harmony_postharmony.rds"))
-readRDS(file.path(dir_objects, "pbmc_harmony_postharmony.rds"))
 
 
 # =============================================================================
