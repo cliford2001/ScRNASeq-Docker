@@ -327,7 +327,54 @@ genie3_results <- net_pipeline$results$GENIE3
 
 
 # =============================================================================
-# SECTION 22B — THRESHOLD TESTING (OPTIONAL)
+# SECTION 22B — WGCNA NETWORK INFERENCE  [OPTIONAL / COMPARATIVE]
+# =============================================================================
+# Runs WGCNA network inference for comparison against GENIE3.
+#
+# ⚠ WARNING: WGCNA requires ≥ 15 samples for reliable results.
+#   With ≤ 9 pseudobulk samples (typical for this pipeline), scale-free
+#   topology cannot be achieved — pickSoftThreshold() will return NA and
+#   modules will be degenerate (one mega-module with >90% of genes).
+#   Run this section to document the limitation, not to obtain a valid network.
+#
+# ┌─ WGCNA PARAMETERS ──────────────────────────────────────────────────────────
+#   soft_power    : adjacency power — use 18 for signed networks with n < 20
+#                   (WGCNA FAQ fallback table; pickSoftThreshold() likely fails)
+#   network_type  : "signed" preserves up/down direction
+#   tom_threshold : TOM edge threshold (0.05 = lenient, 0.15 = moderate)
+# └─────────────────────────────────────────────────────────────────────────────
+
+RUN_WGCNA_COMPARISON <- FALSE  # Set to TRUE to run WGCNA for comparison
+
+if (RUN_WGCNA_COMPARISON) {
+  message("\n⚠ Running WGCNA in comparison mode (n < 15 — results may be unreliable)...")
+
+  soft_power    <- 18       # fallback for signed network with n < 20
+  network_type  <- "signed"
+  tom_threshold <- 0.05
+
+  wgcna_pipeline <- run_network_inference_pipeline(
+    heatmap_results  = heatmap_results,
+    pseudobulk_dir   = file.path(dir_objects, "pseudobulk_replicas"),
+    output_base_dir  = file.path(dir_08, paste0(volcano_tag, "_WGCNA_comparison")),
+    methods          = c("WGCNA"),
+    orgdb            = net_orgdb,
+    keytype          = net_keytype,
+    soft_power       = soft_power,
+    network_type     = network_type,
+    tom_threshold    = tom_threshold,
+    n_top_clusters   = n_top_clusters,
+    min_var_filter   = min_var_filter
+  )
+
+  wgcna_results <- wgcna_pipeline$results$WGCNA
+  message("\n✓ WGCNA comparison complete — check output for module structure.")
+  message("  Expected: degenerate modules if n < 15 samples per cell type.")
+}
+
+
+# =============================================================================
+# SECTION 22C — THRESHOLD TESTING (OPTIONAL)
 # =============================================================================
 # Test 5 different threshold combinations to find optimal settings.
 # Generates PDF comparing edge counts and cluster coverage.
