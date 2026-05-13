@@ -13,7 +13,7 @@
 #  1. QC AND VISUALIZATION FUNCTIONS
 #     - load_cellbender_filtered_h5
 #     - plot_qc_violin_grid
-#     - resumen_nFeature_plot
+#     - summarize_nfeature_plot
 #
 #  2. PREPROCESSING AND DOUBLET DETECTION
 #     - preprocesar_y_doubletfinder
@@ -23,7 +23,7 @@
 #     - process_sample       (shortcut: load_sample + filter_sample)
 #
 #  3. BULK / PSEUDOBULK UTILITIES
-#     - normalizar_bulk_pseudobulk
+#     - normalize_bulk_pseudobulk
 #     - clasificar_residuos
 #     - generate_pseudobulk
 #     - plot_replicate_correlation
@@ -31,7 +31,7 @@
 #  4. SEURAT UTILITIES
 #     - unificar_nombres
 #     - mostrar_tabla
-#     - exportar_para_scanpy
+#     - export_to_scanpy
 #     - safe_vln
 #     - unir_layers_counts
 #
@@ -39,16 +39,16 @@
 #     - find_markers
 #     - annotate_by_markers
 #     - annotate_by_reference
-#     - subclustar_tipo
+#     - subcluster_cell_type
 #
 #  6. PSEUDOBULK, DESEQ2, VOLCANO, HEATMAP
-#     - asignar_pseudoreplicados
-#     - hacer_pseudobulk
+#     - assign_pseudo_replicates
+#     - run_pseudobulk
 #     - correr_deseq2
-#     - hacer_volcano
+#     - plot_volcano
 #     - procesar_deseq2_resultado
-#     - hacer_heatmap
-#     - hacer_dotplot_marcadores
+#     - plot_heatmap
+#     - plot_marker_dotplot
 #
 #  7. GO ENRICHMENT
 #     - correr_enriquecimiento_go
@@ -135,26 +135,26 @@ plot_qc_violin_grid <- function(obj1, label, color) {
 #' Creates a boxplot alongside quartile and quintile summary tables.
 #'
 #' @param obj_list  List of Seurat objects.
-#' @param etiquetas Labels for each object.
+#' @param labels Labels for each object.
 #' @param colores   Color vector (named or positional).
 #' @export
-resumen_nFeature_plot <- function(obj_list, etiquetas = NULL, colores = NULL) {
+summarize_nfeature_plot <- function(obj_list, labels = NULL, colores = NULL) {
 
-  if (is.null(etiquetas)) etiquetas <- paste0("Group", seq_along(obj_list))
-  if (length(etiquetas) != length(obj_list)) stop("Labels must match objects.")
+  if (is.null(labels)) labels <- paste0("Group", seq_along(obj_list))
+  if (length(labels) != length(obj_list)) stop("Labels must match objects.")
 
   if (is.null(colores)) {
     colores       <- c("#66c2a5", "#fc8d62", "#8da0cb", "#e78ac3", "#a6d854")[1:length(obj_list)]
-    names(colores) <- etiquetas
+    names(colores) <- labels
   }
 
   lista_df <- lapply(seq_along(obj_list), function(i) {
     obj <- obj_list[[i]]
-    data.frame(nFeature_RNA = obj@meta.data$nFeature_RNA, grupo = etiquetas[i])
+    data.frame(nFeature_RNA = obj@meta.data$nFeature_RNA, grupo = labels[i])
   })
 
   meta_comb       <- bind_rows(lista_df)
-  meta_comb$grupo <- factor(meta_comb$grupo, levels = etiquetas)
+  meta_comb$grupo <- factor(meta_comb$grupo, levels = labels)
 
   p_box <- ggplot(meta_comb, aes(x = grupo, y = nFeature_RNA, fill = grupo)) +
     geom_boxplot(outlier.shape = NA, width = 0.6) +
@@ -174,7 +174,7 @@ resumen_nFeature_plot <- function(obj_list, etiquetas = NULL, colores = NULL) {
       Max    = quantile(nFeature_RNA, 1),
       .groups = "drop"
     ) %>%
-    arrange(factor(grupo, levels = etiquetas))
+    arrange(factor(grupo, levels = labels))
 
   quintiles <- meta_comb %>%
     group_by(grupo) %>%
@@ -187,7 +187,7 @@ resumen_nFeature_plot <- function(obj_list, etiquetas = NULL, colores = NULL) {
       `100%` = quantile(nFeature_RNA, 1.0),
       .groups = "drop"
     ) %>%
-    arrange(factor(grupo, levels = etiquetas))
+    arrange(factor(grupo, levels = labels))
 
   tabla_cuartiles <- tableGrob(cuartiles)
   tabla_quintiles <- tableGrob(quintiles)
@@ -457,7 +457,7 @@ process_sample <- function(sample_info,
 #' @param bulk_counts        Named numeric vector of bulk counts.
 #' @return Data frame with columns gene, pseudobulk, bulk (log2-normalized).
 #' @export
-normalizar_bulk_pseudobulk <- function(pseudobulk_counts, bulk_counts) {
+normalize_bulk_pseudobulk <- function(pseudobulk_counts, bulk_counts) {
 
   common_genes <- intersect(names(pseudobulk_counts), names(bulk_counts))
 
@@ -532,7 +532,7 @@ generate_pseudobulk <- function(seurat_obj,
                                 merge_replicates  = TRUE) {
 
   groups <- unique(seurat_obj@meta.data[[group_by]])
-  cat("Generando pseudobulk para:", paste(groups, collapse = ", "), "\n")
+  cat("Generating pseudobulk for:", paste(groups, collapse = ", "), "\n")
 
   process_group <- function(group_name) {
     cells  <- subset(seurat_obj,
@@ -599,7 +599,7 @@ generate_pseudobulk <- function(seurat_obj,
 #'
 #' @param pseudobulk_mat A numeric matrix with genes as rows and samples as
 #'   columns. Typically the output of generate_pseudobulk() or
-#'   hacer_pseudobulk().
+#'   run_pseudobulk().
 #' @param main           Title for the heatmap (default: "Replicate Correlation").
 #' @return Invisible: the correlation matrix.
 #' @export
@@ -690,7 +690,7 @@ mostrar_tabla <- function(filtered_vec, cellbender_vec, titulo = "Annotations") 
 #' @param overwrite  Overwrite existing file (default TRUE).
 #' @return Invisible SingleCellExperiment.
 #' @export
-exportar_para_scanpy <- function(seurat_obj,
+export_to_scanpy <- function(seurat_obj,
                                  outfile,
                                  assay_name = "RNA",
                                  use_reduc  = c("pca", "umap", "harmony"),
@@ -854,10 +854,10 @@ find_markers <- function(seurat_obj,
   Idents(seurat_obj) <- "seurat_clusters"
 
   if (file.exists(output_file) && !force) {
-    cat("Cargando marcadores existentes:", output_file, "\n")
+    cat("Loading existing markers:", output_file, "\n")
     markers <- read.table(output_file, header = TRUE, sep = "\t", quote = "")
   } else {
-    cat("Calculando marcadores...\n")
+    cat("Computing markers...\n")
     markers <- FindAllMarkers(
       seurat_obj,
       only.pos        = only_pos,
@@ -888,10 +888,10 @@ annotate_by_markers <- function(seurat_obj,
                                 reference_file = NULL) {
 
   if (is.null(reference_file)) {
-    reference_file <- file.choose(caption = "Selecciona archivo de referencia (gene | cell.types)")
+    reference_file <- file.choose(caption = "Select reference file (gene | cell.types)")
   }
 
-  cat("Usando referencia:", reference_file, "\n")
+  cat("Using reference:", reference_file, "\n")
 
   reference <- read.table(reference_file, header = TRUE, sep = "\t", quote = "")
 
@@ -933,22 +933,22 @@ annotate_by_reference <- function(seurat_obj,
                                   dims          = 1:30) {
 
   if (is.null(reference_obj)) {
-    ref_file      <- file.choose(caption = "Selecciona objeto Seurat de referencia (.rds)")
-    cat("Cargando referencia:", ref_file, "\n")
+    ref_file      <- file.choose(caption = "Select reference Seurat object (.rds) (.rds)")
+    cat("Loading reference:", ref_file, "\n")
     reference_obj <- readRDS(ref_file)
   }
 
   if (is.null(reference_col)) {
-    cat("\nColumnas disponibles en referencia:\n")
+    cat("\nAvailable columns in reference:\n")
     cols <- colnames(reference_obj@meta.data)
     for (i in seq_along(cols)) {
       cat(" ", i, "->", cols[i], "\n")
     }
-    selection     <- as.integer(readline("Selecciona numero de columna: "))
+    selection     <- as.integer(readline("Select column number: "))
     reference_col <- cols[selection]
   }
 
-  cat("Usando columna:", reference_col, "\n")
+  cat("Using column:", reference_col, "\n")
 
   anchors <- FindTransferAnchors(
     reference = reference_obj,
@@ -964,7 +964,7 @@ annotate_by_reference <- function(seurat_obj,
 
   seurat_obj$celltype_reference <- predictions$predicted.id
 
-  cat("\nAnotacion por referencia:\n")
+  cat("\nReference annotation:\n")
   print(table(seurat_obj$celltype_reference))
 
   return(seurat_obj)
@@ -983,19 +983,138 @@ annotate_by_reference <- function(seurat_obj,
 #' @param dims       Dimensions for UMAP and neighbor finding.
 #' @return Seurat object with cluster_subtipo metadata.
 #' @export
-subclustar_tipo <- function(obj, tipo, annot_col = "annotation_agrupada",
+#' Plot and Save a Subcluster UMAP
+#'
+#' Creates a labeled DimPlot for a subclustered object, saves it to disk,
+#' and returns the plot invisibly for use in composite figures.
+#'
+#' @param obj        Subclustered Seurat object (output of subcluster_cell_type).
+#' @param label      Cell-type label used as the plot title and to derive
+#'   the output filename (spaces replaced with underscores).
+#' @param output_dir Directory where the PDF will be saved.
+#'
+#' @return ggplot object (invisibly).
+#' @export
+plot_subcluster_umap <- function(obj, label, output_dir) {
+  p <- DimPlot(obj, group.by = "cluster_subtipo", label = TRUE, raster = FALSE) +
+    ggtitle(paste0(label, " — subclusters"))
+  filename <- paste0("subcluster_", tolower(gsub(" ", "_", label)), ".pdf")
+  ggsave(file.path(output_dir, filename), p, width = 10, height = 8, dpi = 300)
+  invisible(p)
+}
+
+
+subcluster_cell_type <- function(obj, tipo, annot_col = "celltype_grouped",
                             resolution = 0.3, dims = 1:20) {
 
   sub <- subset(obj, cells = colnames(obj)[obj@meta.data[[annot_col]] %in% tipo])
+
+  # For small subsets, recompute variable features
+  ncells <- ncol(sub)
+  npcs <- min(ncells - 1, 30)
+
   sub <- sub %>%
-    RunPCA() %>%
-    RunUMAP(dims = dims) %>%
-    FindNeighbors(dims = dims) %>%
-    FindClusters(resolution = resolution)
+    NormalizeData(verbose = FALSE) %>%
+    FindVariableFeatures(verbose = FALSE) %>%
+    ScaleData(verbose = FALSE) %>%
+    RunPCA(npcs = npcs, verbose = FALSE) %>%
+    RunUMAP(dims = dims, verbose = FALSE) %>%
+    FindNeighbors(dims = dims, verbose = FALSE) %>%
+    FindClusters(resolution = resolution, verbose = FALSE)
 
   sub$cluster_subtipo <- as.character(sub$seurat_clusters)
 
   return(sub)
+}
+
+
+#' Generate Marker Gene Feature Plots for Subset
+#'
+#' Creates a list of FeaturePlots for genes in a marker table on a subset object.
+#'
+#' @param subset_obj Seurat object (e.g., subclustered population)
+#' @param marker_table Data frame with columns: gene, cell.types
+#'
+#' @return List of ggplot objects
+#' @export
+plot_markers_for_subset <- function(subset_obj, marker_table) {
+  lapply(seq_len(nrow(marker_table)), function(i) {
+    FeaturePlot(subset_obj, features = marker_table$gene[i]) +
+      ggtitle(paste0(marker_table$cell.types[i], "\n", marker_table$gene[i])) +
+      theme(plot.title = element_text(size = 8))
+  })
+}
+
+
+#' Save Subcluster Composite Inspection Figure (multi-page PDF)
+#'
+#' Saves a multi-page PDF:
+#'   Page 1 — all UMAP subcluster panels side by side
+#'   Page 2+ — marker gene FeaturePlots for each cell type (one page per type)
+#'
+#' @param subcluster_list List of entries, each with:
+#'   $umap_plot — DimPlot ggplot for that cell type.
+#'   $obj       — Subclustered Seurat object for FeaturePlots.
+#' @param marker_table  Data frame with columns: gene, cell.types.
+#' @param output_dir    Directory where the PDF will be saved.
+#' @param filename      Output filename (default "subclustering_inspection.pdf").
+#' @param n_marker_cols Number of marker columns per page (default 4).
+#' @export
+save_subcluster_composite <- function(subcluster_list, marker_table, output_dir,
+                                       filename      = "subclustering_inspection.pdf",
+                                       n_marker_cols = 4) {
+  n_marker_rows <- ceiling(nrow(marker_table) / n_marker_cols)
+  path <- file.path(output_dir, filename)
+
+  pdf(path, width = max(20, n_marker_cols * 4), height = 10 + n_marker_rows * 4)
+
+  # For each cell type: UMAP page → markers page
+  for (x in subcluster_list) {
+    # Center the UMAP on the wide page so it doesn't stretch
+    print(plot_spacer() | x$umap_plot | plot_spacer())
+    markers <- plot_markers_for_subset(x$obj, marker_table)
+    print(wrap_plots(markers, ncol = n_marker_cols))
+  }
+
+  dev.off()
+  message("Saved → ", path)
+}
+
+
+#' Apply Subcluster Reassignment to Global Object
+#'
+#' Maps subcluster IDs from subclustered objects back to the global Seurat
+#' object, updating cell-type labels based on a user-defined reassignment table.
+#'
+#' @param obj           Global Seurat object to update.
+#' @param subcluster_list Named list of subclustered Seurat objects (names must
+#'   match keys in reassign).
+#' @param reassign      Named list of named character vectors. Each key is an
+#'   object name in subcluster_list; each value maps subcluster IDs to cell-type
+#'   labels. Use "others" as a catch-all for unlisted subcluster IDs.
+#' @param source_col    Metadata column to copy as baseline before reassigning.
+#' @param dest_col      Metadata column to write final labels into.
+#'
+#' @return Updated global Seurat object with dest_col populated.
+#' @export
+apply_subcluster_reassignment <- function(obj, subcluster_list, reassign,
+                                           source_col = "celltype_grouped",
+                                           dest_col   = "celltype_curated") {
+  obj[[dest_col]] <- as.character(obj@meta.data[[source_col]])
+
+  for (obj_name in names(reassign)) {
+    sub    <- subcluster_list[[obj_name]]
+    ids    <- as.character(sub$cluster_subtipo)
+    labels <- reassign[[obj_name]][ids]
+
+    if ("others" %in% names(reassign[[obj_name]])) {
+      labels[is.na(labels)] <- reassign[[obj_name]]["others"]
+    }
+
+    obj@meta.data[colnames(sub), dest_col] <- unname(labels)
+  }
+
+  obj
 }
 
 
@@ -1009,15 +1128,15 @@ subclustar_tipo <- function(obj, tipo, annot_col = "annotation_agrupada",
 #' Conditions are auto-detected from orig.ident_uni unless explicitly provided.
 #'
 #' @param obj         Seurat object with orig.ident_uni metadata.
-#' @param condiciones Character vector of condition names to include. NULL
+#' @param conditions Character vector of condition names to include. NULL
 #'   (default) uses all conditions present in the data.
 #' @param n_reps      Number of pseudo-replicates per condition.
 #' @param seed        Random seed for reproducibility.
 #' @return Seurat object with a replicate metadata column, or NULL if fewer
 #'   than 2 conditions are present.
 #' @export
-asignar_pseudoreplicados <- function(obj,
-                                     condiciones = NULL,
+assign_pseudo_replicates <- function(obj,
+                                     conditions = NULL,
                                      n_reps      = 3,
                                      seed        = 1807) {
 
@@ -1025,12 +1144,12 @@ asignar_pseudoreplicados <- function(obj,
 
   # Auto-detect conditions from data if not provided
   all_conds <- unique(obj$orig.ident_uni)
-  condiciones_presentes <- if (!is.null(condiciones)) intersect(all_conds, condiciones) else all_conds
+  present_conditions <- if (!is.null(conditions)) intersect(all_conds, conditions) else all_conds
 
-  if (length(condiciones_presentes) < 2) return(NULL)
+  if (length(present_conditions) < 2) return(NULL)
 
   obj$replicate <- NA
-  for (cond in condiciones_presentes) {
+  for (cond in present_conditions) {
     idx              <- obj$orig.ident_uni == cond
     obj$replicate[idx] <- sample(paste0(cond, "_rep", 1:n_reps), sum(idx), replace = TRUE)
   }
@@ -1046,7 +1165,7 @@ asignar_pseudoreplicados <- function(obj,
 #' @param obj Seurat object with a replicate metadata column.
 #' @return Data frame with genes as rows and replicate groups as columns.
 #' @export
-hacer_pseudobulk <- function(obj) {
+run_pseudobulk <- function(obj) {
 
   if (!"replicate" %in% colnames(obj@meta.data)) {
     stop("Object lacks 'replicate' metadata.")
@@ -1143,7 +1262,7 @@ guardar_tablas_pseudobulk <- function(obj_list,
     }
 
     counts_reps_df <- tryCatch(
-      hacer_pseudobulk(obj),
+      run_pseudobulk(obj),
       error = function(e) {
         warning("Skipping ", tipo, " due to pseudobulk error: ", e$message)
         NULL
@@ -1241,7 +1360,7 @@ correr_deseq2 <- function(counts_mat, comparaciones, output_dir, tipo = NULL) {
 #' @param lfc_cut    Log2 fold-change cutoff.
 #' @return A ggplot object.
 #' @export
-hacer_volcano <- function(file, padj_cut = 0.05, lfc_cut = 1) {
+plot_volcano <- function(file, padj_cut = 0.05, lfc_cut = 1) {
 
   nombre_base <- tools::file_path_sans_ext(basename(file))
   titulo      <- gsub("DESeq2_", "", nombre_base)
@@ -1357,7 +1476,7 @@ render_volcano_plots <- function(results_dir,
   plots <- list()
 
   for (file in csv_files) {
-    p <- hacer_volcano(file, padj_cut = padj_cut, lfc_cut = lfc_cut) +
+    p <- plot_volcano(file, padj_cut = padj_cut, lfc_cut = lfc_cut) +
       labs(title = paste("Volcano Plot:", gsub("DESeq2_", "", tools::file_path_sans_ext(basename(file))))) +
       theme(plot.title = element_text(hjust = 0.5))
 
@@ -1449,7 +1568,7 @@ build_differential_tables <- function(results_dir,
 #' @param deepSplit_val deepSplit parameter for cutreeDynamic.
 #' @param breaks       Two-element vector c(min, max) for the color scale.
 #' @export
-hacer_heatmap <- function(matriz,
+plot_heatmap <- function(matriz,
                           min_genes    = 1,
                           deepSplit_val = 0,
                           breaks       = c(-5, 5)) {
@@ -1516,9 +1635,9 @@ hacer_heatmap <- function(matriz,
 #' @param base_size         Base font size.
 #' @return A ggplot object.
 #' @export
-hacer_dotplot_marcadores <- function(seurat_obj,
+plot_marker_dotplot <- function(seurat_obj,
                                      marks,
-                                     annot_col       = "celltype_reference_curated",
+                                     annot_col       = "celltype_grouped",
                                      cell_order      = NULL,
                                      clusters_remove = NULL,
                                      rename_map      = NULL,
@@ -2531,7 +2650,7 @@ run_pseudobulk_pipeline <- function(obj,
                                      comparaciones,
                                      orgdb,
                                      keytype,
-                                     annot_col      = "celltype_reference_curated",
+                                     annot_col      = "celltype_grouped",
                                      n_reps         = 3,
                                      padj_cut       = 0.05,
                                      lfc_cut        = 1,
@@ -2554,15 +2673,15 @@ run_pseudobulk_pipeline <- function(obj,
   # ── [2/6] Per-cell-type subsets + pseudo-replicates ──────────────────────────
   message("[2/6] Building cell-type subsets and pseudo-replicates...")
   cell_types <- unique(obj@meta.data[[annot_col]])
-  celular_subsets <- setNames(
+  cell_type_subsets <- setNames(
     lapply(cell_types, function(t)
       subset(obj, cells = colnames(obj)[obj@meta.data[[annot_col]] == t])),
     gsub("[^[:alnum:]_]", "_", cell_types)
   )
 
-  celular_subsets_replicados <- Filter(Negate(is.null),
-    lapply(celular_subsets, asignar_pseudoreplicados, n_reps = n_reps))
-  pseudobulk_list <- lapply(celular_subsets_replicados, hacer_pseudobulk)
+  cell_type_subsets_replicates <- Filter(Negate(is.null),
+    lapply(cell_type_subsets, assign_pseudo_replicates, n_reps = n_reps))
+  pseudobulk_list <- lapply(cell_type_subsets_replicates, run_pseudobulk)
 
   rep_dir <- file.path(dir_pseudobulk, "pseudobulk_replicas")
   dir.create(rep_dir, recursive = TRUE, showWarnings = FALSE)
@@ -2591,7 +2710,7 @@ run_pseudobulk_pipeline <- function(obj,
         width = 12, height = 6)
     plots <- list()
     for (f in csv_files) {
-      plots <- c(plots, list(hacer_volcano(f, padj_cut = padj_cut, lfc_cut = lfc_cut)))
+      plots <- c(plots, list(plot_volcano(f, padj_cut = padj_cut, lfc_cut = lfc_cut)))
       if (length(plots) == 2) { grid.arrange(grobs = plots, ncol = 2); plots <- list() }
     }
     if (length(plots)) grid.arrange(grobs = plots, ncol = 1)
@@ -2626,7 +2745,7 @@ run_pseudobulk_pipeline <- function(obj,
     matriz[is.na(matriz)] <- 0
     if (nrow(matriz) > 1) {
       pdf(file.path(diff_dir, paste0("heatmap_", tag, ".pdf")), width = 14, height = 18)
-      tryCatch(hacer_heatmap(matriz), error = function(e) message("Heatmap error: ", e$message))
+      tryCatch(plot_heatmap(matriz), error = function(e) message("Heatmap error: ", e$message))
       dev.off()
     }
   }
@@ -2822,7 +2941,7 @@ load_seurat_samples <- function(samples, DATA_DIR, USE_CELLBENDER, mt_pattern, c
 #' can be used safely as list names and output filenames.
 #'
 #' @export
-create_cell_type_subsets <- function(seurat_obj, annot_col = "celltype_reference_curated") {
+create_cell_type_subsets <- function(seurat_obj, annot_col = "celltype_grouped") {
   
   # Get unique cell types (excluding NA)
   cell_types <- sort(unique(na.omit(seurat_obj@meta.data[[annot_col]])))
@@ -2875,8 +2994,8 @@ assign_pseudoreplicates_batch <- function(cell_type_subsets,
   subsets_with_reps <- Filter(
     Negate(is.null),
     lapply(cell_type_subsets,
-           asignar_pseudoreplicados,
-           condiciones = pseudobulk_conditions,
+           assign_pseudo_replicates,
+           conditions = pseudobulk_conditions,
            n_reps = n_pseudoreps)
   )
   

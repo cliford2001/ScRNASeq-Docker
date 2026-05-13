@@ -328,14 +328,14 @@ save_pdf(cell_count_plot, "cell_count_per_sample.pdf", w = 8, h = 6)
 # Dot size = fraction of expressing cells; color = mean expression level.
 output_dir <- dir_05
 
-marcadores <- read.table(file.path(base_dir, "../biblio_marks.txt"),
+marker_table <- read.table(file.path(base_dir, "../biblio_marks.txt"),
                          header = TRUE, sep = "\t", quote = "")
 
-hacer_dotplot_marcadores(
+plot_marker_dotplot(
   pbmc_harmony,
-  marcadores,
+  marker_table,
   annot_col = "seurat_clusters",
-  outfile   = file.path(output_dir, "dotplot_marcadores_preannotation.pdf"),
+  outfile   = file.path(output_dir, "dotplot_marker_table_preannotation.pdf"),
   width = 20, height = 10
 )
 
@@ -363,11 +363,11 @@ pbmc_harmony <- annotate_by_markers(pbmc_harmony, markers,
                                     reference_file = file.path(base_dir, "../biblio_marks.txt"))
 # Annotation stored in: pbmc_harmony$celltype
 
-hacer_dotplot_marcadores(
+plot_marker_dotplot(
   pbmc_harmony,
-  marcadores,
+  marker_table,
   annot_col = "celltype", # Usamos la nueva columna de referencia
-  outfile   = file.path(output_dir, "dotplot_marcadores_anotacion_biblio.pdf"),
+  outfile   = file.path(output_dir, "dotplot_marker_table_anotacion_biblio.pdf"),
   width = 20, height = 10
 )
 
@@ -377,11 +377,11 @@ pbmc_harmony <- annotate_by_reference(pbmc_harmony,
                                       reference_obj = esp,
                                       reference_col = "annotation")
 
-hacer_dotplot_marcadores(
+plot_marker_dotplot(
   pbmc_harmony,
-  marcadores,
+  marker_table,
   annot_col = "celltype_reference", # Usamos la nueva columna de referencia
-  outfile   = file.path(output_dir, "dotplot_marcadores_anotacion_referencia.pdf"),
+  outfile   = file.path(output_dir, "dotplot_marker_table_anotacion_referencia.pdf"),
   width = 20, height = 10
 )
 # Annotation stored in: pbmc_harmony$celltype_reference
@@ -471,10 +471,10 @@ grouping <- c(
 
 output_dir <- dir_07
 
-pbmc_harmony$annotation_agrupada <- recode(pbmc_harmony$celltype_reference, !!!grouping)
+pbmc_harmony$celltype_grouped <- recode(pbmc_harmony$celltype_reference, !!!grouping)
 
 save_pdf(
-  DimPlot(pbmc_harmony, group.by = "annotation_agrupada",
+  DimPlot(pbmc_harmony, group.by = "celltype_grouped",
           label = TRUE, repel = TRUE, raster = FALSE),
   "umap_annotated.pdf"
 )
@@ -490,106 +490,81 @@ save_pdf(
 # inspect them, and reassign cells to the correct cell type manually.
 #
 # Step 1 → subcluster the heterogeneous types
-# Step 2 → generate a composite inspection figure and save it to disk
-# Step 3 → fill in the reassignment table (reassign) below
+# Step 2 → save inspection figures; open them and decide on reassignments
+# Step 3 → fill in the reassignment table below
 # Step 4 → apply corrections to the global object
 
-output_dir <- dir_07
-Idents(pbmc_harmony) <- "annotation_agrupada"
+output_dir   <- dir_06
+curation_col <- "celltype_grouped"   # starting annotation column for curation
+Idents(pbmc_harmony) <- curation_col
+table(pbmc_harmony[[curation_col]])
 
-# ── Step 1. Subcluster ────────────────────────────────────────────────────────
-meristemoid_umap   <- subclustar_tipo(pbmc_harmony, "Stomatal Line")
-pavement_cell_umap <- subclustar_tipo(pbmc_harmony, "Pavement Cell")
+# ── Step 1. Subcluster ────────────────────────────────────────────
+mesophyll_umap     <- subcluster_cell_type(pbmc_harmony, "Mesophyll",     annot_col = curation_col)
+pavement_cell_umap <- subcluster_cell_type(pbmc_harmony, "Pavement Cell", annot_col = curation_col)
 
-# ── Step 2. Composite inspection figure (view, then fill in Step 3) ───────────
-# All visual outputs for this step are assembled into one large PDF.
-# Open 07_curation/subclustering_inspection.pdf, decide on the reassignments,
-# then continue to Step 3.
+# Check how many subclusters each type produced:
+# table(mesophyll_umap$cluster_subtipo)
+# table(pavement_cell_umap$cluster_subtipo)
 
-p_meris_dim <- DimPlot(meristemoid_umap, group.by = "cluster_subtipo",
-                       label = TRUE, raster = FALSE) +
-  ggtitle("Stomatal Line \u2014 subclusters")
+# ── Step 2. Inspection figures ────────────────────────────────────
+# Each call creates the DimPlot, saves it as PDF, and returns it for the composite
+p_meso_dim <- plot_subcluster_umap(mesophyll_umap,     "Mesophyll",     output_dir)
+p_pave_dim <- plot_subcluster_umap(pavement_cell_umap, "Pavement Cell", output_dir)
 
-p_pave_dim  <- DimPlot(pavement_cell_umap, group.by = "cluster_subtipo",
-                       label = TRUE, raster = FALSE) +
-  ggtitle("Pavement Cell \u2014 subclusters")
-
-marker_plots <- lapply(seq_len(nrow(marcadores)), function(i) {
-  FeaturePlot(pavement_cell_umap, features = marcadores$gene[i]) +
-    ggtitle(paste0(marcadores$cell.types[i], "\n", marcadores$gene[i])) +
-    theme(plot.title = element_text(size = 8))
-})
-
-n_markers    <- length(marker_plots)
-ncol_markers <- min(5L, n_markers)
-nrow_markers <- ceiling(n_markers / ncol_markers)
-
-composite_inspect <- (p_meris_dim | p_pave_dim) /
-  wrap_plots(marker_plots, ncol = ncol_markers)
-
-ggsave(
-  file.path(output_dir, "subclustering_inspection.pdf"),
-  composite_inspect,
-  width     = max(20, ncol_markers * 4),
-  height    = 10 + nrow_markers * 4,
-  limitsize = FALSE
+# Composite: each row = [ UMAP | marker genes ] for one cell type
+save_subcluster_composite(
+  subcluster_list = list(
+    list(umap_plot = p_meso_dim, obj = mesophyll_umap),
+    list(umap_plot = p_pave_dim, obj = pavement_cell_umap)
+  ),
+  marker_table = marker_table,
+  output_dir   = output_dir
 )
-message("Subclustering inspection figure saved to 07_curation/subclustering_inspection.pdf")
-message("Open it, decide on subcluster reassignments, fill in Step 3, then continue.")
 
-# ── Step 3. Reassignment table ────────────────────────────────────────────────
-# For each subclustered object: map subcluster IDs to final cell-type labels.
-# Subcluster IDs come from $cluster_subtipo (values: "0", "1", "2", ...).
+# ── Step 3. Reassignment table ────────────────────────────────────
+# Map subcluster IDs \u2192 final cell-type labels.
+# "others" is a catch-all for any subcluster ID not listed.
+# Names must match the variable names used in Step 1 exactly.
 reassign <- list(
-  meristemoid_umap = c(
-    "0" = "Stomatal Line",
-    "1" = "Stomatal Line",
-    "2" = "Pavement Cell",
-    "3" = "Stomatal Line",
-    "4" = "Stomatal Line",
-    "others" = "Cheese"
+  mesophyll_umap = c(
+    "0"      = "Mesophyll",
+    "1"      = "Mesophyll",
+    "2"      = "Mesophyll",
+    "others" = "Mesophyll"
   ),
   pavement_cell_umap = c(
     "0"      = "Pavement Cell",
     "1"      = "Pavement Cell",
     "2"      = "Pavement Cell",
-    "3"      = "Mesophyll",
+    "3"      = "Pavement Cell",
     "4"      = "Pavement Cell",
-    "others" = "Testing"
+    "others" = "Pavement Cell"
   )
 )
 
-# ── Step 4. Apply corrections (CORREGIDO) ─────────────────────────────────────
-pbmc_harmony$celltype_reference_curated <- pbmc_harmony$annotation_agrupada
-
-for (obj_name in names(reassign)) {
-  obj <- get(obj_name)
-  
-  # 1. Aseguramos que los clústeres se lean como texto
-  clústeres_actuales <- as.character(obj$cluster_subtipo)
-  
-  # 2. Hacemos el mapeo (los que no existan en tu lista reassign darán NA temporalmente)
-  nuevas_etiquetas <- reassign[[obj_name]][clústeres_actuales]
-  
-  # 3. Si definiste un "others" en tu lista, reemplazamos los NA por ese valor
-  if ("others" %in% names(reassign[[obj_name]])) {
-    valor_por_defecto <- reassign[[obj_name]]["others"]
-    nuevas_etiquetas[is.na(nuevas_etiquetas)] <- valor_por_defecto
-  }
-  
-  # 4. Asignamos al objeto principal
-  pbmc_harmony$celltype_reference_curated[colnames(obj)] <- nuevas_etiquetas
-}
-
-save_pdf(
-  DimPlot(pbmc_harmony, group.by = "celltype_reference_curated",
-          label = TRUE, repel = TRUE, raster = FALSE),
-  "umap_curada.pdf"
+# ── Step 4. Apply corrections ───────────────────────────────────────────────
+subcluster_list <- list(
+  mesophyll_umap     = mesophyll_umap,
+  pavement_cell_umap = pavement_cell_umap
 )
 
-# Checkpoint — restore with: pbmc_harmony <- readRDS(file.path(dir_07, "pbmc_harmony_curated.rds"))
-saveRDS(pbmc_harmony, file.path(dir_07, "pbmc_harmony_curated.rds"))
+pbmc_harmony <- apply_subcluster_reassignment(
+  obj             = pbmc_harmony,
+  subcluster_list = subcluster_list,
+  reassign        = reassign,
+  source_col      = curation_col,
+  dest_col        = "celltype_curated"
+)
 
+save_pdf(
+  DimPlot(pbmc_harmony, group.by = "celltype_curated",
+          label = TRUE, repel = TRUE, raster = FALSE),
+  "umap_curated.pdf"
+)
+
+# Checkpoint — restore with: pbmc_harmony <- readRDS(file.path(dir_06, "pbmc_harmony_curated.rds"))
+saveRDS(pbmc_harmony, file.path(dir_06, "pbmc_harmony_curated.rds"))
 
 # =============================================================================
 # SECTION 13 — EXPORT TO H5AD (Scanpy / Python)
@@ -600,12 +575,12 @@ saveRDS(pbmc_harmony, file.path(dir_07, "pbmc_harmony_curated.rds"))
 
 output_dir <- dir_08
 
-exportar_para_scanpy(pbmc_harmony,
-                     file.path(output_dir, "pbmc_harmony_curated.h5ad"))
+export_to_scanpy(pbmc_harmony,
+                 file.path(output_dir, "pbmc_harmony_curated.h5ad"))
 
 # To export a specific cell type:
-# exportar_para_scanpy(
-#   subset(pbmc_harmony, subset = celltype_reference_curated == "Guard Cell"),
+# export_to_scanpy(
+#   subset(pbmc_harmony, subset = celltype_curated == "Guard Cell"),
 #   file.path(output_dir, "GuardCell.h5ad")
 # )
 
@@ -625,12 +600,12 @@ exportar_para_scanpy(pbmc_harmony,
 # ┌─ SET THE ANNOTATION COLUMN TO USE FOR PART 2 ───────────────────────────────
 #   pseudobulk_annot_col : metadata column containing the final cell-type labels
 # └─────────────────────────────────────────────────────────────────────────────
-pseudobulk_annot_col <- "celltype_reference_curated"
+pseudobulk_annot_col <- "celltype_curated"
 
 output_dir <- dir_09
 
 # Create cell-type subsets for pseudobulk analysis
-celular_subsets <- create_cell_type_subsets(pbmc_harmony, annot_col = pseudobulk_annot_col)
+cell_type_subsets <- create_cell_type_subsets(pbmc_harmony, annot_col = pseudobulk_annot_col)
 
 
 # =============================================================================
@@ -660,7 +635,7 @@ n_pseudoreps <- 3
 output_dir <- dir_09
 
 # Assign pseudo-replicates (uses global random seed set in INITIALIZATION)
-celular_subsets_replicados <- assign_pseudoreplicates_batch(celular_subsets,
+cell_type_subsets_replicates <- assign_pseudoreplicates_batch(cell_type_subsets,
                                                              pseudobulk_conditions = pseudobulk_conditions,
                                                              n_pseudoreps = n_pseudoreps)
 
@@ -668,8 +643,8 @@ message("Cells per curated cell type:")
 print(table(pbmc_harmony@meta.data[[pseudobulk_annot_col]]))
 
 # Example QC checks for one subset:
-table(celular_subsets_replicados$Pavement_Cell$replicate)
-table(celular_subsets_replicados$Pavement_Cell$orig.ident)
+table(cell_type_subsets_replicates$Pavement_Cell$replicate)
+table(cell_type_subsets_replicates$Pavement_Cell$orig.ident)
 
 
 # =============================================================================
@@ -698,7 +673,7 @@ cell_types_to_analyze <- NULL  # Change to c("Epidermis", "Cortex") to filter
 
 # Run pseudobulk aggregation and DESeq2 analysis
 deseq2_results <- run_pseudobulk_deseq2_analysis(
-  cell_type_subsets_replicates = celular_subsets_replicados,
+  cell_type_subsets_replicates = cell_type_subsets_replicates,
   comparisons = comparaciones,
   output_dir = output_dir,
   cell_types = cell_types_to_analyze,
