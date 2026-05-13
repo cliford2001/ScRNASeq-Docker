@@ -17,11 +17,21 @@ source(file.path(PIPELINE_DIR, "ScRNA_Analysis_Functions.R"))
 
 list2env(create_pipeline_dirs(base_dir), envir = .GlobalEnv)  # creates output folders and loads their paths as variables
 
-# ── Load checkpoint from Part 1 ───────────────────────────────────────────────
-pbmc_harmony <- readRDS(file.path(dir_objects, "pbmc_harmony_curated.rds"))
+set.seed(1807)
 
+
+# =============================================================================
 # ████████████████████████  PART 2 — PSEUDOBULK DE & GO  ██████████████████████
 # =============================================================================
+
+
+# =============================================================================
+# LOAD — CURATED OBJECT FROM PART 1
+# =============================================================================
+# Loads the final annotated object produced by 01_single_cell.R.
+# Make sure 01_single_cell.R has been run and the checkpoint exists.
+
+pbmc_harmony <- readRDS(file.path(dir_objects, "pbmc_harmony_curated.rds"))
 
 
 # =============================================================================
@@ -46,25 +56,14 @@ cell_type_subsets <- create_cell_type_subsets(pbmc_harmony, annot_col = pseudobu
 # Assigns random pseudo-replicates within each condition for every cell type.
 # Only subsets containing at least two conditions are kept for Part 2.
 #
-# ┌─ PSEUDOBULK PARAMETERS ──────────────────────────────────────────────────────
-#   pseudobulk_conditions : optional condition subset to retain (NULL = all)
-#                           Examples:
-#                             NULL              → use all conditions (0N, 0.5N, 5N)
-#                             c("0N", "0.5N")   → use only 0N and 0.5N
-#                             "5N"              → use only 5N
-#   n_pseudoreps          : number of pseudo-replicates per condition (per cell type)
+# ┌─ PARAMETERS ────────────────────────────────────────────────────────────────
+#   pseudobulk_conditions : NULL = use all conditions
+#                           c("0N", "0.5N") = use only those two
+#   n_pseudoreps          : pseudo-replicates per condition per cell type
 # └─────────────────────────────────────────────────────────────────────────────
+pseudobulk_conditions <- NULL   # change to e.g. c("0.5N", "5N") to subset
+n_pseudoreps          <- 3
 
-# Use all conditions
-#pseudobulk_conditions <- NULL
-# Uncomment below to use only specific conditions:
-# pseudobulk_conditions <- c("0N", "0.5N")      # Compare control vs low nitrogen
-#pseudobulk_conditions <- c("0.5N", "5N")      # Compare nitrogen treatments
-# pseudobulk_conditions <- "5N"                  # Single condition (rarely useful)
-
-n_pseudoreps <- 3
-
-# Assign pseudo-replicates (uses global random seed set in INITIALIZATION)
 cell_type_subsets_replicates <- assign_pseudoreplicates_batch(cell_type_subsets,
                                                              pseudobulk_conditions = pseudobulk_conditions,
                                                              n_pseudoreps = n_pseudoreps)
@@ -82,11 +81,11 @@ table(cell_type_subsets_replicates$Pavement_Cell$orig.ident)
 # count tables, and runs DESeq2 for the user-defined pairwise contrasts.
 #
 # ┌─ DEFINE YOUR CONDITION CONTRASTS HERE ──────────────────────────────────────
-#   comparaciones : each entry must contain
+#   contrasts : each entry must contain
 #                   conds = c("reference", "treatment")
 #                   tag   = output folder / file label
 # └─────────────────────────────────────────────────────────────────────────────
-comparaciones <- list(
+contrasts <- list(
   list(conds = c("0.5N", "5N"), tag = "0.5N_vs_5N"),
   list(conds = c("0N",   "5N"), tag = "0N_vs_5N")
 )
@@ -102,7 +101,7 @@ cell_types_to_analyze <- NULL  # Change to c("Epidermis", "Cortex") to filter
 # Run pseudobulk aggregation and DESeq2 analysis
 deseq2_results <- run_pseudobulk_deseq2_analysis(
   cell_type_subsets_replicates = cell_type_subsets_replicates,
-  comparisons = comparaciones,
+  comparisons = contrasts,
   output_dir = output_dir,
   cell_types = cell_types_to_analyze,
   pseudobulk_dir = file.path(dir_objects, "pseudobulk_replicas")
@@ -116,7 +115,7 @@ deseq2_results <- run_pseudobulk_deseq2_analysis(
 # combines them into a single PDF.
 #
 # ┌─ VOLCANO PARAMETERS ─────────────────────────────────────────────────────────
-#   volcano_tag : tag of the contrast to visualize (must match comparaciones)
+#   volcano_tag : tag of the contrast to visualize (must match contrasts)
 #   padj_cut    : adjusted p-value threshold
 #   lfc_cut     : absolute log2 fold-change threshold
 # └─────────────────────────────────────────────────────────────────────────────
@@ -144,7 +143,7 @@ render_volcano_plots(
 #   diff_prefix : output filename prefix for the discrete matrix
 # └─────────────────────────────────────────────────────────────────────────────
 diff_tag    <- volcano_tag
-diff_prefix <- paste0("tabla_diferenciales_", diff_tag)
+diff_prefix <- paste0("diff_table_", diff_tag)
 
 diff_tables <- build_differential_tables(
   results_dir = file.path(dir_06, diff_tag),
@@ -218,7 +217,7 @@ heatmap_results <- build_logfc_heatmap(
 # Runs GO enrichment for each cluster identified in Section 20.
 # Uses the cluster assignments from heatmap_results.
 
-go_clusters_padj <- 0.05
+go_clusters_padj <- 0.05  # adjusted p-value threshold for GO enrichment per cluster
 
 for (clust_id in unique(heatmap_results$cluster)) {
   genes <- heatmap_results$gene_id[heatmap_results$cluster == clust_id]
@@ -240,43 +239,13 @@ for (clust_id in unique(heatmap_results$cluster)) {
 # SECTION 22 — NETWORK INFERENCE PER CLUSTER (3-METHOD MIX STRATEGY)
 # =============================================================================
 # THREE COMPLEMENTARY network inference analyses per cluster from Section 20:
-# (Analogous to Sección 20's dual-clustering strategy: hclust vs WGCNA)
+# (Analogous to Section 20's dual-clustering strategy: hclust vs WGCNA)
 #
-# ┌─ THE MIX STRATEGY ────────────────────────────────────────────────────────────
-#   We do NOT choose between GENIE3, WGCNA, and SYNERGY. Instead, we run all 3
-#   because they answer different questions:
-#
-#   • GENIE3 (directed, like hclust geometry):
-#       Finds TF → target edges with predictive power.
-#       Filter: Pearson |r| ≥ 0.90 (avoids noise via correlation).
-#       ✓ Strength: directionality, interpretable as causality.
-#       ⚠ Weakness: only TFs regulate; less robust to outliers.
-#
-#   • WGCNA (undirected, like WGCNA coexpression):
-#       Finds coexpressed gene pairs via TOM (Topological Overlap).
-#       Filter: TOM ≥ 0.15 (genes that share ≥15% of neighbors).
-#       ✓ Strength: coexpression robustness; ANY gene can regulate ANY gene.
-#       ⚠ Weakness: no directionality; local structure matters, not global.
-#
-#   • SYNERGY (mix, high-confidence):
-#       Combines GENIE3 directionality + WGCNA coexpression validation.
-#       Filter: Pearson ≥0.90 AND TOM ≥0.15 (both layers must pass).
-#       Score: geometric mean of rank-normalized GENIE3 × TOM.
-#       ✓ Strength: high-confidence TF→target edges backed by coexpression.
-#       ⚠ Weakness: very restrictive; fewer edges (top tier only).
-#
-# ┌─ WHAT IS TOM? (Topological Overlap Matrix) ──────────────────────────────────
-#   TOM measures "robustness" of a gene pair's connection by counting shared
-#   neighbors: if gene A and gene B both correlate with genes {C, D, E, ...},
-#   they are truly connected, not by chance.
-#
-#   Formula:   TOM(A,B) = (# shared neighbors) / min(neighbors(A), neighbors(B))
-#   Range:     0 to 1 (0 = no shared neighbors, 1 = identical neighborhoods)
-#   Severity:  TOM ≥ 0.25 is "strict", 0.15 is "moderate", 0.08 is "loose"
-#   Your threshold (0.15) = top 5% of edge confidences = MODERATE
-#
-# Both functions read pseudobulk replicate counts from Section 16, normalize
-# (CPM + log2) and run independently. Outputs are saved in dir_08/<contrast>/.
+# Three complementary methods — run all 3 or choose a subset:
+#   GENIE3  : directed TF → target inference (Random Forest)
+#   WGCNA   : undirected coexpression via TOM (Topological Overlap)
+#   SYNERGY : high-confidence edges requiring both GENIE3 + WGCNA support
+# Outputs saved in dir_08/<contrast>/.
 #
 # ┌─ COMMON PARAMETERS ──────────────────────────────────────────────────────────
 #   n_top_clusters : how many largest clusters to analyze
@@ -399,42 +368,21 @@ if (RUN_THRESHOLD_TEST) {
 
 viz_method <- "SYNERGY"   # "GENIE3", "WGCNA", or "SYNERGY"
 
-viz_results <- switch(viz_method,
-  "GENIE3"  = genie3_results,
-  "WGCNA"   = wgcna_results,
-  "SYNERGY" = synergy_results,
-  synergy_results  # default to SYNERGY
+viz_settings <- list(
+  GENIE3  = list(results = genie3_results,  weight_col = "weight",        directed = TRUE,  edge_color = "#2ca02c"),
+  WGCNA   = list(results = wgcna_results,   weight_col = "TOM",           directed = FALSE, edge_color = "#1f77b4"),
+  SYNERGY = list(results = synergy_results, weight_col = "score_synergy", directed = TRUE,  edge_color = "#d62728")
 )
-
-viz_weight_col <- switch(viz_method,
-  "GENIE3"  = "weight",
-  "WGCNA"   = "TOM",
-  "SYNERGY" = "score_synergy",
-  "score_synergy"
-)
-
-viz_directed <- switch(viz_method,
-  "GENIE3"  = TRUE,
-  "WGCNA"   = FALSE,
-  "SYNERGY" = TRUE,
-  TRUE
-)
-
-viz_edge_color <- switch(viz_method,
-  "GENIE3"  = "#2ca02c",   # green
-  "WGCNA"   = "#1f77b4",   # blue
-  "SYNERGY" = "#d62728",   # red
-  "#1f77b4"
-)
+viz <- viz_settings[[viz_method]]
 
 visualize_network_per_cluster(
-  network_results     = viz_results,
+  network_results     = viz$results,
   cluster_assignments = heatmap_results,
   output_dir          = file.path(dir_08, diff_tag, "VISUALIZATION"),
   method_name         = viz_method,
-  weight_col          = viz_weight_col,
-  directed            = viz_directed,
-  edge_color          = viz_edge_color
+  weight_col          = viz$weight_col,
+  directed            = viz$directed,
+  edge_color          = viz$edge_color
 )
 
 message("\n✓ SECTION 23 COMPLETE: Network visualization saved")
@@ -461,7 +409,7 @@ generate_cluster_profile_report(
   cluster_assignments = heatmap_results,
   pseudobulk_matrix   = exprMatr_pseudobulk,
   output_dir          = file.path(dir_06, diff_tag, "CLUSTER_PROFILES"),
-  method_name         = "WGCNA"  # clustering method used in SEC 20
+  method_name         = CLUSTER_METHOD
 )
 
 message("\n✓ SECTION 24 COMPLETE: Cluster profiles saved")
