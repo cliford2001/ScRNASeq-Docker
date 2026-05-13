@@ -2617,7 +2617,8 @@ create_pipeline_dirs <- function(base_dir) {
     dir_11 = mkd("11_volcano"),
     dir_12 = mkd("12_heatmaps"),
     dir_13 = mkd("13_go"),
-    dir_14 = mkd("14_networks")
+    dir_14      = mkd("14_networks"),
+    dir_objects = mkd("objects")
   )
 }
 
