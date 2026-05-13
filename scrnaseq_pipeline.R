@@ -194,8 +194,6 @@ pbmc_harmony <- reduce(seurat_list, merge) %>%
   RunPCA(npcs = 30, verbose = FALSE) %>%
   RunUMAP(reduction = "pca", dims = 1:30, verbose = FALSE)
 
-pbmc_harmony$orig.ident_uni <- pbmc_harmony$condition
-
 save_pdf(DimPlot(pbmc_harmony, group.by = "orig.ident", cols = colors),
          "umap_preharmony.pdf")
 
@@ -319,7 +317,7 @@ save_pdf(cell_count_plot, "cell_count_per_sample.pdf", w = 8, h = 6)
 # Dot size = fraction of expressing cells; color = mean expression level.
 output_dir <- dir_05
 
-marker_table <- read.table(file.path(base_dir, "../biblio_marks.txt"),
+marker_table <- read.table(file.path(DATA_DIR, "metodologia/biblio_marks.txt"),
                          header = TRUE, sep = "\t", quote = "")
 
 plot_marker_dotplot(
@@ -351,13 +349,13 @@ markers <- find_markers(pbmc_harmony,
                         output_file = file.path(output_dir, "FindAllMarkers.tsv"))
 
 pbmc_harmony <- annotate_by_markers(pbmc_harmony, markers,
-                                    reference_file = file.path(base_dir, "../biblio_marks.txt"))
+                                    reference_file = file.path(DATA_DIR, "metodologia/biblio_marks.txt"))
 # Annotation stored in: pbmc_harmony$celltype
 
 plot_marker_dotplot(
   pbmc_harmony,
   marker_table,
-  annot_col = "celltype", # Usamos la nueva columna de referencia
+  annot_col = "celltype", # uses the newly assigned annotation column
   outfile   = file.path(output_dir, "dotplot_marker_table_anotacion_biblio.pdf"),
   width = 20, height = 10
 )
@@ -371,7 +369,7 @@ pbmc_harmony <- annotate_by_reference(pbmc_harmony,
 plot_marker_dotplot(
   pbmc_harmony,
   marker_table,
-  annot_col = "celltype_reference", # Usamos la nueva columna de referencia
+  annot_col = "celltype_reference", # uses the newly assigned annotation column
   outfile   = file.path(output_dir, "dotplot_marker_table_anotacion_referencia.pdf"),
   width = 20, height = 10
 )
