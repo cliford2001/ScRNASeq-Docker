@@ -282,10 +282,8 @@ pbmc_harmony <- pbmc_harmony %>%
                 k.param = 30, verbose = FALSE) %>%
   FindClusters(resolution = cluster_resolution, algorithm = 4, verbose = FALSE)
 
-# one random color per cluster
-colors_clusters <- sample(colors(distinct = TRUE), length(unique(pbmc_harmony$seurat_clusters)))
 Idents(pbmc_harmony) <- "seurat_clusters"
-save_pdf(DimPlot(pbmc_harmony, group.by = "seurat_clusters", cols = colors_clusters),
+save_pdf(DimPlot(pbmc_harmony, group.by = "seurat_clusters", label = TRUE),
          "umap_seuratclusters.pdf")
 
 
