@@ -254,126 +254,66 @@ for (clust_id in unique(heatmap_results$cluster)) {
 
 
 # =============================================================================
-# SECTION 22 — NETWORK INFERENCE PER CLUSTER (GENIE3)
+# SECTION 22 — NETWORK INFERENCE PER CLUSTER
 # =============================================================================
-# Infers transcription factor → target gene regulatory edges using GENIE3
-# (Random Forest importance scores) for each cluster from Section 20.
+# Identifies which transcription factors (TFs) regulate the genes in each
+# cluster from Section 20, using Random Forest importance scores (GENIE3).
+# Results are a ranked hypothesis list — not a statistically validated network.
 #
-# Results are hypothesis-generating — a ranked list of TF→target candidates,
-# not a statistically validated network. With ≤ 9 pseudobulk samples per
-# cell type, individual edge rankings have high variance across seeds.
-# Cross-reference top TFs with known biology before drawing conclusions.
-#
-# Outputs saved in dir_08/<contrast>/.
-#
-# ┌─ COMMON PARAMETERS ──────────────────────────────────────────────────────────
-#   n_top_clusters : how many largest clusters to analyze
-#   min_var_filter : drop genes with variance below this across samples
-# ├─ GENIE3 PARAMETERS ──────────────────────────────────────────────────────────
-#   net_orgdb      : Bioconductor OrgDb (e.g. org.At.tair.db, org.Hs.eg.db)
-#   net_keytype    : key type matching gene IDs (e.g. "TAIR", "ENSEMBL")
-#   custom_tfs     : optional vector of TF IDs to override GO-based detection
-#   cor_min        : Pearson |r| correlation threshold (≥0.90 = MODERATE)
-#   genie3_ntrees  : Random Forest trees (more = stabler, slower)
-#   n_cores        : parallel cores for GENIE3
-# ├─ WGCNA PARAMETERS ───────────────────────────────────────────────────────────
-#   soft_power     : power for adjacency (default 6; higher = fewer edges)
-#   network_type   : "signed" (correlation direction matters) or "unsigned"
-#   tom_threshold  : TOM threshold (≥0.15 = MODERATE, equivalent to Pearson 0.90)
-# └─────────────────────────────────────────────────────────────────────────────
-network_methods <- c("GENIE3")
-
-# ┌─ PARAMETERS ────────────────────────────────────────────────────────────────
-#   n_top_clusters : how many largest clusters to analyze
-#   cor_min        : Pearson |r| filter — only keep edges where TF and target
-#                    expression correlate strongly (0.85 = strict, 0.75 = lenient)
-#                    with few samples (n ≤ 9), use 0.85 to reduce false positives
-#   genie3_ntrees  : Random Forest trees per gene (more = stabler ranking, slower)
-#                    500+ recommended for reproducible edge rankings at small n
-#   n_cores        : parallel cores
-#   ┌─ CHANGE FOR YOUR ORGANISM ──────────────────────────────────────────────
+# ┌─ PARAMETERS ─────────────────────────────────────────────────────────────────
+#   NETWORK_METHOD : "GENIE3" — directed TF→target inference (recommended)
+#                    "WGCNA"  — coexpression network
+#                               ⚠ requires ≥15 pseudobulk samples to be reliable;
+#                               use for comparison only — expect degenerate results
+#                               with small datasets (n < 10)
+#   n_top_clusters : how many of the largest clusters to analyze
+#   cor_min        : edge filter — keep only TF→gene pairs with strong correlation
+#                    (0.85 = strict, fewer but more reliable edges)
+#   genie3_ntrees  : Random Forest trees — more = stabler, slower (500 recommended)
+#   ┌─ CHANGE FOR YOUR ORGANISM ─────────────────────────────────────────────────
 #     Arabidopsis : net_orgdb = org.At.tair.db  |  net_keytype = "TAIR"
 #     Human       : net_orgdb = org.Hs.eg.db    |  net_keytype = "ENSEMBL"
 #     Mouse       : net_orgdb = org.Mm.eg.db    |  net_keytype = "ENSEMBL"
-#   └─────────────────────────────────────────────────────────────────────────
+#   └───────────────────────────────────────────────────────────────────────────
 # └─────────────────────────────────────────────────────────────────────────────
+NETWORK_METHOD <- "GENIE3"  # "GENIE3" or "WGCNA"
+
 n_top_clusters <- 3
 min_var_filter <- 0.01
 net_orgdb      <- org.At.tair.db
 net_keytype    <- "TAIR"
-custom_tfs     <- NULL   # NULL = auto-detect TFs from org.At.tair.db
-cor_min        <- 0.85   # strict filter — reduces false positives at small n
-genie3_ntrees  <- 500    # stable rankings; reduce to 100 for quick exploration
+custom_tfs     <- NULL
+cor_min        <- 0.85
+genie3_ntrees  <- 500
 n_cores        <- 4
+soft_power     <- 18      # WGCNA only — fallback power for n < 20 (signed network)
+network_type   <- "signed" # WGCNA only
+tom_threshold  <- 0.05    # WGCNA only
 
-# ── Run all selected methods in one call ─────────────────────────────────────
+if (NETWORK_METHOD == "WGCNA")
+  message("\n⚠ WGCNA: unreliable with n < 15 samples — results are comparative only.")
+
 net_pipeline <- run_network_inference_pipeline(
   heatmap_results  = heatmap_results,
   pseudobulk_dir   = file.path(dir_objects, "pseudobulk_replicas"),
   output_base_dir  = file.path(dir_08, volcano_tag),
-  methods          = network_methods,
+  methods          = c(NETWORK_METHOD),
   orgdb            = net_orgdb,
   keytype          = net_keytype,
   custom_tfs       = custom_tfs,
   cor_min          = cor_min,
   genie3_ntrees    = genie3_ntrees,
   n_cores          = n_cores,
+  soft_power       = soft_power,
+  network_type     = network_type,
+  tom_threshold    = tom_threshold,
   n_top_clusters   = n_top_clusters,
   min_var_filter   = min_var_filter
 )
 
-# ── Extract results for downstream sections ─────────────────────────────────
-genie3_results <- net_pipeline$results$GENIE3
+network_results <- net_pipeline$results[[NETWORK_METHOD]]
 
 
-# =============================================================================
-# SECTION 22B — WGCNA NETWORK INFERENCE  [OPTIONAL / COMPARATIVE]
-# =============================================================================
-# Runs WGCNA network inference for comparison against GENIE3.
-#
-# ⚠ WARNING: WGCNA requires ≥ 15 samples for reliable results.
-#   With ≤ 9 pseudobulk samples (typical for this pipeline), scale-free
-#   topology cannot be achieved — pickSoftThreshold() will return NA and
-#   modules will be degenerate (one mega-module with >90% of genes).
-#   Run this section to document the limitation, not to obtain a valid network.
-#
-# ┌─ WGCNA PARAMETERS ──────────────────────────────────────────────────────────
-#   soft_power    : adjacency power — use 18 for signed networks with n < 20
-#                   (WGCNA FAQ fallback table; pickSoftThreshold() likely fails)
-#   network_type  : "signed" preserves up/down direction
-#   tom_threshold : TOM edge threshold (0.05 = lenient, 0.15 = moderate)
-# └─────────────────────────────────────────────────────────────────────────────
-
-RUN_WGCNA_COMPARISON <- FALSE  # Set to TRUE to run WGCNA for comparison
-
-if (RUN_WGCNA_COMPARISON) {
-  message("\n⚠ Running WGCNA in comparison mode (n < 15 — results may be unreliable)...")
-
-  soft_power    <- 18       # fallback for signed network with n < 20
-  network_type  <- "signed"
-  tom_threshold <- 0.05
-
-  wgcna_pipeline <- run_network_inference_pipeline(
-    heatmap_results  = heatmap_results,
-    pseudobulk_dir   = file.path(dir_objects, "pseudobulk_replicas"),
-    output_base_dir  = file.path(dir_08, paste0(volcano_tag, "_WGCNA_comparison")),
-    methods          = c("WGCNA"),
-    orgdb            = net_orgdb,
-    keytype          = net_keytype,
-    soft_power       = soft_power,
-    network_type     = network_type,
-    tom_threshold    = tom_threshold,
-    n_top_clusters   = n_top_clusters,
-    min_var_filter   = min_var_filter
-  )
-
-  wgcna_results <- wgcna_pipeline$results$WGCNA
-  message("\n✓ WGCNA comparison complete — check output for module structure.")
-  message("  Expected: degenerate modules if n < 15 samples per cell type.")
-}
-
-
-# =============================================================================
 # SECTION 22C — THRESHOLD TESTING (OPTIONAL)
 # =============================================================================
 # Test 5 different threshold combinations to find optimal settings.
@@ -422,10 +362,11 @@ if (RUN_THRESHOLD_TEST) {
 #   Node size = number of connections; edge width = GENIE3 importance score.
 # └─────────────────────────────────────────────────────────────────────────────
 
-viz_method <- "GENIE3"
+viz_method <- NETWORK_METHOD
 
 viz_settings <- list(
-  GENIE3 = list(results = genie3_results, weight_col = "weight", directed = TRUE, edge_color = "#2ca02c")
+  GENIE3 = list(results = network_results, weight_col = "weight", directed = TRUE,  edge_color = "#2ca02c"),
+  WGCNA  = list(results = network_results, weight_col = "TOM",    directed = FALSE, edge_color = "#1f77b4")
 )
 viz <- viz_settings[[viz_method]]
 
