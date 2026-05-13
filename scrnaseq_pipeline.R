@@ -73,10 +73,6 @@ samples <- list(
   list(file = "cellranger/Sample_5N_2/outs/filtered_feature_bc_matrix",    label = "5N_R2",   condition = "5N")
 )
 
-# ── Dimensionality reduction ───────────────────────────────────────────────────
-# Used across Sections 4-6 (UMAP, FindNeighbors, FindClusters).
-dims_use <- 1:30   # Harmony dimensions to use downstream
-k_param  <- 30     # nearest neighbors for the cell graph
 
 # ── Plot colors (one color per sample label) ───────────────────────────────────
 colors <- c(
@@ -206,7 +202,7 @@ output_dir <- dir_03
 
 pbmc_harmony <- pbmc_harmony %>%
   RunHarmony("orig.ident", plot_convergence = FALSE) %>%
-  RunUMAP(reduction = "harmony", dims = dims_use, verbose = FALSE)
+  RunUMAP(reduction = "harmony", dims = 1:30, verbose = FALSE)
 
 save_pdf(DimPlot(pbmc_harmony, group.by = "orig.ident", cols = colors),
          "umap_postharmony.pdf")
@@ -236,7 +232,7 @@ resolutions_test <- c(0.15, 0.30, 0.50, 0.8, 1.0)
 output_dir <- dir_04
 
 # ── 5a. Elbow plot ────────────────────────────────────────────────────────────
-pca_data <- Embeddings(pbmc_harmony, "pca")[, dims_use]
+pca_data <- Embeddings(pbmc_harmony, "pca")[, 1:30]
 wss      <- sapply(k_range, function(k) kmeans(pca_data, centers = k, nstart = 4)$tot.withinss)
 
 elbow_plot <- ggplot(data.frame(k = k_range, wss = wss), aes(k, wss)) +
@@ -248,9 +244,9 @@ save_pdf(elbow_plot, "elbow_plot.pdf", w = 8, h = 6)
 
 # ── 5b. Clustree ──────────────────────────────────────────────────────────────
 clu <- pbmc_harmony %>%
-  RunUMAP(reduction = "harmony", dims = dims_use, verbose = FALSE) %>%
-  FindNeighbors(reduction = "harmony", dims = dims_use,
-                k.param = k_param, verbose = FALSE)
+  RunUMAP(reduction = "harmony", dims = 1:30, verbose = FALSE) %>%
+  FindNeighbors(reduction = "harmony", dims = 1:30,
+                k.param = 30, verbose = FALSE)
 
 for (res in resolutions_test)
   clu <- FindClusters(clu, resolution = res, algorithm = 4, verbose = FALSE)
@@ -273,9 +269,9 @@ output_dir <- dir_04
 
 # clu (Section 5) was temporary — re-run on pbmc_harmony to embed the final clusters
 pbmc_harmony <- pbmc_harmony %>%
-  RunUMAP(reduction = "harmony", dims = dims_use, verbose = FALSE) %>%
-  FindNeighbors(reduction = "harmony", dims = dims_use,
-                k.param = k_param, verbose = FALSE) %>%
+  RunUMAP(reduction = "harmony", dims = 1:30, verbose = FALSE) %>%
+  FindNeighbors(reduction = "harmony", dims = 1:30,
+                k.param = 30, verbose = FALSE) %>%
   FindClusters(resolution = cluster_resolution, algorithm = 4, verbose = FALSE)
 
 # one random color per cluster
@@ -367,9 +363,9 @@ output_dir <- dir_05
 Mode <- function(x) { ux <- unique(x); ux[which.max(tabulate(match(x, ux)))] }
 
 clu <- pbmc_harmony %>%
-  RunUMAP(reduction = "harmony", dims = dims_use, verbose = FALSE) %>%
-  FindNeighbors(reduction = "harmony", dims = dims_use,
-                k.param = k_param, verbose = FALSE)
+  RunUMAP(reduction = "harmony", dims = 1:30, verbose = FALSE) %>%
+  FindNeighbors(reduction = "harmony", dims = 1:30,
+                k.param = 30, verbose = FALSE)
 
 for (res in resolutions_test)
   clu <- FindClusters(clu, resolution = res, algorithm = 4, verbose = FALSE)
