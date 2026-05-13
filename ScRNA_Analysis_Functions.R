@@ -3226,9 +3226,10 @@ run_simple_go_enrichment <- function(diff_table,
 build_logfc_heatmap <- function(logfc_table,
                                 contrast_tag,
                                 output_dir,
-                                method     = "wgcna",
-                                limits     = c(-5, 5),
-                                merge_cut  = 0.25) {
+                                method           = "wgcna",
+                                limits           = c(-5, 5),
+                                merge_cut        = 0.25,
+                                min_cluster_size = 10) {
 
   dir.create(output_dir, recursive = TRUE, showWarnings = FALSE)
 
@@ -3245,7 +3246,7 @@ build_logfc_heatmap <- function(logfc_table,
     hc_rows   <- hclust(dist_rows, method = "complete")
     clust_num <- cutreeDynamic(
       dendro = hc_rows, distM = as.matrix(dist_rows),
-      deepSplit = 1, minClusterSize = 10, pamRespectsDendro = FALSE
+      deepSplit = 1, minClusterSize = min_cluster_size, pamRespectsDendro = FALSE
     )
     names(clust_num) <- rownames(mat)
     clust_labels <- as.character(clust_num)
@@ -3264,7 +3265,7 @@ build_logfc_heatmap <- function(logfc_table,
     gene_tree <- hclust(as.dist(dissTOM), method = "average")
     mod_num   <- cutreeDynamic(
       dendro = gene_tree, distM = dissTOM,
-      deepSplit = 1, minClusterSize = 10, pamRespectsDendro = FALSE
+      deepSplit = 1, minClusterSize = min_cluster_size, pamRespectsDendro = FALSE
     )
     merged       <- mergeCloseModules(t(mat), labels2colors(mod_num),
                                       cutHeight = merge_cut, verbose = 0)

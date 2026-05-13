@@ -196,22 +196,28 @@ for (deseq2_file in deseq2_files) {
 # Heatmap of log2FC values across all cell types for the selected contrast.
 #
 # ┌─ PARAMETERS ─────────────────────────────────────────────────────────────────
-#   CLUSTER_METHOD : "hclust" — hierarchical (euclidean + complete + cutreeDynamic)
-#                    "wgcna"  — coexpression network (TOM + mergeCloseModules)
-#   heatmap_limits : color scale range
-#   wgcna_merge_cut: merge WGCNA modules with correlation > (1 - wgcna_merge_cut)
+#   CLUSTER_METHOD   : clustering method for grouping DE genes
+#     "hclust" — hierarchical (euclidean + cutreeDynamic) — numbered clusters (1,2,3...)
+#                fast, good starting point; increase min_cluster_size if too many small clusters
+#     "wgcna"  — coexpression network (TOM) — named clusters (turquoise, blue...)
+#                slower, captures co-regulation patterns
+#   heatmap_limits   : color scale range for log2FC values
+#   min_cluster_size : minimum genes per cluster — hclust only (default 10)
+#   wgcna_merge_cut  : merge close WGCNA modules — wgcna only (default 0.25)
 # └─────────────────────────────────────────────────────────────────────────────
-CLUSTER_METHOD  <- "wgcna"   # "hclust" or "wgcna"
-heatmap_limits  <- c(-5, 5)
-wgcna_merge_cut <- 0.25
+CLUSTER_METHOD   <- "wgcna"  # "hclust" or "wgcna"
+heatmap_limits   <- c(-5, 5)
+min_cluster_size <- 10       # hclust only — increase to get fewer, larger clusters
+wgcna_merge_cut  <- 0.25     # wgcna only
 
 heatmap_results <- build_logfc_heatmap(
-  logfc_table  = diff_tables$logfc,
-  contrast_tag = volcano_tag,
-  output_dir   = file.path(dir_06, volcano_tag),
-  method       = CLUSTER_METHOD,
-  limits       = heatmap_limits,
-  merge_cut    = wgcna_merge_cut
+  logfc_table      = diff_tables$logfc,
+  contrast_tag     = volcano_tag,
+  output_dir       = file.path(dir_06, volcano_tag),
+  method           = CLUSTER_METHOD,
+  limits           = heatmap_limits,
+  min_cluster_size = min_cluster_size,
+  merge_cut        = wgcna_merge_cut
 )
 
 
