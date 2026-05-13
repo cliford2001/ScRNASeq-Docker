@@ -2590,11 +2590,11 @@ save_qc <- function(plot_list, file)
 #' Create All Pipeline Output Directories
 #'
 #' Creates the standard folder structure under base_dir and returns a named
-#' list of paths. Call list2env() on the result to assign dir_00…dir_13 in
+#' list of paths. Call list2env() on the result to assign dir_01…dir_07 in
 #' the global environment.
 #'
 #' @param base_dir Root results directory (e.g. file.path(DATA_DIR, "results")).
-#' @return Named list with dir_00 through dir_13.
+#' @return Named list with dir_01 through dir_07 plus dir_objects.
 #' @export
 create_pipeline_dirs <- function(base_dir) {
   mkd <- function(name) {
@@ -2603,21 +2603,13 @@ create_pipeline_dirs <- function(base_dir) {
     d
   }
   list(
-    dir_00 = mkd("00_workflow"),
-    dir_01 = mkd("01_qc"),
-    dir_02 = mkd("02_filtering"),
-    dir_03 = mkd("03_integration"),
-    dir_04 = mkd("04_clustering"),
-    dir_05 = mkd("05_annotation"),
-    dir_06 = mkd("06_expression"),
-    dir_07 = mkd("07_curation"),
-    dir_08 = mkd("08_export"),
-    dir_09 = mkd("09_pseudobulk"),
-    dir_10 = mkd("10_deseq2"),
-    dir_11 = mkd("11_volcano"),
-    dir_12 = mkd("12_heatmaps"),
-    dir_13 = mkd("13_go"),
-    dir_14      = mkd("14_networks"),
+    dir_01      = mkd("01_qc"),
+    dir_02      = mkd("02_clustering"),
+    dir_03      = mkd("03_annotation"),
+    dir_04      = mkd("04_expression"),
+    dir_05      = mkd("05_de_results"),
+    dir_06      = mkd("06_go"),
+    dir_07      = mkd("07_networks"),
     dir_objects = mkd("objects")
   )
 }
@@ -4079,7 +4071,7 @@ generate_cluster_profile_report <- function(cluster_assignments,
 # Parameters:
 #   heatmap_results      : cluster assignments from Section 20
 #   pseudobulk_dir       : directory with pseudobulk replicas (Section 9)
-#   output_base_dir      : base directory for results (dir_14/<contrast>)
+#   output_base_dir      : base directory for results (dir_07/<contrast>)
 #   methods              : vector of methods to run ("GENIE3", "WGCNA", "SYNERGY")
 #   orgdb, keytype, custom_tfs : for GENIE3/SYNERGY
 #   cor_min, genie3_ntrees, n_cores : GENIE3/SYNERGY parameters

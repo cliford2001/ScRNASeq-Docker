@@ -248,7 +248,7 @@ def scfates_trajectories_dendogram(adata):
 # CONFIGURATION
 # ─────────────────────────────────────────────
 
-INPUT_H5AD      = "/home/mvergara/projects2/eleo/ScRNA/metodologia/resultados/08_export/pbmc_harmony_curated.h5ad"  # output of 01_single_cell.R
+INPUT_H5AD      = "/home/mvergara/projects2/eleo/ScRNA/metodologia/resultados/objects/pbmc_harmony_curated.h5ad"  # output of 01_single_cell.R
 BASE_DIR        = "/home/mvergara/projects2/eleo/ScRNA/results/pseudotime"
 ROOT_CELL_TYPE  = "Stomatal lineage"               # root cell type for the tree (adjust as needed)
 ANNOTATION_COL  = "celltype_curated"               # annotation column exported from R (must match dest_col in Section 12)

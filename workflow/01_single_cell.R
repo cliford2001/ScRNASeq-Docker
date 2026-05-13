@@ -116,10 +116,10 @@ output_dir <- base_dir
 # =============================================================================
 # SECTION 0 — PIPELINE WORKFLOW FIGURE
 # =============================================================================
-# Generates a visual overview of the full pipeline saved to 00_workflow/.
+# Generates a visual overview of the full pipeline saved to 01_qc/.
 # Run this section once immediately after initialization.
 
-plot_pipeline_workflow(file.path(dir_00, "pipeline_workflow.pdf"))
+plot_pipeline_workflow(file.path(dir_01, "pipeline_workflow.pdf"))
 
 
 # =============================================================================
@@ -183,7 +183,7 @@ saveRDS(seurat_list, file.path(dir_objects, "seurat_list_postfilter.rds"))
 # feature selection (VST, 2,000 features), scaling, PCA (30 PCs), and UMAP.
 # The resulting UMAP shows batch effects before integration.
 
-output_dir <- dir_03
+output_dir <- dir_01
 
 pbmc_harmony <- reduce(seurat_list, merge) %>%  # merge all samples into one object
   NormalizeData(verbose = FALSE) %>%
@@ -206,7 +206,7 @@ saveRDS(pbmc_harmony, file.path(dir_objects, "pbmc_harmony_preharmony.rds"))
 # preserving biological variation. All downstream steps use the "harmony"
 # reduction instead of "pca".
 
-output_dir <- dir_03
+output_dir <- dir_01
 
 pbmc_harmony <- pbmc_harmony %>%
   RunHarmony("orig.ident", plot_convergence = FALSE) %>%
@@ -237,7 +237,7 @@ saveRDS(pbmc_harmony, file.path(dir_objects, "pbmc_harmony_postharmony.rds"))
 k_range          <- 1:31
 resolutions_test <- c(0.15, 0.30, 0.50, 0.8, 1.0)
 
-output_dir <- dir_04
+output_dir <- dir_02
 
 # ── 5a. Elbow plot ────────────────────────────────────────────────────────────
 pca_data <- Embeddings(pbmc_harmony, "pca")[, 1:30]
@@ -267,13 +267,13 @@ save_pdf(clustree(clu, prefix = "RNA_snn_res."), "clustree.pdf", w = 14, h = 14)
 # =============================================================================
 # Apply the selected resolution for the final cluster assignment.
 # After clustering, a UMAP coloured by Seurat cluster and a bar chart of
-# cells per sample are saved to 04_clustering/.
+# cells per sample are saved to 02_clustering/.
 #
 # ┌─ SET RESOLUTION AFTER INSPECTING elbow_plot.pdf AND clustree.pdf ──────────
 #   cluster_resolution : Leiden resolution for final clustering (default 0.3)
 # └─────────────────────────────────────────────────────────────────────────────
 cluster_resolution <- 0.3
-output_dir <- dir_04
+output_dir <- dir_02
 
 # clu (Section 5) was temporary — re-run on pbmc_harmony to embed the final clusters
 pbmc_harmony <- pbmc_harmony %>%
@@ -296,7 +296,7 @@ save_pdf(DimPlot(pbmc_harmony, group.by = "seurat_clusters", label = TRUE),
 # Clusters that strongly express a known marker (e.g., AT5G26000 for Guard
 # Cell) should be labelled as that cell type in Section 8.
 # Dot size = fraction of expressing cells; color = mean expression level.
-output_dir <- dir_05
+output_dir <- dir_03
 
 biblio_marks_file <- file.path(DATA_DIR, "metodologia/biblio_marks.txt")
 marker_table      <- read.table(biblio_marks_file, header = TRUE, sep = "\t", quote = "")
@@ -323,7 +323,7 @@ plot_marker_dotplot(
 #       object (Arabidopsis leaf atlas, GSE273033) using FindTransferAnchors
 #       and TransferData. Result stored in pbmc_harmony$celltype_reference.
 
-output_dir <- dir_05
+output_dir <- dir_03
 
 # ── 8a. Bibliography-based annotation ─────────────────────────────────────────
 markers <- find_markers(pbmc_harmony,
@@ -399,7 +399,7 @@ gene              <- "AT5G26000"
 genes_of_interest <- c("AT5G26000", "AT5G54250")
 celltype          <- "Guard Cell"
 
-output_dir <- dir_06
+output_dir <- dir_04
 
 # JoinLayers is required in Seurat 5 before subsetting after merge
 pbmc_harmony <- JoinLayers(pbmc_harmony)
@@ -442,7 +442,7 @@ grouping <- c(
   "Meristemoid"       = "Stomatal Line"
 )
 
-output_dir <- dir_07
+output_dir <- dir_04
 
 # !!! unpacks the grouping vector as named arguments to recode()
 pbmc_harmony$celltype_grouped <- recode(pbmc_harmony$celltype_reference, !!!grouping)
@@ -469,7 +469,7 @@ save_pdf(
 # Step 3 → fill in the reassignment table below
 # Step 4 → apply corrections to the global object
 
-output_dir   <- dir_06
+output_dir   <- dir_04
 curation_col <- "celltype_grouped"   # starting annotation column for curation
 Idents(pbmc_harmony) <- curation_col
 table(pbmc_harmony[[curation_col]])
@@ -548,15 +548,13 @@ saveRDS(pbmc_harmony, file.path(dir_objects, "pbmc_harmony_curated.rds"))
 # trajectory and velocity analyses (Scanpy, scFates, Palantir — all
 # pre-installed in the Docker image).
 
-output_dir <- dir_08
-
 export_to_scanpy(pbmc_harmony,
-                 file.path(output_dir, "pbmc_harmony_curated.h5ad"))
+                 file.path(dir_objects, "pbmc_harmony_curated.h5ad"))
 
 # To export a specific cell type:
 # export_to_scanpy(
 #   subset(pbmc_harmony, subset = celltype_curated == "Guard Cell"),
-#   file.path(output_dir, "GuardCell.h5ad")
+#   file.path(dir_objects, "GuardCell.h5ad")
 # )
 
 

@@ -108,10 +108,10 @@ output_dir <- base_dir
 # =============================================================================
 # SECTION 0 — PIPELINE WORKFLOW FIGURE
 # =============================================================================
-# Generates a visual overview of the full pipeline saved to 00_workflow/.
+# Generates a visual overview of the full pipeline saved to 01_qc/.
 # Run this section once immediately after initialization.
 
-plot_pipeline_workflow(file.path(dir_00, "pipeline_workflow.pdf"))
+plot_pipeline_workflow(file.path(dir_01, "pipeline_workflow.pdf"))
 
 
 # =============================================================================
@@ -175,7 +175,7 @@ saveRDS(seurat_list, file.path(dir_objects, "seurat_list_postfilter.rds"))
 # feature selection (VST, 2,000 features), scaling, PCA (30 PCs), and UMAP.
 # The resulting UMAP shows batch effects before integration.
 
-output_dir <- dir_03
+output_dir <- dir_01
 
 pbmc_harmony <- reduce(seurat_list, merge) %>%  # merge all samples into one object
   NormalizeData(verbose = FALSE) %>%
@@ -198,7 +198,7 @@ saveRDS(pbmc_harmony, file.path(dir_objects, "pbmc_harmony_preharmony.rds"))
 # preserving biological variation. All downstream steps use the "harmony"
 # reduction instead of "pca".
 
-output_dir <- dir_03
+output_dir <- dir_01
 
 pbmc_harmony <- pbmc_harmony %>%
   RunHarmony("orig.ident", plot_convergence = FALSE) %>%
@@ -229,7 +229,7 @@ saveRDS(pbmc_harmony, file.path(dir_objects, "pbmc_harmony_postharmony.rds"))
 k_range          <- 1:31
 resolutions_test <- c(0.15, 0.30, 0.50, 0.8, 1.0)
 
-output_dir <- dir_04
+output_dir <- dir_02
 
 # ── 5a. Elbow plot ────────────────────────────────────────────────────────────
 pca_data <- Embeddings(pbmc_harmony, "pca")[, 1:30]
@@ -259,13 +259,13 @@ save_pdf(clustree(clu, prefix = "RNA_snn_res."), "clustree.pdf", w = 14, h = 14)
 # =============================================================================
 # Apply the selected resolution for the final cluster assignment.
 # After clustering, a UMAP coloured by Seurat cluster and a bar chart of
-# cells per sample are saved to 04_clustering/.
+# cells per sample are saved to 02_clustering/.
 #
 # ┌─ SET RESOLUTION AFTER INSPECTING elbow_plot.pdf AND clustree.pdf ──────────
 #   cluster_resolution : Leiden resolution for final clustering (default 0.3)
 # └─────────────────────────────────────────────────────────────────────────────
 cluster_resolution <- 0.3
-output_dir <- dir_04
+output_dir <- dir_02
 
 # clu (Section 5) was temporary — re-run on pbmc_harmony to embed the final clusters
 pbmc_harmony <- pbmc_harmony %>%
@@ -288,7 +288,7 @@ save_pdf(DimPlot(pbmc_harmony, group.by = "seurat_clusters", label = TRUE),
 # Clusters that strongly express a known marker (e.g., AT5G26000 for Guard
 # Cell) should be labelled as that cell type in Section 8.
 # Dot size = fraction of expressing cells; color = mean expression level.
-output_dir <- dir_05
+output_dir <- dir_03
 
 biblio_marks_file <- file.path(DATA_DIR, "metodologia/biblio_marks.txt")
 marker_table      <- read.table(biblio_marks_file, header = TRUE, sep = "\t", quote = "")
@@ -315,7 +315,7 @@ plot_marker_dotplot(
 #       object (Arabidopsis leaf atlas, GSE273033) using FindTransferAnchors
 #       and TransferData. Result stored in pbmc_harmony$celltype_reference.
 
-output_dir <- dir_05
+output_dir <- dir_03
 
 # ── 8a. Bibliography-based annotation ─────────────────────────────────────────
 markers <- find_markers(pbmc_harmony,
@@ -391,7 +391,7 @@ gene              <- "AT5G26000"
 genes_of_interest <- c("AT5G26000", "AT5G54250")
 celltype          <- "Guard Cell"
 
-output_dir <- dir_06
+output_dir <- dir_04
 
 # JoinLayers is required in Seurat 5 before subsetting after merge
 pbmc_harmony <- JoinLayers(pbmc_harmony)
@@ -434,7 +434,7 @@ grouping <- c(
   "Meristemoid"       = "Stomatal Line"
 )
 
-output_dir <- dir_07
+output_dir <- dir_04
 
 # !!! unpacks the grouping vector as named arguments to recode()
 pbmc_harmony$celltype_grouped <- recode(pbmc_harmony$celltype_reference, !!!grouping)
@@ -461,7 +461,7 @@ save_pdf(
 # Step 3 → fill in the reassignment table below
 # Step 4 → apply corrections to the global object
 
-output_dir   <- dir_06
+output_dir   <- dir_04
 curation_col <- "celltype_grouped"   # starting annotation column for curation
 Idents(pbmc_harmony) <- curation_col
 table(pbmc_harmony[[curation_col]])
@@ -540,15 +540,13 @@ saveRDS(pbmc_harmony, file.path(dir_objects, "pbmc_harmony_curated.rds"))
 # trajectory and velocity analyses (Scanpy, scFates, Palantir — all
 # pre-installed in the Docker image).
 
-output_dir <- dir_08
-
 export_to_scanpy(pbmc_harmony,
-                 file.path(output_dir, "pbmc_harmony_curated.h5ad"))
+                 file.path(dir_objects, "pbmc_harmony_curated.h5ad"))
 
 # To export a specific cell type:
 # export_to_scanpy(
 #   subset(pbmc_harmony, subset = celltype_curated == "Guard Cell"),
-#   file.path(output_dir, "GuardCell.h5ad")
+#   file.path(dir_objects, "GuardCell.h5ad")
 # )
 
 
@@ -568,8 +566,6 @@ export_to_scanpy(pbmc_harmony,
 #   pseudobulk_annot_col : metadata column containing the final cell-type labels
 # └─────────────────────────────────────────────────────────────────────────────
 pseudobulk_annot_col <- "celltype_curated"
-
-output_dir <- dir_09
 
 # Create cell-type subsets for pseudobulk analysis
 cell_type_subsets <- create_cell_type_subsets(pbmc_harmony, annot_col = pseudobulk_annot_col)
@@ -599,8 +595,6 @@ cell_type_subsets <- create_cell_type_subsets(pbmc_harmony, annot_col = pseudobu
 
 n_pseudoreps <- 3
 
-output_dir <- dir_09
-
 # Assign pseudo-replicates (uses global random seed set in INITIALIZATION)
 cell_type_subsets_replicates <- assign_pseudoreplicates_batch(cell_type_subsets,
                                                              pseudobulk_conditions = pseudobulk_conditions,
@@ -628,7 +622,7 @@ comparaciones <- list(
   list(conds = c("0N",   "5N"), tag = "0N_vs_5N")
 )
 
-output_dir <- dir_10
+output_dir <- dir_05
 
 # ┌─ SELECT WHICH CELL TYPES TO ANALYZE ────────────────────────────────────────
 #   NULL = analyze all cell types
@@ -642,7 +636,7 @@ deseq2_results <- run_pseudobulk_deseq2_analysis(
   comparisons = comparaciones,
   output_dir = output_dir,
   cell_types = cell_types_to_analyze,
-  pseudobulk_dir = file.path(dir_09, "pseudobulk_replicas")
+  pseudobulk_dir = file.path(dir_objects, "pseudobulk_replicas")
 )
 
 
@@ -661,11 +655,9 @@ volcano_tag <- "0.5N_vs_5N"
 padj_cut    <- 0.05
 lfc_cut     <- 1
 
-output_dir <- dir_11
-
 render_volcano_plots(
-  results_dir = file.path(dir_10, volcano_tag),
-  output_dir  = file.path(dir_11, volcano_tag),
+  results_dir = file.path(dir_05, volcano_tag),
+  output_dir  = file.path(dir_05, volcano_tag, "volcano"),
   pdf_name    = paste0("VolcanoPlots_", volcano_tag, ".pdf"),
   padj_cut    = padj_cut,
   lfc_cut     = lfc_cut
@@ -685,11 +677,9 @@ render_volcano_plots(
 diff_tag    <- volcano_tag
 diff_prefix <- paste0("tabla_diferenciales_", diff_tag)
 
-output_dir <- dir_12
-
 diff_tables <- build_differential_tables(
-  results_dir = file.path(dir_10, diff_tag),
-  output_dir  = file.path(dir_12, diff_tag),
+  results_dir = file.path(dir_05, diff_tag),
+  output_dir  = file.path(dir_05, diff_tag),
   padj_cut    = padj_cut,
   lfc_cut     = lfc_cut,
   prefix      = diff_prefix
@@ -704,7 +694,7 @@ diff_tables <- build_differential_tables(
 go_space    <- "BP"          # Change to "MF" or "CC" if desired
 padj_cutoff <- 0.05
 
-deseq2_files <- list.files(file.path(dir_10, diff_tag),
+deseq2_files <- list.files(file.path(dir_05, diff_tag),
                            pattern = "^DESeq2_.*\\.csv$",
                            full.names = TRUE)
 
@@ -717,7 +707,7 @@ for (deseq2_file in deseq2_files) {
   if (length(sig_genes) > 0) {
     run_simple_go_enrichment(
       diff_table = data.frame(gene_id = sig_genes),
-      output_dir = file.path(dir_13, diff_tag),
+      output_dir = file.path(dir_06, diff_tag),
       orgdb = org.At.tair.db,
       keytype = "TAIR",
       go_space = go_space,
@@ -746,7 +736,7 @@ wgcna_merge_cut <- 0.25
 heatmap_results <- build_logfc_heatmap(
   logfc_table  = diff_tables$logfc,
   contrast_tag = diff_tag,
-  output_dir   = file.path(dir_12, diff_tag),
+  output_dir   = file.path(dir_05, diff_tag),
   method       = CLUSTER_METHOD,
   limits       = heatmap_limits,
   merge_cut    = wgcna_merge_cut
@@ -766,7 +756,7 @@ for (clust_id in unique(heatmap_results$cluster)) {
 
   run_simple_go_enrichment(
     diff_table   = data.frame(gene_id = genes),
-    output_dir   = file.path(dir_12, diff_tag, paste0("GO_clusters_", CLUSTER_METHOD)),
+    output_dir   = file.path(dir_05, diff_tag, paste0("GO_clusters_", CLUSTER_METHOD)),
     orgdb        = org.At.tair.db,
     keytype      = "TAIR",
     go_space     = "BP",
@@ -817,7 +807,7 @@ for (clust_id in unique(heatmap_results$cluster)) {
 #   Your threshold (0.15) = top 5% of edge confidences = MODERATE
 #
 # Both functions read pseudobulk replicate counts from Section 16, normalize
-# (CPM + log2) and run independently. Outputs are saved in dir_14/<contrast>/.
+# (CPM + log2) and run independently. Outputs are saved in dir_07/<contrast>/.
 #
 # ┌─ COMMON PARAMETERS ──────────────────────────────────────────────────────────
 #   n_top_clusters : how many largest clusters to analyze
@@ -863,8 +853,8 @@ tom_threshold <- 0.05        # EXPLORATORY — top 15% (TOM >= 0.05)
 # ── Run all selected methods in one call ─────────────────────────────────────
 net_pipeline <- run_network_inference_pipeline(
   heatmap_results      = heatmap_results,
-  pseudobulk_dir       = file.path(dir_09, "pseudobulk_replicas"),
-  output_base_dir      = file.path(dir_14, diff_tag),
+  pseudobulk_dir       = file.path(dir_objects, "pseudobulk_replicas"),
+  output_base_dir      = file.path(dir_07, diff_tag),
   methods              = network_methods,
   orgdb                = net_orgdb,
   keytype              = net_keytype,
@@ -902,8 +892,8 @@ if (RUN_THRESHOLD_TEST) {
 
   threshold_test <- test_network_thresholds(
     heatmap_results = heatmap_results,
-    pseudobulk_dir  = file.path(dir_09, "pseudobulk_replicas"),
-    output_dir      = file.path(dir_14, diff_tag, "THRESHOLD_TEST"),
+    pseudobulk_dir  = file.path(dir_objects, "pseudobulk_replicas"),
+    output_dir      = file.path(dir_07, diff_tag, "THRESHOLD_TEST"),
     method          = "SYNERGY",  # Change to "GENIE3" or "WGCNA" if desired
     orgdb           = net_orgdb,
     keytype         = net_keytype,
@@ -971,7 +961,7 @@ viz_edge_color <- switch(viz_method,
 visualize_network_per_cluster(
   network_results     = viz_results,
   cluster_assignments = heatmap_results,
-  output_dir          = file.path(dir_14, diff_tag, "VISUALIZATION"),
+  output_dir          = file.path(dir_07, diff_tag, "VISUALIZATION"),
   method_name         = viz_method,
   weight_col          = viz_weight_col,
   directed            = viz_directed,
@@ -994,14 +984,14 @@ message("\n✓ SECTION 23 COMPLETE: Network visualization saved")
 # Links to GO enrichment results from SEC 21 for functional context.
 
 exprMatr_pseudobulk <- load_pseudobulk_matrix(
-  file.path(dir_09, "pseudobulk_replicas"),
+  file.path(dir_objects, "pseudobulk_replicas"),
   normalize = TRUE
 )
 
 generate_cluster_profile_report(
   cluster_assignments = heatmap_results,
   pseudobulk_matrix   = exprMatr_pseudobulk,
-  output_dir          = file.path(dir_12, diff_tag, "CLUSTER_PROFILES"),
+  output_dir          = file.path(dir_05, diff_tag, "CLUSTER_PROFILES"),
   method_name         = "WGCNA"  # clustering method used in SEC 20
 )
 
