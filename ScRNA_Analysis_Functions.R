@@ -2590,11 +2590,11 @@ save_qc <- function(plot_list, file)
 #' Create All Pipeline Output Directories
 #'
 #' Creates the standard folder structure under base_dir and returns a named
-#' list of paths. Call list2env() on the result to assign dir_01…dir_07 in
+#' list of paths. Call list2env() on the result to assign dir_01…dir_08 in
 #' the global environment.
 #'
 #' @param base_dir Root results directory (e.g. file.path(DATA_DIR, "results")).
-#' @return Named list with dir_01 through dir_07 plus dir_objects.
+#' @return Named list with dir_01 through dir_08 plus dir_objects.
 #' @export
 create_pipeline_dirs <- function(base_dir) {
   mkd <- function(name) {
@@ -2607,10 +2607,10 @@ create_pipeline_dirs <- function(base_dir) {
     dir_02      = mkd("02_clustering"),
     dir_03      = mkd("03_annotation"),
     dir_04      = mkd("04_expression"),
-    dir_curacion = mkd("05_curacion"),
-    dir_05      = mkd("06_de_results"),
-    dir_06      = mkd("07_go"),
-    dir_07      = mkd("08_networks"),
+    dir_05 = mkd("05_curacion"),
+    dir_06      = mkd("06_de_results"),
+    dir_07      = mkd("07_go"),
+    dir_08      = mkd("08_networks"),
     dir_objects = mkd("objects")
   )
 }
@@ -4072,7 +4072,7 @@ generate_cluster_profile_report <- function(cluster_assignments,
 # Parameters:
 #   heatmap_results      : cluster assignments from Section 20
 #   pseudobulk_dir       : directory with pseudobulk replicas (Section 9)
-#   output_base_dir      : base directory for results (dir_07/<contrast>)
+#   output_base_dir      : base directory for results (dir_08/<contrast>)
 #   methods              : vector of methods to run ("GENIE3", "WGCNA", "SYNERGY")
 #   orgdb, keytype, custom_tfs : for GENIE3/SYNERGY
 #   cor_min, genie3_ntrees, n_cores : GENIE3/SYNERGY parameters

@@ -91,7 +91,7 @@ comparaciones <- list(
   list(conds = c("0N",   "5N"), tag = "0N_vs_5N")
 )
 
-output_dir <- dir_05
+output_dir <- dir_06
 
 # ┌─ SELECT WHICH CELL TYPES TO ANALYZE ────────────────────────────────────────
 #   NULL = analyze all cell types
@@ -125,8 +125,8 @@ padj_cut    <- 0.05
 lfc_cut     <- 1
 
 render_volcano_plots(
-  results_dir = file.path(dir_05, volcano_tag),
-  output_dir  = file.path(dir_05, volcano_tag, "volcano"),
+  results_dir = file.path(dir_06, volcano_tag),
+  output_dir  = file.path(dir_06, volcano_tag, "volcano"),
   pdf_name    = paste0("VolcanoPlots_", volcano_tag, ".pdf"),
   padj_cut    = padj_cut,
   lfc_cut     = lfc_cut
@@ -147,8 +147,8 @@ diff_tag    <- volcano_tag
 diff_prefix <- paste0("tabla_diferenciales_", diff_tag)
 
 diff_tables <- build_differential_tables(
-  results_dir = file.path(dir_05, diff_tag),
-  output_dir  = file.path(dir_05, diff_tag),
+  results_dir = file.path(dir_06, diff_tag),
+  output_dir  = file.path(dir_06, diff_tag),
   padj_cut    = padj_cut,
   lfc_cut     = lfc_cut,
   prefix      = diff_prefix
@@ -163,7 +163,7 @@ diff_tables <- build_differential_tables(
 go_space    <- "BP"          # Change to "MF" or "CC" if desired
 padj_cutoff <- 0.05
 
-deseq2_files <- list.files(file.path(dir_05, diff_tag),
+deseq2_files <- list.files(file.path(dir_06, diff_tag),
                            pattern = "^DESeq2_.*\\.csv$",
                            full.names = TRUE)
 
@@ -176,7 +176,7 @@ for (deseq2_file in deseq2_files) {
   if (length(sig_genes) > 0) {
     run_simple_go_enrichment(
       diff_table = data.frame(gene_id = sig_genes),
-      output_dir = file.path(dir_06, diff_tag),
+      output_dir = file.path(dir_07, diff_tag),
       orgdb = org.At.tair.db,
       keytype = "TAIR",
       go_space = go_space,
@@ -205,7 +205,7 @@ wgcna_merge_cut <- 0.25
 heatmap_results <- build_logfc_heatmap(
   logfc_table  = diff_tables$logfc,
   contrast_tag = diff_tag,
-  output_dir   = file.path(dir_05, diff_tag),
+  output_dir   = file.path(dir_06, diff_tag),
   method       = CLUSTER_METHOD,
   limits       = heatmap_limits,
   merge_cut    = wgcna_merge_cut
@@ -225,7 +225,7 @@ for (clust_id in unique(heatmap_results$cluster)) {
 
   run_simple_go_enrichment(
     diff_table   = data.frame(gene_id = genes),
-    output_dir   = file.path(dir_05, diff_tag, paste0("GO_clusters_", CLUSTER_METHOD)),
+    output_dir   = file.path(dir_06, diff_tag, paste0("GO_clusters_", CLUSTER_METHOD)),
     orgdb        = org.At.tair.db,
     keytype      = "TAIR",
     go_space     = "BP",
@@ -276,7 +276,7 @@ for (clust_id in unique(heatmap_results$cluster)) {
 #   Your threshold (0.15) = top 5% of edge confidences = MODERATE
 #
 # Both functions read pseudobulk replicate counts from Section 16, normalize
-# (CPM + log2) and run independently. Outputs are saved in dir_07/<contrast>/.
+# (CPM + log2) and run independently. Outputs are saved in dir_08/<contrast>/.
 #
 # ┌─ COMMON PARAMETERS ──────────────────────────────────────────────────────────
 #   n_top_clusters : how many largest clusters to analyze
@@ -323,7 +323,7 @@ tom_threshold <- 0.05        # EXPLORATORY — top 15% (TOM >= 0.05)
 net_pipeline <- run_network_inference_pipeline(
   heatmap_results      = heatmap_results,
   pseudobulk_dir       = file.path(dir_objects, "pseudobulk_replicas"),
-  output_base_dir      = file.path(dir_07, diff_tag),
+  output_base_dir      = file.path(dir_08, diff_tag),
   methods              = network_methods,
   orgdb                = net_orgdb,
   keytype              = net_keytype,
@@ -362,7 +362,7 @@ if (RUN_THRESHOLD_TEST) {
   threshold_test <- test_network_thresholds(
     heatmap_results = heatmap_results,
     pseudobulk_dir  = file.path(dir_objects, "pseudobulk_replicas"),
-    output_dir      = file.path(dir_07, diff_tag, "THRESHOLD_TEST"),
+    output_dir      = file.path(dir_08, diff_tag, "THRESHOLD_TEST"),
     method          = "SYNERGY",  # Change to "GENIE3" or "WGCNA" if desired
     orgdb           = net_orgdb,
     keytype         = net_keytype,
@@ -430,7 +430,7 @@ viz_edge_color <- switch(viz_method,
 visualize_network_per_cluster(
   network_results     = viz_results,
   cluster_assignments = heatmap_results,
-  output_dir          = file.path(dir_07, diff_tag, "VISUALIZATION"),
+  output_dir          = file.path(dir_08, diff_tag, "VISUALIZATION"),
   method_name         = viz_method,
   weight_col          = viz_weight_col,
   directed            = viz_directed,
@@ -460,7 +460,7 @@ exprMatr_pseudobulk <- load_pseudobulk_matrix(
 generate_cluster_profile_report(
   cluster_assignments = heatmap_results,
   pseudobulk_matrix   = exprMatr_pseudobulk,
-  output_dir          = file.path(dir_05, diff_tag, "CLUSTER_PROFILES"),
+  output_dir          = file.path(dir_06, diff_tag, "CLUSTER_PROFILES"),
   method_name         = "WGCNA"  # clustering method used in SEC 20
 )
 

@@ -363,7 +363,7 @@ plot_marker_dotplot(
 # Re-runs the resolution sweep with cell-type labels overlaid on each node.
 # Confirms that the chosen resolution cleanly separates known cell types.
 
-output_dir <- dir_05
+output_dir <- dir_03
 
 # Mode: returns the most frequent value in a vector
 Mode <- function(x) { ux <- unique(x); ux[which.max(tabulate(match(x, ux)))] }
@@ -442,7 +442,7 @@ grouping <- c(
   "Meristemoid"       = "Stomatal Line"
 )
 
-output_dir <- dir_curacion
+output_dir <- dir_05
 
 # !!! unpacks the grouping vector as named arguments to recode()
 pbmc_harmony$celltype_grouped <- recode(pbmc_harmony$celltype_reference, !!!grouping)
@@ -469,7 +469,7 @@ save_pdf(
 # Step 3 → fill in the reassignment table below
 # Step 4 → apply corrections to the global object
 
-output_dir   <- dir_curacion
+output_dir   <- dir_05
 curation_col <- "celltype_grouped"   # starting annotation column for curation
 Idents(pbmc_harmony) <- curation_col
 table(pbmc_harmony[[curation_col]])
