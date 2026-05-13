@@ -192,6 +192,8 @@ pbmc_harmony <- reduce(seurat_list, merge) %>%  # merge all samples into one obj
   RunPCA(npcs = 30, verbose = FALSE) %>%
   RunUMAP(reduction = "pca", dims = 1:30, verbose = FALSE)
 
+pbmc_harmony$orig.ident_uni <- pbmc_harmony$condition  # required by pseudobulk functions
+
 save_pdf(DimPlot(pbmc_harmony, group.by = "orig.ident", cols = colors),
          "umap_preharmony.pdf")
 
