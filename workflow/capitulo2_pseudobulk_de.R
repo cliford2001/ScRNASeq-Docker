@@ -51,6 +51,8 @@ cell_type_subsets <- create_cell_type_subsets(pbmc_harmony, annot_col = pseudobu
 
 
 # =============================================================================
+
+message("\n✓ SECTION 14 COMPLETE: Cell-type subsets created")
 # SECTION 15 — PSEUDO-REPLICATE ASSIGNMENT
 # =============================================================================
 # Assigns random pseudo-replicates within each condition for every cell type.
@@ -75,6 +77,8 @@ table(cell_type_subsets_replicates$Pavement_Cell$orig.ident)
 
 
 # =============================================================================
+
+message("\n✓ SECTION 15 COMPLETE: Pseudo-replicates assigned")
 # SECTION 16 — PSEUDOBULK TABLES AND DESEQ2
 # =============================================================================
 # Aggregates counts by pseudo-replicate for each cell type, saves the resulting
@@ -115,6 +119,8 @@ deseq2_results <- run_pseudobulk_deseq2_analysis(
 
 
 # =============================================================================
+
+message("\n✓ SECTION 16 COMPLETE: Pseudobulk aggregation and DESeq2 complete")
 # SECTION 17 — VOLCANO PLOTS
 # =============================================================================
 # Renders one PNG volcano plot per cell type for a selected contrast and also
@@ -139,6 +145,8 @@ render_volcano_plots(
 
 
 # =============================================================================
+
+message("\n✓ SECTION 17 COMPLETE: Volcano plots saved")
 # SECTION 18 — DIFFERENTIAL GENE TABLES
 # =============================================================================
 # Builds combined differential-expression summary tables for one selected
@@ -159,6 +167,8 @@ diff_tables <- build_differential_tables(
 
 
 # =============================================================================
+
+message("\n✓ SECTION 18 COMPLETE: Differential gene tables saved")
 # SECTION 19 — GO ENRICHMENT (SIMPLE)
 # =============================================================================
 # Gene Ontology enrichment per cell type for the selected contrast.
@@ -198,6 +208,8 @@ for (deseq2_file in deseq2_files) {
 }
 
 # =============================================================================
+
+message("\n✓ SECTION 19 COMPLETE: GO enrichment complete")
 # SECTION 20 — LOG2FC HEATMAP + CLUSTERING
 # =============================================================================
 # Heatmap of log2FC values across all cell types for the selected contrast.
@@ -229,6 +241,8 @@ heatmap_results <- build_logfc_heatmap(
 
 
 # =============================================================================
+
+message("\n✓ SECTION 20 COMPLETE: Log2FC heatmap and clustering complete")
 # SECTION 21 — GO ENRICHMENT PER CLUSTER
 # =============================================================================
 # Runs GO enrichment for each cluster identified in Section 20.
@@ -254,6 +268,8 @@ for (clust_id in unique(heatmap_results$cluster)) {
 
 
 # =============================================================================
+
+message("\n✓ SECTION 21 COMPLETE: GO enrichment per cluster complete")
 # SECTION 22 — NETWORK INFERENCE PER CLUSTER
 # =============================================================================
 # Identifies which transcription factors (TFs) regulate the genes in each
@@ -296,6 +312,7 @@ net_pipeline <- run_network_inference_pipeline(
 )
 
 network_results <- net_pipeline$results[[NETWORK_METHOD]]
+message("\n✓ SECTION 22 COMPLETE: Network inference complete")
 
 
 # =============================================================================
@@ -343,6 +360,7 @@ generate_cluster_profile_report(
 )
 
 message("\n✓ SECTION 24 COMPLETE: Cluster profiles saved")
+
 
 
 

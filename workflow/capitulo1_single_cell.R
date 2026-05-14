@@ -128,6 +128,8 @@ plot_pipeline_workflow(file.path(dir_01, "pipeline_workflow.pdf"))
 
 
 # =============================================================================
+
+message("\n✓ SECTION 0 COMPLETE: Pipeline workflow figure saved")
 # SECTION 1 — DATA LOADING AND PRE-FILTER QC
 # =============================================================================
 # Each sample is loaded from its input file and mitochondrial / chloroplast
@@ -156,6 +158,8 @@ plot_qc_batch(seurat_list_raw, colors, "qc_prefilter.pdf")
 
 
 # =============================================================================
+
+message("\n✓ SECTION 1 COMPLETE: QC pre-filter plots saved")
 # SECTION 2 — CELL FILTERING AND DOUBLET DETECTION
 # =============================================================================
 # Thresholds are set based on the pre-filter violin plots (01_qc/qc_prefilter.pdf).
@@ -177,6 +181,8 @@ saveRDS(seurat_list, file.path(dir_objects, "seurat_list_postfilter.rds"))
 
 
 # =============================================================================
+
+message("\n✓ SECTION 2 COMPLETE: Filtering and doublet detection complete")
 # SECTION 3 — MERGE AND INITIAL PREPROCESSING
 # =============================================================================
 # Filtered samples are merged and preprocessed: log-normalization, variable
@@ -200,6 +206,8 @@ saveRDS(pbmc_harmony, file.path(dir_objects, "pbmc_harmony_preharmony.rds"))
 
 
 # =============================================================================
+
+message("\n✓ SECTION 3 COMPLETE: Merge and preprocessing complete")
 # SECTION 4 — HARMONY BATCH CORRECTION
 # =============================================================================
 # Harmony adjusts cell embeddings to remove sample-level batch effects while
@@ -220,6 +228,8 @@ saveRDS(pbmc_harmony, file.path(dir_objects, "pbmc_harmony_postharmony.rds"))
 
 
 # =============================================================================
+
+message("\n✓ SECTION 4 COMPLETE: Harmony integration complete")
 # SECTION 5 — RESOLUTION OPTIMIZATION
 # =============================================================================
 # Two diagnostics guide the choice of clustering resolution:
@@ -263,6 +273,8 @@ save_pdf(clustree(clu, prefix = "RNA_snn_res."), "clustree.pdf", w = 14, h = 14)
 
 
 # =============================================================================
+
+message("\n✓ SECTION 5 COMPLETE: Resolution diagnostics saved — inspect elbow_plot.pdf and clustree.pdf")
 # SECTION 6 — FINAL CLUSTERING
 # =============================================================================
 # Apply the selected resolution for the final cluster assignment.
@@ -288,6 +300,8 @@ save_pdf(DimPlot(pbmc_harmony, group.by = "seurat_clusters", label = TRUE),
 
 
 # =============================================================================
+
+message("\n✓ SECTION 6 COMPLETE: Final clustering complete")
 # SECTION 7 — DOTPLOT: MARKER GENES BY CLUSTER (pre-annotation guide)
 # =============================================================================
 # Before assigning cell-type labels, this plot helps you identify which
@@ -311,6 +325,8 @@ plot_marker_dotplot(
 
 
 # =============================================================================
+
+message("\n✓ SECTION 7 COMPLETE: Pre-annotation dotplot saved")
 # SECTION 8 — CELL-TYPE ANNOTATION
 # =============================================================================
 # Two strategies assign cell-type labels to clusters:
@@ -358,6 +374,8 @@ plot_marker_dotplot(
 
 
 # =============================================================================
+
+message("\n✓ SECTION 8 COMPLETE: Cell-type annotation complete")
 # SECTION 9 — ANNOTATED CLUSTREE
 # =============================================================================
 # Re-runs the resolution sweep with cell-type labels overlaid on each node.
@@ -384,6 +402,8 @@ save_pdf(
 
 
 # =============================================================================
+
+message("\n✓ SECTION 9 COMPLETE: Annotated clustree saved")
 # SECTION 10 — GENE EXPRESSION VISUALIZATION
 # =============================================================================
 # Violin and feature plots for individual genes or gene sets, generated both
@@ -423,6 +443,8 @@ save_pdf(FeaturePlot(sub_obj, features = genes_of_interest), "feature_geneset_ce
 
 
 # =============================================================================
+
+message("\n✓ SECTION 10 COMPLETE: Expression visualization saved")
 # SECTION 11 — CELL-TYPE GROUPING  [OPTIONAL]
 # =============================================================================
 # Fine-grained labels are collapsed into broader categories for downstream
@@ -455,6 +477,8 @@ save_pdf(
 
 
 # =============================================================================
+
+message("\n✓ SECTION 11 COMPLETE: Cell-type grouping complete")
 # SECTION 12 — INTERACTIVE CELL-TYPE CURATION  [OPTIONAL]
 # =============================================================================
 # !!! WARNING: Run this section interactively, step by step.
@@ -542,6 +566,8 @@ save_pdf(
 saveRDS(pbmc_harmony, file.path(dir_objects, "pbmc_harmony_curated.rds"))
 
 # =============================================================================
+
+message("\n✓ SECTION 12 COMPLETE: Curation complete — curated object saved")
 # SECTION 13 — EXPORT TO H5AD (Scanpy / Python)
 # =============================================================================
 # Exports the curated object to AnnData h5ad format for Python-based
@@ -559,3 +585,5 @@ export_to_scanpy(pbmc_harmony,
 
 
 # =============================================================================
+
+message("\n✓ SECTION 13 COMPLETE: Export to h5ad complete")
