@@ -262,9 +262,8 @@ for (clust_id in unique(heatmap_results$cluster)) {
 # ┌─ PARAMETERS ────────────────────────────────────────────────────────────────
 #   NETWORK_METHOD : "GENIE3" — recommended for small datasets (n < 15 samples)
 #                    "WGCNA"  — for comparison only; unreliable with n < 15
-#   n_top_clusters : analyzes only the N largest clusters from Section 20
-#                    (larger clusters have more genes = more reliable inference)
-#                    set higher or to Inf to analyze all clusters
+#   n_top_clusters :  3   — top 3 largest clusters (default, faster)
+#                    Inf  — all clusters
 #   n_cores        : parallel cores (adjust to your machine)
 #
 #   The only edge filter for GENIE3 is cor_min = 0.85 (hardcoded):
