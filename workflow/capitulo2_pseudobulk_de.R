@@ -257,38 +257,24 @@ for (clust_id in unique(heatmap_results$cluster)) {
 # SECTION 22 — NETWORK INFERENCE PER CLUSTER
 # =============================================================================
 # Identifies which transcription factors (TFs) regulate the genes in each
-# cluster from Section 20, using Random Forest importance scores (GENIE3).
-# Results are a ranked hypothesis list — not a statistically validated network.
+# cluster from Section 20. Results are a ranked hypothesis list.
 #
-# ┌─ PARAMETERS ─────────────────────────────────────────────────────────────────
-#   NETWORK_METHOD : "GENIE3" — directed TF→target inference (recommended)
-#                    "WGCNA"  — coexpression network
-#                               ⚠ requires ≥15 pseudobulk samples to be reliable;
-#                               use for comparison only — expect degenerate results
-#                               with small datasets (n < 10)
+# ┌─ PARAMETERS ────────────────────────────────────────────────────────────────
+#   NETWORK_METHOD : "GENIE3" — recommended for small datasets (n < 15 samples)
+#                    "WGCNA"  — for comparison only; unreliable with n < 15
 #   n_top_clusters : how many of the largest clusters to analyze
-#   cor_min        : edge filter — keep only TF→gene pairs with strong correlation
-#                    (0.85 = strict, fewer but more reliable edges)
-#   genie3_ntrees  : Random Forest trees — more = stabler, slower (500 recommended)
-#   ┌─ CHANGE FOR YOUR ORGANISM ─────────────────────────────────────────────────
+#   n_cores        : parallel cores (adjust to your machine)
+#   ┌─ CHANGE FOR YOUR ORGANISM ───────────────────────────────────────────────
 #     Arabidopsis : net_orgdb = org.At.tair.db  |  net_keytype = "TAIR"
 #     Human       : net_orgdb = org.Hs.eg.db    |  net_keytype = "ENSEMBL"
 #     Mouse       : net_orgdb = org.Mm.eg.db    |  net_keytype = "ENSEMBL"
-#   └───────────────────────────────────────────────────────────────────────────
+#   └─────────────────────────────────────────────────────────────────────────
 # └─────────────────────────────────────────────────────────────────────────────
 NETWORK_METHOD <- "GENIE3"  # "GENIE3" or "WGCNA"
-
 n_top_clusters <- 3
-min_var_filter <- 0.01
+n_cores        <- 4
 net_orgdb      <- org.At.tair.db
 net_keytype    <- "TAIR"
-custom_tfs     <- NULL
-cor_min        <- 0.85
-genie3_ntrees  <- 500
-n_cores        <- 4
-soft_power     <- 18      # WGCNA only — fallback power for n < 20 (signed network)
-network_type   <- "signed" # WGCNA only
-tom_threshold  <- 0.05    # WGCNA only
 
 if (NETWORK_METHOD == "WGCNA")
   message("\n⚠ WGCNA: unreliable with n < 15 samples — results are comparative only.")
@@ -300,49 +286,35 @@ net_pipeline <- run_network_inference_pipeline(
   methods          = c(NETWORK_METHOD),
   orgdb            = net_orgdb,
   keytype          = net_keytype,
-  custom_tfs       = custom_tfs,
-  cor_min          = cor_min,
-  genie3_ntrees    = genie3_ntrees,
+  custom_tfs       = NULL,
+  cor_min          = 0.85,
+  genie3_ntrees    = 500,
   n_cores          = n_cores,
-  soft_power       = soft_power,
-  network_type     = network_type,
-  tom_threshold    = tom_threshold,
+  soft_power       = 18,
+  network_type     = "signed",
+  tom_threshold    = 0.05,
   n_top_clusters   = n_top_clusters,
-  min_var_filter   = min_var_filter
+  min_var_filter   = 0.01
 )
 
 network_results <- net_pipeline$results[[NETWORK_METHOD]]
 
+
 # =============================================================================
 # SECTION 23 — NETWORK VISUALIZATION (FORCE-DIRECTED LAYOUT)
 # =============================================================================
-# Clean network visualization using force-directed (Fruchterman-Reingold) layout.
-# Choose ONE method below; visualizes all filtered edges with igraph.
-#
-# ┌─ CHOOSE METHOD ─────────────────────────────────────────────────────────────
-#   Selected method will be visualized in detail (force-directed, node sizes by
-#   degree, edge widths by weight). This complements SEC 22's PDF summaries.
-#
-#   Visualizes top TF → target edges as a force-directed graph.
-#   Node size = number of connections; edge width = GENIE3 importance score.
-# └─────────────────────────────────────────────────────────────────────────────
-
-viz_method <- NETWORK_METHOD
-
-viz_settings <- list(
-  GENIE3 = list(results = network_results, weight_col = "weight", directed = TRUE,  edge_color = "#2ca02c"),
-  WGCNA  = list(results = network_results, weight_col = "TOM",    directed = FALSE, edge_color = "#1f77b4")
-)
-viz <- viz_settings[[viz_method]]
+# Draws TF → target edges as a force-directed graph for each cluster.
+# Node size = number of connections; edge width = importance score.
+# Uses the method and results from Section 22 automatically.
 
 visualize_network_per_cluster(
-  network_results     = viz$results,
+  network_results     = network_results,
   cluster_assignments = heatmap_results,
   output_dir          = file.path(dir_08, volcano_tag, "VISUALIZATION"),
-  method_name         = viz_method,
-  weight_col          = viz$weight_col,
-  directed            = viz$directed,
-  edge_color          = viz$edge_color
+  method_name         = NETWORK_METHOD,
+  weight_col          = if (NETWORK_METHOD == "GENIE3") "weight" else "TOM",
+  directed            = NETWORK_METHOD == "GENIE3",
+  edge_color          = if (NETWORK_METHOD == "GENIE3") "#2ca02c" else "#1f77b4"
 )
 
 message("\n✓ SECTION 23 COMPLETE: Network visualization saved")
