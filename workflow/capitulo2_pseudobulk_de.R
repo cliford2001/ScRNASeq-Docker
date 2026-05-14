@@ -282,13 +282,18 @@ message("\n✓ SECTION 21 COMPLETE: GO enrichment per cluster complete")
 #                    NULL — all clusters
 #   n_cores        : parallel cores (adjust to your machine)
 #
-#   The only edge filter for GENIE3 is cor_min = 0.85 (hardcoded):
-#   keeps only TF→gene pairs where expression is strongly correlated (|r| ≥ 0.85).
-#   Lower = more edges but noisier; higher = fewer but more reliable.
+#   cor_min  ★ ADJUST THIS to control how many TF→gene edges are reported:
+#     0.70 — exploratory (recommended to start); ~629 edges in a typical run
+#     0.75 — moderate stringency; ~180 edges
+#     0.80 — strict; ~47 edges
+#     0.85 — very strict; ~9 edges (too few for most analyses)
+#   Only TF→gene pairs with Pearson |r| ≥ cor_min are kept.
+#   Start at 0.70 and raise it if the network looks too noisy.
 # └─────────────────────────────────────────────────────────────────────────────
 NETWORK_METHOD <- "GENIE3"  # "GENIE3" or "WGCNA"
-n_top_clusters <- NULL # NULL — all clusters or N  clusters
-n_cores        <- 4  # adjust to your machine
+n_top_clusters <- NULL       # NULL = all clusters, or e.g. 3 for the 3 largest
+n_cores        <- 4          # adjust to your machine
+cor_min        <- 0.70       # ★ see table above — start here, raise if too noisy
 
 if (NETWORK_METHOD == "WGCNA")
   message("\n⚠ WGCNA: unreliable with n < 15 samples — results are comparative only.")
@@ -301,7 +306,7 @@ net_pipeline <- run_network_inference_pipeline(
   orgdb            = go_orgdb,                  # organism DB (set in Section 19)
   keytype          = go_keytype,                # gene ID type (set in Section 19)
   custom_tfs       = NULL,                      # NULL = auto-detect TFs from orgdb
-  cor_min          = 0.85,                      # keep edges with |r| ≥ 0.85
+  cor_min          = cor_min,                    # threshold set above
   genie3_ntrees    = 500,                       # Random Forest trees per gene
   n_cores          = n_cores,                   # parallel cores
   soft_power       = 18,                        # WGCNA only
