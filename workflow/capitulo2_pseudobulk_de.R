@@ -326,10 +326,7 @@ visualize_network_per_cluster(
   network_results     = network_results,
   cluster_assignments = heatmap_results,
   output_dir          = file.path(dir_08, volcano_tag, "VISUALIZATION"),
-  method_name         = NETWORK_METHOD,
-  weight_col          = if (NETWORK_METHOD == "GENIE3") "weight" else "TOM",
-  directed            = NETWORK_METHOD == "GENIE3",
-  edge_color          = if (NETWORK_METHOD == "GENIE3") "#2ca02c" else "#1f77b4"
+  method_name         = NETWORK_METHOD
 )
 
 message("\n✓ SECTION 23 COMPLETE: Network visualization saved")
