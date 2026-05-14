@@ -283,12 +283,9 @@ message("\n✓ SECTION 21 COMPLETE: GO enrichment per cluster complete")
 #   n_cores        : parallel cores (adjust to your machine)
 #
 #   cor_min  ★ ADJUST THIS to control how many TF→gene edges are reported:
-#     0.70 — exploratory (recommended to start); ~629 edges in a typical run
-#     0.75 — moderate stringency; ~180 edges
-#     0.80 — strict; ~47 edges
-#     0.85 — very strict; ~9 edges (too few for most analyses)
-#   Only TF→gene pairs with Pearson |r| ≥ cor_min are kept.
-#   Start at 0.70 and raise it if the network looks too noisy.
+#     Only TF→gene pairs where expression is correlated with Pearson |r| ≥ cor_min
+#     are kept. Lower values = more edges (exploratory); higher = fewer but more
+#     reliable. Start at 0.70 and raise if the resulting network looks too dense.
 # └─────────────────────────────────────────────────────────────────────────────
 NETWORK_METHOD <- "GENIE3"  # "GENIE3" or "WGCNA"
 n_top_clusters <- NULL       # NULL = all clusters, or e.g. 3 for the 3 largest
