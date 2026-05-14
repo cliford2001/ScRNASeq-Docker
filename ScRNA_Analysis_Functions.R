@@ -3891,10 +3891,11 @@ generate_network_pdf <- function(results,
 visualize_network_per_cluster <- function(network_results,
                                           cluster_assignments,
                                           output_dir,
-                                          method_name = "NETWORK",
-                                          weight_col  = "weight",
-                                          directed    = TRUE,
-                                          edge_color  = "#1f77b4") {
+                                          method_name = "GENIE3") {
+
+  weight_col <- if (method_name == "GENIE3") "weight" else "TOM"
+  directed   <- method_name == "GENIE3"
+  edge_color <- if (method_name == "GENIE3") "#2ca02c" else "#1f77b4"
 
   dir.create(output_dir, recursive = TRUE, showWarnings = FALSE)
 
