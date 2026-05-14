@@ -272,9 +272,7 @@ for (clust_id in unique(heatmap_results$cluster)) {
 # └─────────────────────────────────────────────────────────────────────────────
 NETWORK_METHOD <- "GENIE3"  # "GENIE3" or "WGCNA"
 n_top_clusters <- 3
-n_cores        <- 4
-net_orgdb      <- org.At.tair.db
-net_keytype    <- "TAIR"
+n_cores        <- 4  # adjust to your machine
 
 if (NETWORK_METHOD == "WGCNA")
   message("\n⚠ WGCNA: unreliable with n < 15 samples — results are comparative only.")
@@ -284,8 +282,8 @@ net_pipeline <- run_network_inference_pipeline(
   pseudobulk_dir   = file.path(dir_objects, "pseudobulk_replicas"),
   output_base_dir  = file.path(dir_08, volcano_tag),
   methods          = c(NETWORK_METHOD),
-  orgdb            = net_orgdb,
-  keytype          = net_keytype,
+  orgdb            = go_orgdb,   # organism defined in Section 19
+  keytype          = go_keytype,
   custom_tfs       = NULL,
   cor_min          = 0.85,
   genie3_ntrees    = 500,
