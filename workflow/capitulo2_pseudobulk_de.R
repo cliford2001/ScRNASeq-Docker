@@ -264,8 +264,6 @@ for (clust_id in unique(heatmap_results$cluster)) {
 #                    "WGCNA"  — for comparison only; unreliable with n < 15
 #   n_top_clusters :  3    — top 3 largest clusters (default, faster)
 #                    NULL — all clusters
-#                    NULL — all clusters
-#                    Inf  — all clusters
 #   n_cores        : parallel cores (adjust to your machine)
 #
 #   The only edge filter for GENIE3 is cor_min = 0.85 (hardcoded):
@@ -273,7 +271,7 @@ for (clust_id in unique(heatmap_results$cluster)) {
 #   Lower = more edges but noisier; higher = fewer but more reliable.
 # └─────────────────────────────────────────────────────────────────────────────
 NETWORK_METHOD <- "GENIE3"  # "GENIE3" or "WGCNA"
-n_top_clusters <- 3
+n_top_clusters <- 3 # NULL — all clusters
 n_cores        <- 4  # adjust to your machine
 
 if (NETWORK_METHOD == "WGCNA")
