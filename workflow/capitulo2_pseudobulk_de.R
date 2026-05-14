@@ -287,7 +287,7 @@ message("\n✓ SECTION 21 COMPLETE: GO enrichment per cluster complete")
 #   Lower = more edges but noisier; higher = fewer but more reliable.
 # └─────────────────────────────────────────────────────────────────────────────
 NETWORK_METHOD <- "GENIE3"  # "GENIE3" or "WGCNA"
-n_top_clusters <- 3 # NULL — all clusters
+n_top_clusters <- NULL # NULL — all clusters or N  clusters
 n_cores        <- 4  # adjust to your machine
 
 if (NETWORK_METHOD == "WGCNA")
