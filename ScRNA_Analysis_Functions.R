@@ -3436,7 +3436,8 @@ run_genie3_per_cluster <- function(cluster_assignments,
   # ── Top clusters ────────────────────────────────────────────────────────────
   ca <- cluster_assignments[cluster_assignments$cluster != "grey", ]
   cluster_sizes <- sort(table(ca$cluster), decreasing = TRUE)
-  top_clusters  <- names(cluster_sizes)[seq_len(min(n_top_clusters, length(cluster_sizes)))]
+  n_use <- if (is.null(n_top_clusters)) length(cluster_sizes) else min(n_top_clusters, length(cluster_sizes))
+  top_clusters  <- names(cluster_sizes)[seq_len(n_use)]
 
   # ── Per-cluster GENIE3 ──────────────────────────────────────────────────────
   results <- list()
@@ -3526,7 +3527,8 @@ run_wgcna_per_cluster <- function(cluster_assignments,
 
   ca <- cluster_assignments[cluster_assignments$cluster != "grey", ]
   cluster_sizes <- sort(table(ca$cluster), decreasing = TRUE)
-  top_clusters  <- names(cluster_sizes)[seq_len(min(n_top_clusters, length(cluster_sizes)))]
+  n_use <- if (is.null(n_top_clusters)) length(cluster_sizes) else min(n_top_clusters, length(cluster_sizes))
+  top_clusters  <- names(cluster_sizes)[seq_len(n_use)]
 
   results <- list()
   for (clust_id in top_clusters) {
@@ -3623,7 +3625,8 @@ run_synergistic_network <- function(cluster_assignments,
 
   ca <- cluster_assignments[cluster_assignments$cluster != "grey", ]
   cluster_sizes <- sort(table(ca$cluster), decreasing = TRUE)
-  top_clusters  <- names(cluster_sizes)[seq_len(min(n_top_clusters, length(cluster_sizes)))]
+  n_use <- if (is.null(n_top_clusters)) length(cluster_sizes) else min(n_top_clusters, length(cluster_sizes))
+  top_clusters  <- names(cluster_sizes)[seq_len(n_use)]
 
   rank_norm <- function(x) rank(x, ties.method = "average") / length(x)
 
