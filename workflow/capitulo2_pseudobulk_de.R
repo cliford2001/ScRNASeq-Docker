@@ -262,13 +262,14 @@ for (clust_id in unique(heatmap_results$cluster)) {
 # ┌─ PARAMETERS ────────────────────────────────────────────────────────────────
 #   NETWORK_METHOD : "GENIE3" — recommended for small datasets (n < 15 samples)
 #                    "WGCNA"  — for comparison only; unreliable with n < 15
-#   n_top_clusters : how many of the largest clusters to analyze
+#   n_top_clusters : analyzes only the N largest clusters from Section 20
+#                    (larger clusters have more genes = more reliable inference)
+#                    set higher or to Inf to analyze all clusters
 #   n_cores        : parallel cores (adjust to your machine)
-#   ┌─ CHANGE FOR YOUR ORGANISM ───────────────────────────────────────────────
-#     Arabidopsis : net_orgdb = org.At.tair.db  |  net_keytype = "TAIR"
-#     Human       : net_orgdb = org.Hs.eg.db    |  net_keytype = "ENSEMBL"
-#     Mouse       : net_orgdb = org.Mm.eg.db    |  net_keytype = "ENSEMBL"
-#   └─────────────────────────────────────────────────────────────────────────
+#
+#   The only edge filter for GENIE3 is cor_min = 0.85 (hardcoded):
+#   keeps only TF→gene pairs where expression is strongly correlated (|r| ≥ 0.85).
+#   Lower = more edges but noisier; higher = fewer but more reliable.
 # └─────────────────────────────────────────────────────────────────────────────
 NETWORK_METHOD <- "GENIE3"  # "GENIE3" or "WGCNA"
 n_top_clusters <- 3
@@ -278,21 +279,21 @@ if (NETWORK_METHOD == "WGCNA")
   message("\n⚠ WGCNA: unreliable with n < 15 samples — results are comparative only.")
 
 net_pipeline <- run_network_inference_pipeline(
-  heatmap_results  = heatmap_results,
+  heatmap_results  = heatmap_results,          # clusters from Section 20
   pseudobulk_dir   = file.path(dir_objects, "pseudobulk_replicas"),
   output_base_dir  = file.path(dir_08, volcano_tag),
-  methods          = c(NETWORK_METHOD),
-  orgdb            = go_orgdb,   # organism defined in Section 19
-  keytype          = go_keytype,
-  custom_tfs       = NULL,
-  cor_min          = 0.85,
-  genie3_ntrees    = 500,
-  n_cores          = n_cores,
-  soft_power       = 18,
-  network_type     = "signed",
-  tom_threshold    = 0.05,
-  n_top_clusters   = n_top_clusters,
-  min_var_filter   = 0.01
+  methods          = c(NETWORK_METHOD),         # "GENIE3" or "WGCNA"
+  orgdb            = go_orgdb,                  # organism DB (set in Section 19)
+  keytype          = go_keytype,                # gene ID type (set in Section 19)
+  custom_tfs       = NULL,                      # NULL = auto-detect TFs from orgdb
+  cor_min          = 0.85,                      # keep edges with |r| ≥ 0.85
+  genie3_ntrees    = 500,                       # Random Forest trees per gene
+  n_cores          = n_cores,                   # parallel cores
+  soft_power       = 18,                        # WGCNA only
+  network_type     = "signed",                  # WGCNA only
+  tom_threshold    = 0.05,                      # WGCNA only
+  n_top_clusters   = n_top_clusters,            # largest clusters to analyze
+  min_var_filter   = 0.01                       # drop near-constant genes
 )
 
 network_results <- net_pipeline$results[[NETWORK_METHOD]]
