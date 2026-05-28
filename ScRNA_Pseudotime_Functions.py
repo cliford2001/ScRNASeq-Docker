@@ -88,15 +88,121 @@ def build_dendrogram(adata):
 # plot_trajectory_graphs
 # =============================================================================
 # Saves force-directed tree graphs colored by annotation and leiden clusters.
-def plot_trajectory_graphs(adata, name, output_dir, annotation_col):
+# When show_inline=True, displays only the annotation graph in Jupyter so the
+# notebook stays readable while all graph files are still saved.
+def plot_trajectory_graphs(
+    adata,
+    name,
+    output_dir,
+    annotation_col,
+    show_inline=False,
+    inline_color=None,
+):
     os.makedirs(output_dir, exist_ok=True)
+    inline_color = inline_color or annotation_col
+
     for color_by, suffix in [(annotation_col, "annotation"), ("leiden", "leiden")]:
         fig, ax = plt.subplots(figsize=(10, 10))
         scf.pl.graph(adata, color_cells=color_by, ax=ax, show=False)
         plt.tight_layout()
-        fig.savefig(os.path.join(output_dir, f"{name}_{suffix}.pdf"))
+
+        for ext in ["pdf", "png"]:
+            fig.savefig(
+                os.path.join(output_dir, f"{name}_{suffix}.{ext}"),
+                dpi=300,
+                bbox_inches="tight",
+            )
+
+        if show_inline and color_by == inline_color:
+            plt.show()
+
         plt.close(fig)
+
     print(f"✓ Trajectory graphs saved to {output_dir}")
+
+
+# =============================================================================
+# run_trajectory_runs
+# =============================================================================
+# Convenience wrapper for the notebook. Runs one or more trajectory parameter
+# sets, saves each result in a separate folder, shows the graph, and returns the
+# selected trajectory for downstream steps.
+def run_trajectory_runs(
+    adata,
+    clusters,
+    root_cluster,
+    annotation_col,
+    output_base_dir,
+    runs,
+    selected_run=None,
+    show_inline=True,
+):
+    trajectory_runs = {}
+
+    for run in runs:
+        run_name = run.get("name", run.get("id"))
+        if not run_name:
+            raise ValueError("Each trajectory run needs a 'name'.")
+
+        run_dir = os.path.join(output_base_dir, "trajectory", run_name)
+        os.makedirs(run_dir, exist_ok=True)
+
+        nodes       = run.get("nodes", 50)
+        sigma       = run.get("sigma", 0.2)
+        ppt_lambda  = run.get("lambda", run.get("ppt_lambda", 60))
+        n_eigs      = run.get("eigs", run.get("n_eigs", 20))
+        n_neighbors = run.get("n_neighbors", 50)
+        seed        = run.get("seed", 3)
+
+        print(f"\nRunning: {run_name}")
+        print(f"Results folder: {run_dir}")
+
+        adata_run = build_pseudotime_trajectory(
+            adata          = adata,
+            clusters       = clusters,
+            root_cluster   = root_cluster,
+            annotation_col = annotation_col,
+            nodes          = nodes,
+            sigma          = sigma,
+            ppt_lambda     = ppt_lambda,
+            n_eigs         = n_eigs,
+            n_components   = 50,
+            n_neighbors    = n_neighbors,
+            seed           = seed,
+        )
+
+        params = dict(run)
+        params.update({"root_cluster": root_cluster})
+        adata_run.write_h5ad(os.path.join(run_dir, f"{run_name}_trajectory.h5ad"))
+        pd.Series(params).to_csv(os.path.join(run_dir, "parameters.tsv"), sep="\t", header=False)
+
+        plot_trajectory_graphs(
+            adata          = adata_run,
+            name           = run_name,
+            output_dir     = run_dir,
+            annotation_col = annotation_col,
+            show_inline    = show_inline,
+        )
+
+        trajectory_runs[run_name] = {
+            "adata": adata_run,
+            "output_dir": run_dir,
+            "params": params,
+        }
+
+    if selected_run is None:
+        selected_run = runs[-1].get("name", runs[-1].get("id"))
+
+    if selected_run not in trajectory_runs:
+        available = list(trajectory_runs)
+        raise ValueError(f"selected_run '{selected_run}' not found. Available: {available}")
+
+    selected = trajectory_runs[selected_run]
+    print(f"\nSTEP 27 COMPLETE")
+    print(f"Selected run: {selected_run}")
+    print(f"Selected folder: {selected['output_dir']}")
+
+    return selected["adata"], selected["output_dir"], trajectory_runs
 
 
 # =============================================================================
@@ -116,6 +222,18 @@ def run_milestone_analysis(
     name_file = "pseudotime",
 ):
     os.makedirs(output_dir, exist_ok=True)
+
+    # Auto-detect root milestone from the root cell if the name is not found
+    all_milestones = list(adata.obs["milestones"].cat.categories)
+    if root_milestone not in all_milestones:
+        if "is_root" in adata.obs.columns:
+            root_cells = adata.obs_names[adata.obs["is_root"]]
+            if len(root_cells) > 0:
+                root_milestone = str(adata.obs.loc[root_cells[0], "milestones"])
+                print(f"Root milestone auto-detected: '{root_milestone}'")
+        if root_milestone not in all_milestones:
+            raise ValueError(f"root_milestone '{root_milestone}' not found. Available: {all_milestones}")
+
     print(f"\n{'='*50}\nProcessing milestone: {milestone}\n{'='*50}")
 
     adata_branch = scf.tl.subset_tree(
@@ -251,3 +369,94 @@ def compute_module_score(adata, gene_list, prefix):
     adata.obs[f"{prefix}_module_score"] = norm
 
     print(f"✓ Module '{prefix}': {len(genes)}/{len(gene_list)} genes scored.")
+
+
+# =============================================================================
+# rename_milestones_by_celltype
+# =============================================================================
+# Renames scFates milestone IDs (numbers) to the dominant cell type at each
+# branch endpoint. Called automatically after build_dendrogram in Section 28.
+def rename_milestones_by_celltype(adata, annotation_col, priority_celltypes=None):
+    categories = list(adata.obs["milestones"].cat.categories)
+    priority_celltypes = priority_celltypes or []
+
+    # Force biologically important cell types, such as the root, to appear in
+    # the dendrogram at the milestone where most of their cells are located.
+    forced_names = {}
+    counts = pd.crosstab(adata.obs[annotation_col], adata.obs["milestones"])
+    for cell_type in priority_celltypes:
+        if cell_type in counts.index:
+            forced_names[str(counts.loc[cell_type].idxmax())] = cell_type
+
+    seen = {}
+    new_names = []
+    for ms in categories:
+        ms_key = str(ms)
+        if ms_key in forced_names:
+            base_name = forced_names[ms_key]
+        else:
+            mask = adata.obs["milestones"] == ms
+            values = adata.obs.loc[mask, annotation_col]
+            if priority_celltypes:
+                values_no_priority = values[~values.isin(priority_celltypes)]
+                if len(values_no_priority) > 0:
+                    values = values_no_priority
+            base_name = values.value_counts().index[0]
+
+        if base_name in seen:
+            seen[base_name] += 1
+            name = f"{base_name}_{seen[base_name]}"
+        else:
+            seen[base_name] = 0
+            name = base_name
+        new_names.append(name)
+
+    scf.tl.rename_milestones(adata, new_names)
+    print("Milestones renamed:")
+    for old, new in zip(categories, new_names):
+        print(f"  {str(old):>4s}  ->  {new}")
+    return adata
+
+# =============================================================================
+# summarize_milestones_by_celltype
+# =============================================================================
+# Shows where each selected cell type falls across the inferred milestones.
+# This is useful because the biological root can be present in the trajectory
+# without becoming a terminal milestone in the dendrogram.
+def summarize_milestones_by_celltype(
+    adata,
+    annotation_col,
+    output_dir,
+    root_cluster=None,
+):
+    os.makedirs(output_dir, exist_ok=True)
+
+    counts = pd.crosstab(adata.obs[annotation_col], adata.obs["milestones"])
+    percents = counts.div(counts.sum(axis=1), axis=0).fillna(0) * 100
+
+    summary = pd.DataFrame({
+        "cell_type": counts.index,
+        "n_cells": counts.sum(axis=1).values,
+        "main_milestone": counts.idxmax(axis=1).astype(str).values,
+        "main_milestone_percent": percents.max(axis=1).round(1).values,
+    })
+
+    counts.to_csv(os.path.join(output_dir, "milestone_counts_by_celltype.tsv"), sep="\t")
+    percents.round(1).to_csv(os.path.join(output_dir, "milestone_percent_by_celltype.tsv"), sep="\t")
+    summary.to_csv(os.path.join(output_dir, "milestone_summary_by_celltype.tsv"), sep="\t", index=False)
+
+    print("\nCell types across milestones:")
+    print(summary.to_string(index=False))
+
+    if root_cluster is not None and root_cluster in list(summary["cell_type"]):
+        root_row = summary.loc[summary["cell_type"] == root_cluster].iloc[0]
+        print(
+            f"\nRoot '{root_cluster}' is present mainly in milestone "
+            f"'{root_row['main_milestone']}' "
+            f"({root_row['main_milestone_percent']}% of its cells)."
+        )
+    elif root_cluster is not None:
+        print(f"\nRoot '{root_cluster}' was not found in column '{annotation_col}'.")
+
+    print(f"\nTables saved to: {output_dir}")
+    return summary, counts, percents

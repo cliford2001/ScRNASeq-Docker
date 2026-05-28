@@ -1,0 +1,587 @@
+{
+ "cells": [
+  {
+   "cell_type": "markdown",
+   "id": "dd837c5c",
+   "metadata": {},
+   "source": [
+    "# capitulo3_pseudotime — Pseudotime Trajectory Analysis (Part 3)\n",
+    "## Requires: pbmc_harmony_curated.h5ad from capitulo1_single_cell.R\n",
+    "\n",
+    "Run each section **in order**. Read the comments in each cell before changing parameters."
+   ]
+  },
+  {
+   "cell_type": "markdown",
+   "id": "ce0dbf16",
+   "metadata": {},
+   "source": [
+    "---\n",
+    "## SECTION 24 — Setup\n",
+    "Sets paths and loads libraries. Only change `PIPELINE_DIR` and `DATA_DIR` if your folder structure is different."
+   ]
+  },
+  {
+   "cell_type": "code",
+   "execution_count": 42,
+   "id": "1fa12173",
+   "metadata": {},
+   "outputs": [
+    {
+     "name": "stdout",
+     "output_type": "stream",
+     "text": [
+      "SECTION 24 COMPLETE: Setup done\n"
+     ]
+    }
+   ],
+   "source": [
+    "import os\n",
+    "\n",
+    "# ── Paths (must match capitulo1_single_cell.R) ────────────────────────────────\n",
+    "PIPELINE_DIR = os.path.expanduser(\"~/projects2/eleo/ScRNA/metodologia/ScRNASeq-Docker/\")\n",
+    "DATA_DIR     = os.path.expanduser(\"~/projects2/eleo/ScRNA/\")\n",
+    "base_dir     = os.path.join(DATA_DIR, \"metodologia/resultados\")\n",
+    "\n",
+    "# Load libraries and functions (equivalent to source() in R)\n",
+    "exec(open(os.path.join(PIPELINE_DIR, \"load_libraries_python.py\")).read(), globals())\n",
+    "exec(open(os.path.join(PIPELINE_DIR, \"ScRNA_Pseudotime_Functions.py\")).read(), globals())\n",
+    "\n",
+    "dir_pseudotime = os.path.join(base_dir, \"09_pseudotime\")\n",
+    "os.makedirs(dir_pseudotime, exist_ok=True)\n",
+    "\n",
+    "print(\"SECTION 24 COMPLETE: Setup done\")"
+   ]
+  },
+  {
+   "cell_type": "markdown",
+   "id": "dbdc2d83",
+   "metadata": {},
+   "source": [
+    "---\n",
+    "## SECTION 25 — Load Data\n",
+    "Loads the AnnData object (`.h5ad`) exported from Seurat by capitulo1.\n",
+    "\n",
+    "**What this section does:**\n",
+    "1. Reads the `.h5ad` file with all cells, genes, and metadata from capitulo1\n",
+    "2. Converts the UMAP and PCA coordinates from R format to scanpy format\n",
+    "3. Prints the available cell type names — **you will need these for Section 26**\n",
+    "4. Plots a UMAP as a visual check that the object loaded correctly\n",
+    "\n",
+    "**Parameter to set:**\n",
+    "- `ANNOTATION_COL`: the column with your final cell type labels\n",
+    "  - Run `print(adata.obs.columns.tolist())` to see all available columns\n",
+    "  - Common options: `celltype_curated`, `celltype_reference`, `seurat_clusters`\n",
+    "- `N_JOBS`: CPU cores for parallel steps (4–8 on a laptop, up to 32 on server)"
+   ]
+  },
+  {
+   "cell_type": "code",
+   "execution_count": 43,
+   "id": "8ae5dcc0",
+   "metadata": {},
+   "outputs": [
+    {
+     "name": "stdout",
+     "output_type": "stream",
+     "text": [
+      "Cell types available in celltype_curated :\n",
+      "['Bundle Sheath', 'Cell Cycle: G1-S', 'Cell Cycle: G2-M', 'Guard Cell', 'Hydathode', 'Mesophyll', 'Myrosin Idioblast', 'Pavement Cell', 'Stomatal Line', 'Vascular Cell']\n",
+      "WARNING: saving figure to file /home/mvergara/projects2/eleo/ScRNA/metodologia/resultados/09_pseudotime/umap_overview.png\n",
+      "\n",
+      "SECTION 25 COMPLETE: Object loaded\n"
+     ]
+    }
+   ],
+   "source": [
+    "# ┌─ PARAMETERS ───────────────────────────────────────────────────────────────\n",
+    "#   ANNOTATION_COL : column in adata.obs with your final cell type labels\n",
+    "#                    Run: print(adata.obs.columns.tolist()) to see all options\n",
+    "#   N_JOBS         : CPU cores (4–8 laptop, up to 32 server)\n",
+    "# └────────────────────────────────────────────────────────────────────────────\n",
+    "ANNOTATION_COL = \"celltype_curated\"  # change to your cell type column\n",
+    "N_JOBS         = 4                   # adjust to your machine\n",
+    "\n",
+    "dir_objects = os.path.join(base_dir, \"objects\")\n",
+    "\n",
+    "# Load the object from capitulo1\n",
+    "adata = sc.read_h5ad(os.path.join(dir_objects, \"pbmc_harmony_curated.h5ad\"))\n",
+    "\n",
+    "# Convert R-format keys to scanpy format\n",
+    "adata.obsm[\"X_umap\"] = adata.obsm[\"UMAP\"].values\n",
+    "adata.obsm[\"X_pca\"]  = adata.obsm[\"PCA\"].values\n",
+    "\n",
+    "sc.settings.figdir = dir_pseudotime\n",
+    "# figsize matches R save_pdf default (w=10, h=8); dpi_save=300 for export\n",
+    "sc.set_figure_params(figsize=(10, 8), dpi=80, dpi_save=300)\n",
+    "\n",
+    "# Read these names — use them to set TRAJECTORY_CLUSTERS in Section 26\n",
+    "print(\"Cell types available in\", ANNOTATION_COL, \":\")\n",
+    "print(sorted(adata.obs[ANNOTATION_COL].unique().tolist()))\n",
+    "\n",
+    "# Matches R: label=TRUE, repel=TRUE, raster=FALSE\n",
+    "# show=True displays inline in Jupyter; save also exports the file\n",
+    "sc.pl.umap(\n",
+    "    adata,\n",
+    "    color              = ANNOTATION_COL,\n",
+    "    legend_loc         = \"on data\",   # label=TRUE in R\n",
+    "    legend_fontsize    = 9,\n",
+    "    legend_fontoutline = 3,           # repel=TRUE equivalent\n",
+    "    frameon            = False,\n",
+    "    show               = True,\n",
+    "    save               = \"_overview.png\",\n",
+    ")\n",
+    "print(\"\\nSECTION 25 COMPLETE: Object loaded\")"
+   ]
+  },
+  {
+   "cell_type": "markdown",
+   "id": "dbc4ac58",
+   "metadata": {},
+   "source": [
+    "---\n",
+    "## SECTION 26 — Cell Type Selection\n",
+    "Shows the available cell types and plots a UMAP of your selected subset.\n",
+    "\n",
+    "**What to do:**\n",
+    "1. Run the cell — reads the available cell types and their counts\n",
+    "2. Edit `TRAJECTORY_CLUSTERS` with the names you want to include\n",
+    "3. Re-run — plots the subset UMAP so you can verify before continuing"
+   ]
+  },
+  {
+   "cell_type": "code",
+   "execution_count": 44,
+   "id": "51e2fb1b",
+   "metadata": {},
+   "outputs": [
+    {
+     "name": "stdout",
+     "output_type": "stream",
+     "text": [
+      "Annotation column: 'celltype_curated'\n",
+      "\n",
+      "   1.  Bundle Sheath                    210 cells\n",
+      "   2.  Cell Cycle: G1-S                 245 cells\n",
+      "   3.  Cell Cycle: G2-M                 240 cells\n",
+      "   4.  Guard Cell                       109 cells\n",
+      "   5.  Hydathode                        111 cells\n",
+      "   6.  Mesophyll                       2128 cells\n",
+      "   7.  Myrosin Idioblast                  6 cells\n",
+      "   8.  Pavement Cell                   1283 cells\n",
+      "   9.  Stomatal Line                     75 cells\n",
+      "  10.  Vascular Cell                    151 cells\n",
+      "\n",
+      "Selected 1467 cells from: ['Pavement Cell', 'Guard Cell', 'Stomatal Line']\n",
+      "WARNING: saving figure to file /home/mvergara/projects2/eleo/ScRNA/metodologia/resultados/09_pseudotime/umap_selection.png\n",
+      "\n",
+      "SECTION 26 COMPLETE: if the subset looks correct, proceed to Section 27\n"
+     ]
+    }
+   ],
+   "source": [
+    "# ── Available cell types in the selected annotation column ───────────────────\n",
+    "print(f\"Annotation column: '{ANNOTATION_COL}'\")\n",
+    "print()\n",
+    "counts = adata.obs[ANNOTATION_COL].value_counts()\n",
+    "for i, ct in enumerate(sorted(adata.obs[ANNOTATION_COL].unique().tolist()), 1):\n",
+    "    print(f\"  {i:2d}.  {ct:<30s} {counts[ct]:>5d} cells\")\n",
+    "print()\n",
+    "\n",
+    "# ┌─ PARAMETERS ────────────────────────────────────────────────────────────────\n",
+    "#   TRAJECTORY_CLUSTERS : cell types to include — copy names exactly from above\n",
+    "# └────────────────────────────────────────────────────────────────────────────\n",
+    "TRAJECTORY_CLUSTERS = [\"Pavement Cell\", \"Guard Cell\", \"Stomatal Line\"]  # edit\n",
+    "\n",
+    "# Subset and plot to verify\n",
+    "adata_sub = adata[adata.obs[ANNOTATION_COL].isin(TRAJECTORY_CLUSTERS)].copy()\n",
+    "print(f\"Selected {len(adata_sub)} cells from: {TRAJECTORY_CLUSTERS}\")\n",
+    "\n",
+    "sc.pl.umap(\n",
+    "    adata_sub,\n",
+    "    color              = ANNOTATION_COL,\n",
+    "    legend_loc         = \"on data\",\n",
+    "    legend_fontsize    = 9,\n",
+    "    legend_fontoutline = 3,\n",
+    "    frameon            = False,\n",
+    "    show               = True,\n",
+    "    save               = \"_selection.png\",\n",
+    ")\n",
+    "print(\"\\nSECTION 26 COMPLETE: if the subset looks correct, proceed to Section 27\")"
+   ]
+  },
+  {
+   "cell_type": "markdown",
+   "id": "ef54655b",
+   "metadata": {},
+   "source": [
+    "---\n",
+    "## SECTION 27 — Trajectory Inference\n",
+    "Builds a tree-shaped trajectory through the cell types selected in Section 26.\n",
+    "\n",
+    "**Parameters to set:**\n",
+    "- `ROOT_CLUSTER`: the progenitor — where pseudotime = 0 (must be one of your Section 26 types)\n",
+    "- `NODES`, `SIGMA`, `PPT_LAMBDA`, `N_EIGS`: tree shape (defaults work for most cases)"
+   ]
+  },
+  {
+   "cell_type": "code",
+   "execution_count": 45,
+   "id": "4b4ab5ab",
+   "metadata": {},
+   "outputs": [
+    {
+     "name": "stdout",
+     "output_type": "stream",
+     "text": [
+      "computing neighbors\n",
+      "    using 'X_pca' with n_pcs = 30\n",
+      "    finished: added to `.uns['neighbors']`\n",
+      "    `.obsp['distances']`, distances for each pair of neighbors\n",
+      "    `.obsp['connectivities']`, weighted adjacency matrix (0:00:00)\n",
+      "running Leiden clustering\n",
+      "    finished: found 9 clusters and added\n",
+      "    'leiden', the cluster labels (adata.obs, categorical) (0:00:00)\n",
+      "computing neighbors\n",
+      "    finished: added to `.uns['neighbors']`\n",
+      "    `.obsp['distances']`, distances for each pair of neighbors\n",
+      "    `.obsp['connectivities']`, weighted adjacency matrix (0:00:00)\n",
+      "computing neighbors\n",
+      "    finished: added to `.uns['neighbors']`\n",
+      "    `.obsp['distances']`, distances for each pair of neighbors\n",
+      "    `.obsp['connectivities']`, weighted adjacency matrix (0:00:00)\n",
+      "drawing single-cell graph using layout 'fa'\n",
+      "    finished: added\n",
+      "    'X_draw_graph_fa', graph_drawing coordinates (adata.obsm) (0:00:08)\n",
+      "inferring a principal tree --> parameters used \n",
+      "    50 principal points, sigma = 0.2, lambda = 60, metric = euclidean\n",
+      "    fitting:  32%|███▏      | 63/200 [00:00<00:00, 195.62it/s]\n",
+      "    converged\n",
+      "    finished (0:00:00) --> added \n",
+      "    .uns['ppt'], dictionnary containing inferred tree.\n",
+      "    .obsm['X_R'] soft assignment of cells to principal points.\n",
+      "    .uns['graph']['B'] adjacency matrix of the principal points.\n",
+      "    .uns['graph']['F'] coordinates of principal points in representation space.\n",
+      "automatic root selection using is_root values\n",
+      "node 46 selected as a root --> added\n",
+      "    .uns['graph']['root'] selected root.\n",
+      "    .uns['graph']['pp_info'] for each PP, its distance vs root and segment assignment.\n",
+      "    .uns['graph']['pp_seg'] segments network information.\n",
+      "projecting cells onto the principal graph\n",
+      "    finished (0:00:01) --> added\n",
+      "    .obs['edge'] assigned edge.\n",
+      "    .obs['t'] pseudotime value.\n",
+      "    .obs['seg'] segment of the tree assigned.\n",
+      "    .obs['milestones'] milestone assigned.\n",
+      "    .uns['pseudotime_list'] list of cell projection from all mappings.\n",
+      "✓ Trajectory built — root cell: 5N_ACCTGGACACTTACGC-1\n",
+      "✓ Trajectory graphs saved to /home/mvergara/projects2/eleo/ScRNA/metodologia/resultados/09_pseudotime/trajectory\n",
+      "\n",
+      "SECTION 27 COMPLETE\n"
+     ]
+    }
+   ],
+   "source": [
+    "# ┌─ PARAMETERS ───────────────────────────────────────────────────────────────\n",
+    "#\n",
+    "#   ROOT_CLUSTER : Starting point of the trajectory (pseudotime = 0).\n",
+    "#                  Choose the least-differentiated cell type — the progenitor\n",
+    "#                  from which the others originate. Must be one of TRAJECTORY_CLUSTERS.\n",
+    "#\n",
+    "#   NODES        : Number of nodes in the principal tree (50–200).\n",
+    "#                  Think of it as tree resolution: more nodes = more detail in\n",
+    "#                  the branching structure, but slower and sometimes noisier.\n",
+    "#                  Start at 50–100 to explore, raise if branches look too coarse.\n",
+    "#\n",
+    "#   SIGMA        : How tightly the tree follows the cells (0.1–0.5).\n",
+    "#                  Lower = tree bends to fit each group of cells more closely.\n",
+    "#                  Higher = tree is smoother and straighter, ignoring local clusters.\n",
+    "#                  Start at 0.1–0.2 for datasets with clear structure.\n",
+    "#\n",
+    "#   PPT_LAMBDA   : Complexity penalty — controls how many branches the tree can have.\n",
+    "#                  Higher = simpler tree with fewer branches (more linear).\n",
+    "#                  Lower = more branches allowed (richer topology).\n",
+    "#                  If you get too many spurious branches, raise this value.\n",
+    "#\n",
+    "#   N_EIGS       : Number of diffusion map dimensions used to build the tree.\n",
+    "#                  These capture the main axes of cell differentiation in the data.\n",
+    "#                  Must be less than 50. Higher = captures more subtle structure,\n",
+    "#                  but too many can add noise. 15–25 is a good starting range.\n",
+    "#\n",
+    "# └────────────────────────────────────────────────────────────────────────────\n",
+    "ROOT_CLUSTER = \"Stomatal Line\"  # progenitor cell type (pseudotime = 0)\n",
+    "NODES        = 50             # tree resolution: 50–200\n",
+    "SIGMA        = 0.2            # tree smoothing: 0.1 (tight) to 0.5 (smooth)\n",
+    "PPT_LAMBDA   = 60             # branch penalty: raise to simplify the tree\n",
+    "N_EIGS       = 20             # diffusion dimensions: 15–25, must be < 50\n",
+    "\n",
+    "adata_traj = build_pseudotime_trajectory(\n",
+    "    adata          = adata,\n",
+    "    clusters       = TRAJECTORY_CLUSTERS,\n",
+    "    root_cluster   = ROOT_CLUSTER,\n",
+    "    annotation_col = ANNOTATION_COL,\n",
+    "    nodes          = NODES,\n",
+    "    sigma          = SIGMA,\n",
+    "    ppt_lambda     = PPT_LAMBDA,\n",
+    "    n_eigs         = N_EIGS,\n",
+    "    n_components   = 50,\n",
+    "    n_neighbors    = 50,\n",
+    "    seed           = 3,\n",
+    ")\n",
+    "\n",
+    "plot_trajectory_graphs(\n",
+    "    adata          = adata_traj,\n",
+    "    name           = \"trajectory\",\n",
+    "    output_dir     = os.path.join(dir_pseudotime, \"trajectory\"),\n",
+    "    annotation_col = ANNOTATION_COL,\n",
+    ")\n",
+    "print(\"\\nSECTION 27 COMPLETE\")"
+   ]
+  },
+  {
+   "cell_type": "markdown",
+   "id": "b7fb2643",
+   "metadata": {},
+   "source": [
+    "---\n",
+    "## SECTION 28 — Dendrogram and Milestones\n",
+    "Identifies branch endpoints (milestones). **Read the milestone names printed below before running Section 29.**"
+   ]
+  },
+  {
+   "cell_type": "code",
+   "execution_count": 46,
+   "id": "3bd2df38",
+   "metadata": {},
+   "outputs": [
+    {
+     "name": "stdout",
+     "output_type": "stream",
+     "text": [
+      "Generating dendrogram of tree\n",
+      "    finished (0:00:00) --> added \n",
+      "    .obsm['X_dendro'], new embedding generated.\n",
+      "    .uns['dendro_segments'] tree segments used for plotting.\n",
+      "Milestones renamed:\n",
+      "    10  ->  Pavement Cell\n",
+      "    19  ->  Guard Cell\n",
+      "    21  ->  Pavement Cell_1\n",
+      "    31  ->  Pavement Cell_2\n",
+      "    39  ->  Pavement Cell_3\n",
+      "    40  ->  Pavement Cell_4\n",
+      "    41  ->  Pavement Cell_5\n",
+      "    43  ->  Pavement Cell_6\n",
+      "    44  ->  Pavement Cell_7\n",
+      "    46  ->  Pavement Cell_8\n",
+      "    49  ->  Pavement Cell_9\n",
+      "     7  ->  Guard Cell_1\n",
+      "     9  ->  Pavement Cell_10\n",
+      "\n",
+      "Available milestones (use these names in Section 29):\n",
+      "['Guard Cell', 'Guard Cell_1', 'Pavement Cell', 'Pavement Cell_1', 'Pavement Cell_10', 'Pavement Cell_2', 'Pavement Cell_3', 'Pavement Cell_4', 'Pavement Cell_5', 'Pavement Cell_6', 'Pavement Cell_7', 'Pavement Cell_8', 'Pavement Cell_9']\n",
+      "WARNING: saving figure to file /home/mvergara/projects2/eleo/ScRNA/metodologia/resultados/09_pseudotime/dendrogram_milestones.pdf\n",
+      "\n",
+      "SECTION 28 COMPLETE — see milestone names above\n"
+     ]
+    }
+   ],
+   "source": [
+    "adata_traj = build_dendrogram(adata_traj)\n",
+    "\n",
+    "# Rename numeric IDs to the dominant cell type at each branch endpoint\n",
+    "adata_traj = rename_milestones_by_celltype(adata_traj, ANNOTATION_COL)\n",
+    "\n",
+    "# Use these names in MILESTONES_TO_ANALYZE and ROOT_CLUSTER in Section 29\n",
+    "print(\"\\nAvailable milestones (use these names in Section 29):\")\n",
+    "print(sorted(adata_traj.obs[\"milestones\"].unique().tolist()))\n",
+    "\n",
+    "scf.pl.dendrogram(adata_traj, color=\"milestones\", legend_loc=\"on data\", save=\"_milestones.pdf\")\n",
+    "print(\"\\nSECTION 28 COMPLETE — see milestone names above\")"
+   ]
+  },
+  {
+   "cell_type": "markdown",
+   "id": "a01485d5",
+   "metadata": {},
+   "source": [
+    "---\n",
+    "## SECTION 29 — Milestone Analysis\n",
+    "For each branch endpoint: tests which genes change significantly along that path and fits smooth expression curves.\n",
+    "\n",
+    "**Parameters to set:**\n",
+    "- `MILESTONES_TO_ANALYZE`: use the names printed in Section 28\n",
+    "- `A_CUT`: lower = more genes (noisier), higher = fewer genes (more selective)"
+   ]
+  },
+  {
+   "cell_type": "code",
+   "execution_count": null,
+   "id": "85ad5417",
+   "metadata": {},
+   "outputs": [],
+   "source": [
+    "# ┌─ PARAMETERS ───────────────────────────────────────────────────────────────\n",
+    "#   MILESTONES_TO_ANALYZE : adjust after reading Section 28 output\n",
+    "#   A_CUT                 : association threshold (0–1); start at 0.3\n",
+    "#   P_VAL_CUT             : p-value significance threshold\n",
+    "# └────────────────────────────────────────────────────────────────────────────\n",
+    "MILESTONES_TO_ANALYZE = [\"Guard Cell\", \"Pavement Cell\"]  # adjust after Section 28\n",
+    "A_CUT     = 0.3\n",
+    "P_VAL_CUT = 0.001\n",
+    "\n",
+    "fitted_objects = {}\n",
+    "\n",
+    "for milestone in MILESTONES_TO_ANALYZE:\n",
+    "    fitted_objects[milestone] = run_milestone_analysis(\n",
+    "        adata         = adata_traj,\n",
+    "        milestone     = milestone,\n",
+    "        root_milestone= ROOT_CLUSTER,\n",
+    "        output_dir    = os.path.join(dir_pseudotime, \"milestones\"),\n",
+    "        n_jobs        = N_JOBS,\n",
+    "        a_cut         = A_CUT,\n",
+    "        p_val_cut     = P_VAL_CUT,\n",
+    "        name_file     = \"pseudotime\",\n",
+    "    )\n",
+    "\n",
+    "print(\"\\nSECTION 30 COMPLETE\")"
+   ]
+  },
+  {
+   "cell_type": "markdown",
+   "id": "c0b664c3",
+   "metadata": {},
+   "source": [
+    "---\n",
+    "## SECTION 30 — Gene Expression Trends\n",
+    "Heatmap of the most dynamically expressed genes per branch + ranked CSV table.\n",
+    "\n",
+    "**Parameters to set:**\n",
+    "- `HIGHLIGHT_GENES`: known marker genes to highlight (leave `[]` if none)"
+   ]
+  },
+  {
+   "cell_type": "code",
+   "execution_count": 39,
+   "id": "af741cc8",
+   "metadata": {},
+   "outputs": [
+    {
+     "name": "stdout",
+     "output_type": "stream",
+     "text": [
+      "\n",
+      "SECTION 30 COMPLETE\n"
+     ]
+    }
+   ],
+   "source": [
+    "# ┌─ PARAMETERS ───────────────────────────────────────────────────────────────\n",
+    "#   HIGHLIGHT_GENES : known markers to highlight in the trends heatmap\n",
+    "#                     Use gene IDs for your organism:\n",
+    "#                       Arabidopsis: TAIR IDs e.g. \"AT3G24140\"\n",
+    "#                       Human/mouse: gene symbols e.g. \"MYC\", \"SOX2\"\n",
+    "#                     Leave as [] if you have no prior markers\n",
+    "# └────────────────────────────────────────────────────────────────────────────\n",
+    "HIGHLIGHT_GENES = [\"AT5G53210\"]  # e.g. [\"AT5G53210\", \"AT3G06120\"]\n",
+    "\n",
+    "for milestone, adata_fitted in fitted_objects.items():\n",
+    "    plot_gene_trends(\n",
+    "        adata_fitted    = adata_fitted,\n",
+    "        milestone_name  = milestone,\n",
+    "        output_dir      = os.path.join(dir_pseudotime, \"trends\"),\n",
+    "        highlight_genes = HIGHLIGHT_GENES,\n",
+    "    )\n",
+    "    genes_by_pseudotime_peak(\n",
+    "        adata          = adata_fitted,\n",
+    "        milestone_name = milestone,\n",
+    "        output_dir     = os.path.join(dir_pseudotime, \"tables\"),\n",
+    "    )\n",
+    "\n",
+    "print(\"\\nSECTION 30 COMPLETE\")"
+   ]
+  },
+  {
+   "cell_type": "markdown",
+   "id": "29123627",
+   "metadata": {},
+   "source": [
+    "---\n",
+    "## SECTION 31 — Module Scores *(optional)*\n",
+    "Projects user-defined gene lists onto the trajectory as per-cell scores.\n",
+    "**Skip this section if you do not have custom gene lists.**\n",
+    "\n",
+    "**Parameters to set:**\n",
+    "- `MODULE_GENE_FILES`: dict of `{label: path_to_file}` — leave `{}` to skip\n",
+    "- `MODULE_ID_COL`: column name with gene IDs in each file"
+   ]
+  },
+  {
+   "cell_type": "code",
+   "execution_count": 40,
+   "id": "f9749199",
+   "metadata": {},
+   "outputs": [
+    {
+     "name": "stdout",
+     "output_type": "stream",
+     "text": [
+      "Section 31 skipped — no MODULE_GENE_FILES defined\n",
+      "\n",
+      "SECTION 31 COMPLETE\n"
+     ]
+    }
+   ],
+   "source": [
+    "# ┌─ PARAMETERS ───────────────────────────────────────────────────────────────\n",
+    "#   MODULE_GENE_FILES : add your gene list files here, or leave as {} to skip\n",
+    "#                       e.g. {\"my_module\": \"/path/to/genes.txt\"}\n",
+    "#   MODULE_ID_COL     : column with gene IDs in each file\n",
+    "#                       Arabidopsis: usually \"ID\" or \"TAIR\"\n",
+    "#                       Human/mouse: usually \"gene_id\" or \"symbol\"\n",
+    "# └────────────────────────────────────────────────────────────────────────────\n",
+    "MODULE_GENE_FILES = {}    # e.g. {\"cluster1\": \"/path/to/cluster1_genes.txt\"}\n",
+    "MODULE_ID_COL     = \"ID\"\n",
+    "\n",
+    "if MODULE_GENE_FILES:\n",
+    "    for label, fpath in MODULE_GENE_FILES.items():\n",
+    "        df        = pd.read_csv(fpath, sep=\"\\t\")\n",
+    "        gene_list = df[MODULE_ID_COL].dropna().unique().tolist()\n",
+    "        compute_module_score(adata_traj, gene_list, label)\n",
+    "\n",
+    "    sc.pl.draw_graph(\n",
+    "        adata_traj,\n",
+    "        color  = [f\"{label}_module_score\" for label in MODULE_GENE_FILES],\n",
+    "        cmap   = \"viridis\",\n",
+    "        show   = False,\n",
+    "        save   = \"_module_scores.png\",\n",
+    "    )\n",
+    "    print(\"Module score plots saved\")\n",
+    "else:\n",
+    "    print(\"Section 31 skipped — no MODULE_GENE_FILES defined\")\n",
+    "\n",
+    "print(\"\\nSECTION 31 COMPLETE\")"
+   ]
+  }
+ ],
+ "metadata": {
+  "kernelspec": {
+   "display_name": "Python (scrna_seba)",
+   "language": "python",
+   "name": "scrna_seba"
+  },
+  "language_info": {
+   "codemirror_mode": {
+    "name": "ipython",
+    "version": 3
+   },
+   "file_extension": ".py",
+   "mimetype": "text/x-python",
+   "name": "python",
+   "nbconvert_exporter": "python",
+   "pygments_lexer": "ipython3",
+   "version": "3.10.15"
+  }
+ },
+ "nbformat": 4,
+ "nbformat_minor": 5
+}
