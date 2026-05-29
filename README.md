@@ -4,6 +4,50 @@ This repository contains the pipeline helper scripts used in the **Methods in Mo
 
 ---
 
+## Project Map
+
+The repository is organized around three workflow chapters. Chapter 1 creates the curated single-cell object, and Chapters 2 and 3 use that object for downstream biological analyses.
+
+```text
+┌──────────────────────────────────────────────────────────────────────┐
+│                         Datos single-cell RNA-seq                    │
+│                                                                      │
+│             matrices crudas  ·  metadata  ·  condiciones             │
+└───────────────────────────────┬──────────────────────────────────────┘
+                                │
+                                ▼
+┌──────────────────────────────────────────────────────────────────────┐
+│                Capítulo 1 — Procesamiento single-cell                │
+│                                                                      │
+│   workflow/capitulo1_single_cell.R                                   │
+│                                                                      │
+│   QC → filtrado → normalización → integración → clustering           │
+│      → anotación celular → exportación de objeto curado              │
+│                                                                      │
+│   Helpers: ScRNA_Analysis_Functions.R                                │
+└───────────────────────────────┬──────────────────────────────────────┘
+                                │
+              ┌─────────────────┴─────────────────┐
+              │                                   │
+              ▼                                   ▼
+┌──────────────────────────────────┐   ┌────────────────────────────────────┐
+│ Capítulo 2 — Pseudobulk / DE     │   │ Capítulo 3 — Pseudotime            │
+│                                  │   │                                    │
+│ workflow/capitulo2_pseudobulk_de.R│  │ workflow/capitulo3_pseudotime.ipynb│
+│                                  │   │                                    │
+│ pseudobulk                       │   │ selección celular                  │
+│   → DESeq2                       │   │   → trayectoria                    │
+│   → volcano / heatmap            │   │   → pseudotime                     │
+│   → GO enrichment                │   │   → branches / milestones          │
+│                                  │   │   → genes dinámicos por branch     │
+│ Helpers:                         │   │                                    │
+│ ScRNA_Analysis_Functions.R       │   │ Helpers:                           │
+│                                  │   │ ScRNA_Pseudotime_Functions.py      │
+└──────────────────────────────────┘   └────────────────────────────────────┘
+```
+
+---
+
 ## Quick Start with Docker
 
 A pre-built Docker image with all dependencies (R 4.5, Python 3.12, Seurat, scanpy, CellRanger 9.0.1, and all required packages) is available on Docker Hub.

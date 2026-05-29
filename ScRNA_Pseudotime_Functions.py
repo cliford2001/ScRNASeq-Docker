@@ -5,6 +5,96 @@
 # Loaded automatically at the start of that script.
 
 
+def trajectory_run(name, nodes=50, sigma=0.2, lambda_value=60, eigs=20):
+    return {
+        "name": name,
+        "nodes": nodes,
+        "sigma": sigma,
+        "lambda": lambda_value,
+        "eigs": eigs,
+    }
+
+
+# =============================================================================
+# load_curated_object
+# =============================================================================
+# Notebook wrapper for Step 25. Loads the full curated object, fixes Seurat-style
+# coordinate names, plots the overview UMAP, and prints available cell types.
+def load_curated_object(input_h5ad, dir_pseudotime, annotation_col, n_jobs=4):
+
+    print(f"Loading object: {input_h5ad}")
+    adata = sc.read_h5ad(input_h5ad)
+    adata.obsm["X_umap"] = adata.obsm["UMAP"].values
+    adata.obsm["X_pca"] = adata.obsm["PCA"].values
+
+    sc.settings.figdir = dir_pseudotime
+    sc.set_figure_params(figsize=(10, 8), dpi=80, dpi_save=300)
+
+    fig = sc.pl.umap(
+        adata,
+        color              = annotation_col,
+        legend_loc         = "on data",
+        legend_fontsize    = 9,
+        legend_fontoutline = 3,
+        frameon            = False,
+        show               = False,
+        return_fig         = True,
+    )
+    fig.savefig(
+        os.path.join(dir_pseudotime, "umap_overview.png"),
+        dpi=300,
+        bbox_inches="tight",
+    )
+    plt.show()
+    plt.close(fig)
+
+    counts = adata.obs[annotation_col].value_counts()
+    print(f"\nCell types in '{annotation_col}':\n")
+    for i, ct in enumerate(sorted(adata.obs[annotation_col].unique()), 1):
+        print(f"  {i:2d}.  {ct:<30s}  {counts[ct]:>5d} cells")
+
+    print("\nSTEP 25 COMPLETE: full object loaded")
+    return adata, n_jobs
+
+
+# =============================================================================
+# preview_trajectory_selection
+# =============================================================================
+# Notebook wrapper for Step 26. Subsets the selected cell types and displays a
+# UMAP preview so the user can decide whether the selection makes biological sense.
+def preview_trajectory_selection(adata, clusters, annotation_col, dir_pseudotime):
+    missing = [x for x in clusters if x not in set(adata.obs[annotation_col])]
+    if missing:
+        raise ValueError(
+            "These cell types were not found in "
+            f"'{annotation_col}': {missing}. Copy names exactly from Step 25."
+        )
+
+    adata_sub = adata[adata.obs[annotation_col].isin(clusters)].copy()
+    print(f"Selected {len(adata_sub)} cells: {clusters}")
+
+    fig = sc.pl.umap(
+        adata_sub,
+        color              = annotation_col,
+        legend_loc         = "on data",
+        legend_fontsize    = 9,
+        legend_fontoutline = 3,
+        frameon            = False,
+        show               = False,
+        return_fig         = True,
+    )
+    fig.savefig(
+        os.path.join(dir_pseudotime, "umap_selection.png"),
+        dpi=300,
+        bbox_inches="tight",
+    )
+    plt.show()
+    plt.close(fig)
+
+    print("\nSTEP 26 COMPLETE: continue only if this UMAP looks biologically sensible")
+    return adata_sub
+
+
 # =============================================================================
 # build_pseudotime_trajectory
 # =============================================================================
@@ -122,6 +212,110 @@ def plot_trajectory_graphs(
 
 
 # =============================================================================
+# export_pseudotime_table
+# =============================================================================
+def export_pseudotime_table(adata, name, output_dir, annotation_col=None):
+    os.makedirs(output_dir, exist_ok=True)
+    cell_time = adata.obs[["t"]].copy()
+    cell_time.index.name = "cell_id"
+    if annotation_col is not None and annotation_col in adata.obs.columns:
+        cell_time[annotation_col] = adata.obs[annotation_col]
+    out_file = os.path.join(output_dir, f"{name}_pseudotime_by_cell.tsv")
+    cell_time.to_csv(out_file, sep="	")
+    print(f"Pseudotime table saved: {out_file}")
+    return out_file
+
+
+# =============================================================================
+# plot_pseudotime_trajectory
+# =============================================================================
+# Overlay the principal graph and pseudotime trajectory on the FA layout.
+def plot_pseudotime_trajectory(
+    adata,
+    name,
+    output_dir,
+    annotation_col,
+    show_inline=False,
+):
+    os.makedirs(output_dir, exist_ok=True)
+
+    fig, ax = plt.subplots(figsize=(10, 10))
+    scf.pl.graph(
+        adata,
+        basis       = "draw_graph_fa",
+        color_cells = annotation_col,
+        ax          = ax,
+        show        = False,
+    )
+    scf.pl.trajectory(
+        adata,
+        color_seg  = "t",
+        basis      = "draw_graph_fa",
+        frameon    = False,
+        s          = 50,
+        scale_path = 0.6,
+        ax         = ax,
+        show       = False,
+    )
+    plt.tight_layout()
+    fig.savefig(
+        os.path.join(output_dir, f"{name}_pseudotime_trajectory.png"),
+        dpi=600,
+        bbox_inches="tight",
+    )
+
+    if show_inline:
+        plt.show()
+
+    plt.close(fig)
+    print(f"Pseudotime trajectory saved to {output_dir}")
+
+
+# =============================================================================
+# plot_root_cell
+# =============================================================================
+# QC plot: show the automatically selected root cell as a red point on FA1/FA2.
+def plot_root_cell(adata, name, output_dir, show_inline=False):
+    os.makedirs(output_dir, exist_ok=True)
+    if "is_root" not in adata.obs.columns:
+        print("Root-cell plot skipped: is_root not found.")
+        return None
+
+    root_cells = adata.obs_names[adata.obs["is_root"]]
+    if len(root_cells) == 0:
+        print("Root-cell plot skipped: no root cell marked.")
+        return None
+
+    root_cell = root_cells[0]
+    plot_data = adata.copy()
+    plot_data.obs["root_cell"] = np.where(plot_data.obs["is_root"], "Root cell", "Other cells")
+    plot_data = plot_data[plot_data.obs.sort_values("root_cell").index, :]
+    plot_data.uns["root_cell_colors"] = ["lightgray", "red"]
+
+    fig = sc.pl.embedding(
+        plot_data,
+        basis              = "draw_graph_fa",
+        color              = "root_cell",
+        legend_loc         = "right margin",
+        title              = f"Root cell: {root_cell}",
+        frameon            = False,
+        size               = 26,
+        alpha              = 0.9,
+        show               = False,
+        return_fig         = True,
+    )
+    out_file = os.path.join(output_dir, f"{name}_root_cell.png")
+    fig.savefig(out_file, dpi=600, bbox_inches="tight")
+
+    if show_inline:
+        plt.show()
+
+    plt.close(fig)
+    print(f"Root-cell plot saved: {out_file}")
+    return root_cell
+
+
+# =============================================================================
 # run_trajectory_runs
 # =============================================================================
 # Convenience wrapper for the notebook. Runs one or more trajectory parameter
@@ -184,6 +378,28 @@ def run_trajectory_runs(
             show_inline    = show_inline,
         )
 
+        export_pseudotime_table(
+            adata          = adata_run,
+            name           = run_name,
+            output_dir     = run_dir,
+            annotation_col = annotation_col,
+        )
+
+        plot_pseudotime_trajectory(
+            adata          = adata_run,
+            name           = run_name,
+            output_dir     = run_dir,
+            annotation_col = annotation_col,
+            show_inline    = show_inline,
+        )
+
+        plot_root_cell(
+            adata       = adata_run,
+            name        = run_name,
+            output_dir  = run_dir,
+            show_inline = show_inline,
+        )
+
         trajectory_runs[run_name] = {
             "adata": adata_run,
             "output_dir": run_dir,
@@ -206,6 +422,223 @@ def run_trajectory_runs(
 
 
 # =============================================================================
+# plot_genes_on_trajectory
+# =============================================================================
+# Step 28 helper: plot pseudotime and selected marker genes on the FA graph.
+def plot_genes_on_trajectory(
+    adata,
+    output_dir,
+    gene_sets=None,
+    cmap="viridis",
+    size=200,
+):
+    os.makedirs(output_dir, exist_ok=True)
+    sc.settings.figdir = output_dir
+    sc.set_figure_params(figsize=(10, 10), dpi_save=300)
+
+    # Always plot pseudotime first.
+    if "t" in adata.obs.columns:
+        sc.pl.draw_graph(
+            adata,
+            color="t",
+            color_map=cmap,
+            add_outline=True,
+            size=size,
+            legend_fontsize=10,
+            legend_fontoutline=2,
+            show=True,
+            save="_pseudotime_t.png",
+        )
+    else:
+        print("Pseudotime column 't' was not found; skipping pseudotime plot.")
+
+    gene_sets = gene_sets or {}
+    for label, genes in gene_sets.items():
+        genes_found = [g for g in genes if g in adata.var_names]
+        genes_missing = [g for g in genes if g not in adata.var_names]
+
+        if genes_missing:
+            print(f"{label}: genes not found and skipped: {genes_missing}")
+        if not genes_found:
+            print(f"{label}: no valid genes to plot.")
+            continue
+
+        sc.pl.draw_graph(
+            adata,
+            color=genes_found,
+            add_outline=True,
+            legend_fontsize=10,
+            legend_fontoutline=2,
+            size=size,
+            cmap=cmap,
+            title=label,
+            show=True,
+            save=f"_{label}_genes.png",
+        )
+
+    print("\nSTEP 28 COMPLETE: gene plots saved")
+
+
+# =============================================================================
+# _ensure_milestones_category
+# =============================================================================
+def _ensure_milestones_category(adata):
+    if "milestones" in adata.obs.columns:
+        if not pd.api.types.is_categorical_dtype(adata.obs["milestones"]):
+            adata.obs["milestones"] = adata.obs["milestones"].astype("category")
+
+
+# =============================================================================
+# review_available_branches
+# =============================================================================
+# Builds the scFates dendrogram, saves diagnostic plots, and writes a compact
+# branch table for choosing milestones in the next step. It does not rename or
+# reinterpret milestones.
+def review_available_branches(
+    adata,
+    annotation_col,
+    output_dir,
+    root_cluster=None,
+    show_plots=True,
+):
+    os.makedirs(output_dir, exist_ok=True)
+    sc.settings.figdir = output_dir
+
+    if annotation_col not in adata.obs.columns:
+        available = list(adata.obs.columns)
+        raise ValueError(
+            f"Annotation column '{annotation_col}' was not found. Available columns: {available}"
+        )
+
+    if "seg" not in adata.obs or "milestones" not in adata.obs:
+        raise ValueError(
+            "Step 29 needs the trajectory from Step 27. Run Step 27 first, then Step 29 again."
+        )
+    _ensure_milestones_category(adata)
+
+    # Diagnostic plots matching the old workflow.
+    sc.pl.draw_graph(
+        adata,
+        color              = ["milestones", "leiden"],
+        palette            = sns.color_palette("colorblind"),
+        add_outline        = True,
+        legend_fontsize    = 10,
+        legend_fontoutline = 2,
+        show               = show_plots,
+        save               = "_milestones_leiden.png",
+    )
+
+    scf.tl.dendrogram(adata)
+
+    scf.pl.dendrogram(
+        adata,
+        color              = "seg",
+        palette            = sns.color_palette("colorblind"),
+        legend_fontoutline = True,
+        legend_loc         = "on data",
+        show               = show_plots,
+        save               = "_seg.pdf",
+    )
+
+    scf.pl.dendrogram(
+        adata,
+        color              = "milestones",
+        palette            = sns.color_palette("colorblind"),
+        legend_fontoutline = True,
+        legend_loc         = "on data",
+        show               = show_plots,
+        save               = "_milestones.pdf",
+    )
+
+    # Compact branch table: one row per milestone, oriented to user decisions.
+    rows = []
+    root_milestone = None
+    if root_cluster is not None and "is_root" in adata.obs.columns:
+        root_cells = adata.obs_names[adata.obs["is_root"]]
+        if len(root_cells) > 0:
+            root_milestone = str(adata.obs.loc[root_cells[0], "milestones"])
+
+    for milestone in list(adata.obs["milestones"].cat.categories):
+        mask = adata.obs["milestones"] == milestone
+        cell_counts = adata.obs.loc[mask, annotation_col].value_counts()
+        leiden_counts = adata.obs.loc[mask, "leiden"].value_counts() if "leiden" in adata.obs.columns else pd.Series(dtype=int)
+        n_cells = int(mask.sum())
+        main_cell_type = str(cell_counts.index[0]) if len(cell_counts) else "NA"
+        main_percent = round(float(cell_counts.iloc[0] / n_cells * 100), 1) if n_cells else 0.0
+        note = "candidate endpoint"
+        if root_milestone is not None and str(milestone) == root_milestone:
+            note = "root-enriched; usually not endpoint"
+        elif n_cells < 30:
+            note = "small branch; review carefully"
+        elif main_percent < 50:
+            note = "mixed branch; review carefully"
+
+        rows.append({
+            "branch_id": str(milestone),
+            "n_cells": n_cells,
+            "main_cell_type": main_cell_type,
+            "main_cell_type_percent": main_percent,
+            "celltype_counts": "; ".join(f"{k}:{v}" for k, v in cell_counts.items()),
+            "leiden_counts": "; ".join(f"{k}:{v}" for k, v in leiden_counts.items()),
+            "note": note,
+        })
+
+    branch_table = pd.DataFrame(rows).sort_values(["note", "n_cells"], ascending=[True, False])
+    out_table = os.path.join(output_dir, "milestone_branches_for_step30.tsv")
+    branch_table.to_csv(out_table, sep="\t", index=False)
+
+    summarize_milestones_by_celltype(
+        adata          = adata,
+        annotation_col = annotation_col,
+        output_dir     = output_dir,
+        root_cluster   = root_cluster,
+    )
+
+    print("\nAvailable branches for Step 30:")
+    print(branch_table[["branch_id", "n_cells", "main_cell_type", "main_cell_type_percent", "note"]].to_string(index=False))
+    print(f"\nBranch table saved: {out_table}")
+    print("\nCopy branch_id values into Step 30, for example:")
+    print('MILESTONES_TO_ANALYZE = ["7", "34"]')
+
+    return adata, branch_table
+
+
+# =============================================================================
+# run_step28_dendrogram
+# =============================================================================
+# Backward-compatible wrapper for older notebooks that still call the previous
+# helper name. New notebooks should call review_available_branches in Step 29.
+def run_step28_dendrogram(
+    adata,
+    annotation_col,
+    output_dir,
+    root_cluster=None,
+):
+    """Backward-compatible wrapper for the old notebook name."""
+    adata, _branch_table = review_available_branches(
+        adata          = adata,
+        annotation_col = annotation_col,
+        output_dir     = output_dir,
+        root_cluster   = root_cluster,
+        show_plots     = True,
+    )
+    return adata
+
+
+# =============================================================================
+# resolve_milestone_value
+# =============================================================================
+def resolve_milestone_value(adata, value):
+    _ensure_milestones_category(adata)
+    categories = list(adata.obs["milestones"].cat.categories)
+    for category in categories:
+        if str(category) == str(value):
+            return category
+    available = [str(x) for x in categories]
+    raise ValueError(f"milestone {value!r} not found. Available: {available}")
+
+
+# =============================================================================
 # run_milestone_analysis
 # =============================================================================
 # For a single branch endpoint (milestone): subsets the tree, tests which genes
@@ -223,16 +656,20 @@ def run_milestone_analysis(
 ):
     os.makedirs(output_dir, exist_ok=True)
 
-    # Auto-detect root milestone from the root cell if the name is not found
-    all_milestones = list(adata.obs["milestones"].cat.categories)
-    if root_milestone not in all_milestones:
+    try:
+        root_milestone = resolve_milestone_value(adata, root_milestone)
+    except ValueError:
         if "is_root" in adata.obs.columns:
             root_cells = adata.obs_names[adata.obs["is_root"]]
             if len(root_cells) > 0:
-                root_milestone = str(adata.obs.loc[root_cells[0], "milestones"])
+                root_milestone = adata.obs.loc[root_cells[0], "milestones"]
                 print(f"Root milestone auto-detected: '{root_milestone}'")
-        if root_milestone not in all_milestones:
-            raise ValueError(f"root_milestone '{root_milestone}' not found. Available: {all_milestones}")
+            else:
+                raise
+        else:
+            raise
+
+    milestone = resolve_milestone_value(adata, milestone)
 
     print(f"\n{'='*50}\nProcessing milestone: {milestone}\n{'='*50}")
 
@@ -375,7 +812,8 @@ def compute_module_score(adata, gene_list, prefix):
 # rename_milestones_by_celltype
 # =============================================================================
 # Renames scFates milestone IDs (numbers) to the dominant cell type at each
-# branch endpoint. Called automatically after build_dendrogram in Section 28.
+# branch endpoint. Kept for optional cosmetic renaming; it is not called
+# automatically by the current notebook.
 def rename_milestones_by_celltype(adata, annotation_col, priority_celltypes=None):
     categories = list(adata.obs["milestones"].cat.categories)
     priority_celltypes = priority_celltypes or []
