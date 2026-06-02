@@ -104,6 +104,9 @@ RUN R -e "remotes::install_github('cole-trapnell-lab/monocle3')"
 # ── Bioconductor: WGCNA dependencies ─────────────────────────────────────────
 RUN R -e "BiocManager::install(c('impute', 'preprocessCore'), ask = FALSE, update = FALSE)"
 
+# ── WGCNA (requires impute + preprocessCore above) ────────────────────────────
+RUN R -e "install.packages('WGCNA')"
+
 WORKDIR /workspace
 
 CMD ["R"]
