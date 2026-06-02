@@ -58,7 +58,8 @@ RUN R -e "install.packages(c( \
     'reticulate', \
     'rmarkdown', 'xfun', 'htmltools', \
     'jsonlite', 'httr', 'xml2', \
-    'devtools', 'KernSmooth', 'fields', 'ROCR', 'R.utils' \
+    'devtools', 'KernSmooth', 'fields', 'ROCR', 'R.utils', \
+    'ggpubr', 'pheatmap', 'reshape2', 'dynamicTreeCut', 'WGCNA' \
 ))"
 
 # ── Bioconductor packages ──────────────────────────────────────────────────────
@@ -75,7 +76,10 @@ RUN R -e "BiocManager::install(c( \
     'zellkonverter', \
     'basilisk', \
     'GenomeInfoDb', 'Rsamtools', \
-    'BiocManager' \
+    'BiocManager', \
+    'clusterProfiler', \
+    'org.At.tair.db', \
+    'GENIE3' \
 ), ask = FALSE, update = FALSE)"
 
 # ── Seurat ecosystem ───────────────────────────────────────────────────────────
