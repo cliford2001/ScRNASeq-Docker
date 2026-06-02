@@ -966,8 +966,10 @@ annotate_by_reference <- function(seurat_obj,
 
   reference_obj <- NormalizeData(reference_obj, verbose = FALSE)
   reference_obj <- FindVariableFeatures(reference_obj, verbose = FALSE)
-  reference_obj <- ScaleData(reference_obj, verbose = FALSE)
-  reference_obj <- RunPCA(reference_obj, npcs = 30, verbose = FALSE)
+  shared_var_features <- intersect(VariableFeatures(reference_obj), rownames(seurat_obj))
+  VariableFeatures(reference_obj) <- shared_var_features
+  reference_obj <- ScaleData(reference_obj, features = shared_var_features, verbose = FALSE)
+  reference_obj <- RunPCA(reference_obj, features = shared_var_features, npcs = 30, verbose = FALSE)
 
   anchors <- FindTransferAnchors(
     reference = reference_obj,
