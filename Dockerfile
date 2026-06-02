@@ -8,9 +8,11 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     libgdal-dev libgeos-dev libproj-dev libsqlite3-dev libudunits2-dev \
     libhdf5-dev \
     libv8-dev \
-    libgit2-dev libssh2-1-dev cmake make git wget curl \
+    libgit2-dev libssh2-1-dev cmake make git wget curl patch \
     python3 python3-pip python3-venv \
     libglpk-dev libfftw3-dev libgsl-dev \
+    libssl-dev zlib1g-dev libbz2-dev libreadline-dev libsqlite3-dev \
+    libncursesw5-dev xz-utils tk-dev libffi-dev liblzma-dev \
     && rm -rf /var/lib/apt/lists/*
 
 # ── Python virtual environment + packages ─────────────────────────────────────
@@ -109,6 +111,9 @@ RUN R -e "install.packages('WGCNA')"
 
 # ── leidenbase (required for FindClusters algorithm=4) ────────────────────────
 RUN R -e "install.packages('leidenbase')"
+
+# ── Pre-cache basilisk Python environment for zellkonverter ──────────────────
+RUN R -e "library(SingleCellExperiment); sce <- SingleCellExperiment(); f <- tempfile(fileext='.h5ad'); zellkonverter::writeH5AD(sce, f); file.remove(f)"
 
 WORKDIR /workspace
 
