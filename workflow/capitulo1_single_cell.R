@@ -336,6 +336,10 @@ plot_marker_dotplot(
   width = 20, height = 10
 )
 
+save_pdf(DimPlot(pbmc_harmony, group.by = "celltype",
+                 label = TRUE, repel = TRUE, raster = FALSE),
+         "umap_annotation_biblio.pdf")
+
 # ── 8b. Reference-based annotation ────────────────────────────────────────────
 reference_obj <- readRDS(file.path(DATA_DIR, "metodologia/GSE273033_seuratObj_for_publication.rds"))
 pbmc_harmony <- annotate_by_reference(pbmc_harmony,
@@ -349,6 +353,11 @@ plot_marker_dotplot(
   outfile   = file.path(output_dir, "dotplot_marker_table_annotation_reference.pdf"),
   width = 20, height = 10
 )
+
+save_pdf(DimPlot(pbmc_harmony, group.by = "celltype_reference",
+                 label = TRUE, repel = TRUE, raster = FALSE),
+         "umap_annotation_reference.pdf")
+
 # Annotation stored in: pbmc_harmony$celltype_reference
 
 
