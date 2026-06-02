@@ -964,10 +964,15 @@ annotate_by_reference <- function(seurat_obj,
 
   cat("Using column:", reference_col, "\n")
 
+  shared_features <- intersect(rownames(reference_obj), rownames(seurat_obj))
+  cat("Shared features for transfer:", length(shared_features), "\n")
+
   anchors <- FindTransferAnchors(
-    reference = reference_obj,
-    query     = seurat_obj,
-    dims      = dims
+    reference            = reference_obj,
+    query                = seurat_obj,
+    dims                 = dims,
+    features             = shared_features,
+    normalization.method = "LogNormalize"
   )
 
   predictions <- TransferData(
