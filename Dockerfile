@@ -101,6 +101,9 @@ RUN R -e "install.packages('https://cran.r-project.org/src/contrib/Archive/grr/g
 RUN R -e "remotes::install_github('cole-trapnell-lab/monocle3')"
 
 
+# ── Bioconductor: WGCNA dependencies ─────────────────────────────────────────
+RUN R -e "BiocManager::install(c('impute', 'preprocessCore'), ask = FALSE, update = FALSE)"
+
 WORKDIR /workspace
 
 CMD ["R"]
