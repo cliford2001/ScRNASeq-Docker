@@ -100,11 +100,6 @@ RUN R -e "install.packages(c('Signac'))" && \
 RUN R -e "install.packages('https://cran.r-project.org/src/contrib/Archive/grr/grr_0.9.5.tar.gz', repos=NULL, type='source')"
 RUN R -e "remotes::install_github('cole-trapnell-lab/monocle3')"
 
-# ── CellRanger 10.0.0 ─────────────────────────────────────────────────────────
-COPY cellranger-9.0.1.tar.gz /opt/
-RUN tar -xzf /opt/cellranger-9.0.1.tar.gz -C /opt/ && \
-    rm /opt/cellranger-9.0.1.tar.gz
-ENV PATH="/opt/cellranger-9.0.1:$PATH"
 
 WORKDIR /workspace
 
