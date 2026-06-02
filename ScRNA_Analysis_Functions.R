@@ -964,6 +964,8 @@ annotate_by_reference <- function(seurat_obj,
 
   cat("Using column:", reference_col, "\n")
 
+  reference_obj <- UpdateSeuratObject(reference_obj)
+  reference_obj <- DietSeurat(reference_obj, layers = c("counts", "data"), dimreducs = NULL)
   reference_obj <- NormalizeData(reference_obj, verbose = FALSE)
   reference_obj <- FindVariableFeatures(reference_obj, verbose = FALSE)
   shared_var_features <- intersect(VariableFeatures(reference_obj), rownames(seurat_obj))
