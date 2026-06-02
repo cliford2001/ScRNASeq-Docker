@@ -113,7 +113,7 @@ RUN R -e "install.packages('WGCNA')"
 RUN R -e "install.packages('leidenbase')"
 
 # ── Pre-cache basilisk Python environment for zellkonverter ──────────────────
-RUN R -e "library(SingleCellExperiment); sce <- SingleCellExperiment(); f <- tempfile(fileext='.h5ad'); zellkonverter::writeH5AD(sce, f); file.remove(f)"
+RUN R -e "library(SingleCellExperiment); library(Matrix); m <- Matrix(matrix(1:6,2,3)); sce <- SingleCellExperiment(assays=list(counts=m)); f <- tempfile(fileext='.h5ad'); zellkonverter::writeH5AD(sce, f); file.remove(f)"
 
 WORKDIR /workspace
 
