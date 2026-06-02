@@ -107,6 +107,9 @@ RUN R -e "BiocManager::install(c('impute', 'preprocessCore'), ask = FALSE, updat
 # ── WGCNA (requires impute + preprocessCore above) ────────────────────────────
 RUN R -e "install.packages('WGCNA')"
 
+# ── leidenbase (required for FindClusters algorithm=4) ────────────────────────
+RUN R -e "install.packages('leidenbase')"
+
 WORKDIR /workspace
 
 CMD ["R"]
