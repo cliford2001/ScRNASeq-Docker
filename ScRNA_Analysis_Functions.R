@@ -969,20 +969,23 @@ annotate_by_reference <- function(seurat_obj,
   reference_obj <- NormalizeData(reference_obj, verbose = FALSE)
   reference_obj <- FindVariableFeatures(reference_obj, verbose = FALSE)
   shared_var_features <- intersect(VariableFeatures(reference_obj), rownames(seurat_obj))
+  cat("Shared variable features for transfer:", length(shared_var_features), "\n")
   VariableFeatures(reference_obj) <- shared_var_features
   reference_obj <- ScaleData(reference_obj, features = shared_var_features, verbose = FALSE)
-  reference_obj <- RunPCA(reference_obj, features = shared_var_features, npcs = 30, verbose = FALSE)
 
   anchors <- FindTransferAnchors(
     reference = reference_obj,
     query     = seurat_obj,
-    dims      = dims
+    dims      = dims,
+    reduction = "cca",
+    features  = shared_var_features
   )
 
   predictions <- TransferData(
-    anchorset = anchors,
-    refdata   = reference_obj@meta.data[[reference_col]],
-    dims      = dims
+    anchorset        = anchors,
+    refdata          = reference_obj@meta.data[[reference_col]],
+    dims             = dims,
+    weight.reduction = "cca"
   )
 
   seurat_obj$celltype_reference <- predictions$predicted.id
