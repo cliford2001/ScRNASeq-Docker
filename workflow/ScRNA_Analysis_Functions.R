@@ -3370,13 +3370,13 @@ run_hdwgcna <- function(seurat_obj,
       write.table(modules,   file.path(ct_dir, paste0("modules_",  ct_tag, ".tsv")), sep = "\t", quote = FALSE, row.names = FALSE)
       write.table(hub_genes, file.path(ct_dir, paste0("hubgenes_", ct_tag, ".tsv")), sep = "\t", quote = FALSE, row.names = FALSE)
 
-      me  <- hdWGCNA::GetMEs(obj, wgcna_name = ct_tag)
-      if (!is.null(me)) {
-        pdf(file.path(ct_dir, paste0("eigengenes_", ct_tag, ".pdf")), width = 10, height = 6)
-        pheatmap::pheatmap(t(me), main = paste("Module eigengenes —", gsub("_", " ", ct_tag)),
-                           fontsize = 9, cluster_cols = TRUE)
+      tryCatch({
+        plot_list <- hdWGCNA::ModuleFeaturePlot(obj, features = "hMEs",
+                                                order = TRUE, wgcna_name = ct_tag)
+        pdf(file.path(ct_dir, paste0("eigengenes_", ct_tag, ".pdf")), width = 12, height = 8)
+        patchwork::wrap_plots(plot_list, ncol = 4)
         dev.off()
-      }
+      }, error = function(e) message("  Eigengene plot skipped: ", conditionMessage(e)))
 
       n_mods <- length(unique(modules$module[modules$module != "grey"]))
       cat("  Modules found:", n_mods, "\n")
