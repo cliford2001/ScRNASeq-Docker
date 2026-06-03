@@ -3390,8 +3390,10 @@ run_hdwgcna <- function(seurat_obj,
       write.table(modules,   file.path(ct_dir, paste0("modules_",  ct_tag, ".tsv")), sep = "\t", quote = FALSE, row.names = FALSE)
       write.table(hub_genes, file.path(ct_dir, paste0("hubgenes_", ct_tag, ".tsv")), sep = "\t", quote = FALSE, row.names = FALSE)
 
-      # ── UMAP per module eigengene ─────────────────────────────────────────────
-      plot_list <- hdWGCNA::ModuleFeaturePlot(obj, features = "hMEs",
+      # ── UMAP per module eigengene — only cells of this cell type ─────────────
+      ct_cells <- colnames(seurat_obj)[seurat_obj@meta.data[[annot_col]] == ct]
+      obj_sub  <- subset(obj, cells = ct_cells)
+      plot_list <- hdWGCNA::ModuleFeaturePlot(obj_sub, features = "hMEs",
                                               order = TRUE, wgcna_name = ct_tag)
       plot_list <- lapply(plot_list, function(p)
         p + ggplot2::theme(axis.text  = ggplot2::element_blank(),
