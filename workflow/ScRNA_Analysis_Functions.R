@@ -3371,6 +3371,9 @@ run_hdwgcna <- function(seurat_obj,
 
       plot_list <- hdWGCNA::ModuleFeaturePlot(obj, features = "hMEs",
                                               order = TRUE, wgcna_name = ct_tag)
+      plot_list <- lapply(plot_list, function(p)
+        p + ggplot2::theme(axis.text  = ggplot2::element_blank(),
+                           axis.ticks = ggplot2::element_blank()))
       pdf(file.path(ct_dir, paste0("eigengenes_", ct_tag, ".pdf")), width = 12, height = 8)
       print(patchwork::wrap_plots(plot_list, ncol = 4))
       dev.off()
