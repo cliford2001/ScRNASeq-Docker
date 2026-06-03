@@ -3438,10 +3438,14 @@ plot_hdwgcna_network <- function(hdwgcna_dir,
       # Load TOM directly from disk (avoids GetTOM path issues)
       tom_file <- file.path(ct_dir, paste0(ct_tag, "_TOM.rda"))
       tom_env  <- new.env(); load(tom_file, envir = tom_env)
-      TOM      <- get(ls(tom_env)[1], envir = tom_env)
+      TOM      <- as.matrix(get(ls(tom_env)[1], envir = tom_env))
+      gene_names <- modules$gene_name
+      if (nrow(TOM) == length(gene_names)) {
+        rownames(TOM) <- colnames(TOM) <- gene_names
+      }
 
       # ── Edge list ──────────────────────────────────────────────────────────
-      tom_mat           <- as.matrix(TOM)
+      tom_mat           <- TOM
       tom_mat[lower.tri(tom_mat, diag = TRUE)] <- NA
       edges <- which(!is.na(tom_mat) & tom_mat >= tom_threshold, arr.ind = TRUE)
       edge_df <- data.frame(
@@ -3564,7 +3568,11 @@ filter_hdwgcna_by_de <- function(hdwgcna_dir,
       # Load TOM directly from disk (avoids GetTOM path issues)
       tom_file <- file.path(ct_dir, paste0(ct_tag, "_TOM.rda"))
       tom_env  <- new.env(); load(tom_file, envir = tom_env)
-      TOM      <- get(ls(tom_env)[1], envir = tom_env)
+      TOM      <- as.matrix(get(ls(tom_env)[1], envir = tom_env))
+      gene_names <- modules$gene_name
+      if (nrow(TOM) == length(gene_names)) {
+        rownames(TOM) <- colnames(TOM) <- gene_names
+      }
 
       kme_col <- grep("^kME", colnames(modules), value = TRUE)[1]
       node_df <- data.frame(
@@ -3582,7 +3590,7 @@ filter_hdwgcna_by_de <- function(hdwgcna_dir,
       de_in_tom <- intersect(node_df$gene, rownames(TOM))
       tom_sub   <- as.matrix(TOM)[de_in_tom, de_in_tom]
       tom_sub[lower.tri(tom_sub, diag = TRUE)] <- NA
-      edges     <- which(!is.na(tom_sub) & tom_sub > 0, arr.ind = TRUE)
+      edges     <- which(!is.na(tom_sub) & tom_sub >= tom_threshold, arr.ind = TRUE)
       edge_df   <- data.frame(
         source = rownames(tom_sub)[edges[, 1]],
         target = colnames(tom_sub)[edges[, 2]],
