@@ -3315,7 +3315,8 @@ run_hdwgcna <- function(seurat_obj,
     ct_dir      <- normalizePath(file.path(output_dir, ct_tag), mustWork = FALSE)
     ct_dir_rel  <- file.path("resultados/08_networks", ct_tag)   # relative — for hdWGCNA GetTOM
     rds_file    <- file.path(ct_dir, paste0("hdwgcna_", ct_tag, ".rds"))
-    tom_file    <- file.path(ct_dir, paste0(ct_tag, "_TOM.rda"))
+    tom_files   <- list.files(ct_dir, pattern = "_block\\..*\\.rda$", full.names = TRUE)
+    tom_file    <- if (length(tom_files) > 0) tom_files[1] else file.path(ct_dir, paste0(ct_tag, "_TOM.rda"))
 
     if (file.exists(rds_file)) {
       cat("\n── hdWGCNA:", ct, "— already done, skipping\n")
@@ -3355,7 +3356,8 @@ run_hdwgcna <- function(seurat_obj,
 
       ct_dir  <- file.path(output_dir, ct_tag)
       dir.create(ct_dir, showWarnings = FALSE)
-      tom_file <- file.path(ct_dir, paste0(ct_tag, "_TOM.rda"))
+      tom_files <- list.files(ct_dir, pattern = "_block\\..*\\.rda$", full.names = TRUE)
+      tom_file  <- if (length(tom_files) > 0) tom_files[1] else file.path(ct_dir, paste0(ct_tag, "_TOM.rda"))
 
       obj <- hdWGCNA::ConstructNetwork(obj, soft_power  = sp,
                                        networkType = "signed hybrid",
@@ -3443,7 +3445,8 @@ plot_hdwgcna_network <- function(hdwgcna_dir,
       hubs    <- hdWGCNA::GetHubGenes(obj, n_hubs = n_hub_label, wgcna_name = wn)
 
       # Load TOM directly from disk (avoids GetTOM path issues)
-      tom_file <- file.path(ct_dir, paste0(ct_tag, "_TOM.rda"))
+      tom_files <- list.files(ct_dir, pattern = "_block\\..*\\.rda$", full.names = TRUE)
+      tom_file  <- if (length(tom_files) > 0) tom_files[1] else file.path(ct_dir, paste0(ct_tag, "_TOM.rda"))
       tom_env  <- new.env(); load(tom_file, envir = tom_env)
       TOM      <- as.matrix(get(ls(tom_env)[1], envir = tom_env))
       gene_names <- modules$gene_name
@@ -3583,7 +3586,8 @@ filter_hdwgcna_by_de <- function(hdwgcna_dir,
       hubs    <- hdWGCNA::GetHubGenes(obj, n_hubs = n_hub_label, wgcna_name = wn)
 
       # Load TOM directly from disk (avoids GetTOM path issues)
-      tom_file <- file.path(ct_dir, paste0(ct_tag, "_TOM.rda"))
+      tom_files <- list.files(ct_dir, pattern = "_block\\..*\\.rda$", full.names = TRUE)
+      tom_file  <- if (length(tom_files) > 0) tom_files[1] else file.path(ct_dir, paste0(ct_tag, "_TOM.rda"))
       tom_env  <- new.env(); load(tom_file, envir = tom_env)
       TOM      <- as.matrix(get(ls(tom_env)[1], envir = tom_env))
       gene_names <- modules$gene_name
