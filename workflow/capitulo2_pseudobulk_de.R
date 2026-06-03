@@ -258,5 +258,33 @@ run_hdwgcna(
 message("\n✓ SECTION 21 COMPLETE: hdWGCNA co-expression networks saved")
 
 
+# =============================================================================
+# SECTION 22 — NETWORK EXPORT & VISUALIZATION
+# =============================================================================
+# Reads the hdWGCNA objects saved by Section 21 and for each cell type:
+#   • Exports edges (source, target, weight) and nodes (gene, module, kME)
+#   • Plots a co-expression network PDF coloured by module, sized by kME
+#
+# ┌─ PARAMETERS ────────────────────────────────────────────────────────────────
+#   tom_threshold      : minimum TOM weight to include an edge (lower = more edges)
+#                        start at 0.1 and raise if the network is too dense
+#   cell_types_network : NULL = all; or c("Guard Cell", "Mesophyll")
+#   n_hub_label        : number of top hub genes to label in the plot
+# └─────────────────────────────────────────────────────────────────────────────
+tom_threshold      <- 0.1
+cell_types_network <- NULL
+n_hub_label        <- 5
+
+plot_hdwgcna_network(
+  hdwgcna_dir   = dir_08,
+  output_dir    = dir_08,
+  tom_threshold = tom_threshold,
+  cell_types    = cell_types_network,
+  n_hub_label   = n_hub_label
+)
+
+message("\n✓ SECTION 22 COMPLETE: Network files and plots saved")
+
+
 
 

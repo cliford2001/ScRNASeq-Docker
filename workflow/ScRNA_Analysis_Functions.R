@@ -3358,6 +3358,9 @@ run_hdwgcna <- function(seurat_obj,
 
       n_mods <- length(unique(modules$module[modules$module != "grey"]))
       cat("  Modules found:", n_mods, "\n")
+
+      saveRDS(obj, file.path(ct_dir, paste0("hdwgcna_", ct_tag, ".rds")))
+
       results[[ct]] <- list(modules = modules, hub_genes = hub_genes)
 
     }, error = function(e) {
@@ -3366,6 +3369,114 @@ run_hdwgcna <- function(seurat_obj,
   }
 
   invisible(results)
+}
+
+
+# =============================================================================
+# plot_hdwgcna_network
+# =============================================================================
+# Reads hdWGCNA RDS objects saved by run_hdwgcna(), extracts the TOM matrix,
+# and for each cell type saves:
+#   edges_{ct}.tsv  — source, target, weight (filtered by tom_threshold)
+#   nodes_{ct}.tsv  — gene, module, kME, is_hub
+#   network_{ct}.pdf — co-expression network coloured by module, sized by kME
+#
+# Parameters:
+#   hdwgcna_dir   — directory containing cell-type subfolders (= dir_08)
+#   output_dir    — where to save outputs (same as hdwgcna_dir by default)
+#   tom_threshold — minimum TOM weight to include an edge (default 0.1)
+#   cell_types    — NULL = all; or character vector of specific cell types
+#   n_hub_label   — top N hub genes to label in the plot (default 5)
+plot_hdwgcna_network <- function(hdwgcna_dir,
+                                  output_dir    = hdwgcna_dir,
+                                  tom_threshold = 0.1,
+                                  cell_types    = NULL,
+                                  n_hub_label   = 5) {
+
+  rds_files <- list.files(hdwgcna_dir, pattern = "^hdwgcna_.*\\.rds$",
+                           full.names = TRUE, recursive = TRUE)
+
+  if (!is.null(cell_types)) {
+    ct_tags   <- gsub("[^A-Za-z0-9_]", "_", cell_types)
+    rds_files <- rds_files[grepl(paste(ct_tags, collapse = "|"), basename(rds_files))]
+  }
+
+  if (length(rds_files) == 0) { message("No hdWGCNA RDS files found."); return(invisible(NULL)) }
+
+  for (rds_path in rds_files) {
+    ct_tag <- sub("^hdwgcna_", "", tools::file_path_sans_ext(basename(rds_path)))
+    ct_dir <- dirname(rds_path)
+    cat("\n── Network:", ct_tag, "──\n")
+
+    tryCatch({
+      obj     <- readRDS(rds_path)
+      wn      <- ct_tag
+      modules <- hdWGCNA::GetModules(obj, wgcna_name = wn)
+      hubs    <- hdWGCNA::GetHubGenes(obj, n_hubs = n_hub_label, wgcna_name = wn)
+      TOM     <- hdWGCNA::GetTOM(obj, wgcna_name = wn)
+
+      # ── Edge list ──────────────────────────────────────────────────────────
+      tom_mat           <- as.matrix(TOM)
+      tom_mat[lower.tri(tom_mat, diag = TRUE)] <- NA
+      edges <- which(!is.na(tom_mat) & tom_mat >= tom_threshold, arr.ind = TRUE)
+      edge_df <- data.frame(
+        source = rownames(tom_mat)[edges[, 1]],
+        target = colnames(tom_mat)[edges[, 2]],
+        weight = tom_mat[edges]
+      )
+      write.table(edge_df, file.path(ct_dir, paste0("edges_", ct_tag, ".tsv")),
+                  sep = "\t", quote = FALSE, row.names = FALSE)
+      cat("  Edges:", nrow(edge_df), "\n")
+
+      # ── Node list ──────────────────────────────────────────────────────────
+      kme_col  <- grep("^kME", colnames(modules), value = TRUE)[1]
+      node_df  <- data.frame(
+        gene   = modules$gene_name,
+        module = modules$module,
+        kME    = if (!is.na(kme_col)) modules[[kme_col]] else NA,
+        is_hub = modules$gene_name %in% hubs$gene_name
+      )
+      write.table(node_df, file.path(ct_dir, paste0("nodes_", ct_tag, ".tsv")),
+                  sep = "\t", quote = FALSE, row.names = FALSE)
+
+      # ── Plot ───────────────────────────────────────────────────────────────
+      if (nrow(edge_df) > 0 && nrow(edge_df) <= 50000) {
+        g      <- igraph::graph_from_data_frame(edge_df, directed = FALSE, vertices = node_df)
+        mods   <- unique(node_df$module)
+        pal    <- setNames(
+          colorRampPalette(RColorBrewer::brewer.pal(min(length(mods), 12), "Set3"))(length(mods)),
+          mods
+        )
+        node_df$color <- pal[node_df$module]
+        igraph::V(g)$color  <- node_df$color[match(igraph::V(g)$name, node_df$gene)]
+        igraph::V(g)$size   <- scales::rescale(node_df$kME, to = c(2, 8))[match(igraph::V(g)$name, node_df$gene)]
+        igraph::V(g)$label  <- ifelse(node_df$is_hub[match(igraph::V(g)$name, node_df$gene)], igraph::V(g)$name, NA)
+        igraph::E(g)$weight <- edge_df$weight
+
+        pdf(file.path(ct_dir, paste0("network_", ct_tag, ".pdf")), width = 12, height = 12)
+        plot(g,
+             layout          = igraph::layout_with_fr(g),
+             vertex.color    = igraph::V(g)$color,
+             vertex.size     = igraph::V(g)$size,
+             vertex.label    = igraph::V(g)$label,
+             vertex.label.cex = 0.6,
+             vertex.frame.color = NA,
+             edge.width      = scales::rescale(igraph::E(g)$weight, to = c(0.2, 2)),
+             edge.color      = adjustcolor("grey60", 0.4),
+             main            = paste("Co-expression network —", gsub("_", " ", ct_tag)))
+        legend("topright", legend = mods, fill = pal[mods], title = "Module", cex = 0.7, bty = "n")
+        dev.off()
+        cat("  Network PDF saved\n")
+      } else {
+        cat("  Skipped plot (", nrow(edge_df), "edges — adjust tom_threshold)\n")
+      }
+
+    }, error = function(e) {
+      message("  Skipped (", ct_tag, "): ", conditionMessage(e))
+    })
+  }
+
+  invisible(NULL)
 }
 
 
