@@ -117,7 +117,7 @@ RUN R -e "install.packages('leidenbase')"
 RUN R -e "BiocManager::install('anndataR', ask = FALSE, update = FALSE)"
 
 # ── hdWGCNA: single-cell co-expression network analysis ──────────────────────
-RUN R -e "remotes::install_github('smorabit/hdWGCNA', ref='WGCNA_Seurat5')"
+RUN R -e "remotes::install_github('smorabit/hdWGCNA', ref='dev')"
 
 WORKDIR /workspace
 
