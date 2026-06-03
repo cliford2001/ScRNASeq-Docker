@@ -3259,9 +3259,7 @@ build_logfc_heatmap <- function(logfc_table,
     cluster_columns = FALSE,
 
     show_row_names    = FALSE,
-    show_column_names = TRUE,
-    column_names_gp   = grid::gpar(fontsize = 14, fontface = "bold"),
-    column_names_rot  = 45,
+    show_column_names = FALSE,
 
     column_title    = sprintf("log2FC — %s  (%d genes)", contrast_tag, nrow(mat)),
     column_title_gp = gpar(fontsize = 15, fontface = "bold"),
@@ -3425,6 +3423,9 @@ plot_hdwgcna_network <- function(hdwgcna_dir,
 
   if (length(rds_files) == 0) { message("No hdWGCNA RDS files found."); return(invisible(NULL)) }
 
+  net_dir <- file.path(output_dir, "networks")
+  dir.create(net_dir, showWarnings = FALSE)
+
   for (rds_path in rds_files) {
     ct_tag <- sub("^hdwgcna_", "", tools::file_path_sans_ext(basename(rds_path)))
     ct_dir <- dirname(rds_path)
@@ -3489,7 +3490,7 @@ plot_hdwgcna_network <- function(hdwgcna_dir,
         igraph::V(g)$label  <- ifelse(node_df$is_hub[match(igraph::V(g)$name, node_df$gene)], igraph::V(g)$name, NA)
         igraph::E(g)$weight <- edge_df$weight
 
-        pdf(file.path(ct_dir, paste0("network_", ct_tag, ".pdf")), width = 12, height = 12)
+        pdf(file.path(net_dir, paste0("network_", ct_tag, ".pdf")), width = 12, height = 12)
         plot(g,
              layout          = igraph::layout_with_fr(g),
              vertex.color    = igraph::V(g)$color,
@@ -3545,6 +3546,9 @@ filter_hdwgcna_by_de <- function(hdwgcna_dir,
                            full.names = TRUE, recursive = TRUE)
 
   if (length(rds_files) == 0) { message("No hdWGCNA RDS files found."); return(invisible(NULL)) }
+
+  net_dir <- file.path(output_dir, "networks")
+  dir.create(net_dir, showWarnings = FALSE)
 
   for (rds_path in rds_files) {
     ct_tag <- sub("^hdwgcna_", "", tools::file_path_sans_ext(basename(rds_path)))
@@ -3625,7 +3629,7 @@ filter_hdwgcna_by_de <- function(hdwgcna_dir,
         igraph::V(g)$name, NA)
       igraph::E(g)$weight <- edge_df$weight
 
-      pdf(file.path(ct_dir, paste0("network_DE_", ct_tag, ".pdf")), width = 12, height = 12)
+      pdf(file.path(net_dir, paste0("network_DE_", ct_tag, ".pdf")), width = 12, height = 12)
       plot(g,
            layout             = igraph::layout_with_fr(g),
            vertex.color       = igraph::V(g)$color,
