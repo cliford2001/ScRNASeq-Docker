@@ -770,12 +770,16 @@ export_to_scanpy <- function(seurat_obj,
   if (file.exists(outfile) && overwrite) file.remove(outfile)
 
   ok <- FALSE
-  if (requireNamespace("zellkonverter", quietly = TRUE)) {
+  if (requireNamespace("anndataR", quietly = TRUE)) {
+    message("Writing h5ad with anndataR (native R)...")
+    anndataR::writeH5AD(sce, path = outfile)
+    ok <- TRUE
+  } else if (requireNamespace("zellkonverter", quietly = TRUE)) {
     message("Writing h5ad with zellkonverter...")
     zellkonverter::writeH5AD(sce, file = outfile, X_name = X_name)
     ok <- TRUE
   } else if (requireNamespace("SeuratDisk", quietly = TRUE)) {
-    message("Using SeuratDisk (zellkonverter not available)...")
+    message("Using SeuratDisk fallback...")
     tmp_h5seu <- file.path(tempdir(), paste0(basename(outfile), ".h5seurat"))
     if (file.exists(tmp_h5seu)) file.remove(tmp_h5seu)
     SeuratDisk::SaveH5Seurat(seurat_obj, filename = tmp_h5seu, overwrite = TRUE)
@@ -785,7 +789,7 @@ export_to_scanpy <- function(seurat_obj,
     file.rename(gen_h5ad, outfile)
     ok <- TRUE
   } else {
-    stop("Install 'zellkonverter' or 'SeuratDisk' to export h5ad.")
+    stop("Install 'anndataR' to export h5ad: BiocManager::install('anndataR')")
   }
 
   if (!ok || !file.exists(outfile)) stop("Export failed: ", outfile)

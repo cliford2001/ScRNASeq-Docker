@@ -112,8 +112,8 @@ RUN R -e "install.packages('WGCNA')"
 # ── leidenbase (required for FindClusters algorithm=4) ────────────────────────
 RUN R -e "install.packages('leidenbase')"
 
-# ── Pre-cache basilisk Python environment for zellkonverter ──────────────────
-RUN R -e "library(SingleCellExperiment); library(Matrix); m <- Matrix(matrix(1:6,2,3)); sce <- SingleCellExperiment(assays=list(counts=m)); f <- tempfile(fileext='.h5ad'); zellkonverter::writeH5AD(sce, f); file.remove(f)"
+# ── anndataR: native R h5ad export (no Python/basilisk needed) ───────────────
+RUN R -e "BiocManager::install('anndataR', ask = FALSE, update = FALSE)"
 
 WORKDIR /workspace
 
