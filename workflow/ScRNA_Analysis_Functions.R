@@ -3492,7 +3492,7 @@ plot_hdwgcna_network <- function(hdwgcna_dir,
 
   if (length(rds_files) == 0) { message("No hdWGCNA RDS files found."); return(invisible(NULL)) }
 
-  net_dir <- file.path(output_dir, "networks")
+  net_dir <- file.path(output_dir, "network_wgcna")
   dir.create(net_dir, showWarnings = FALSE)
 
   for (rds_path in rds_files) {
@@ -3546,32 +3546,43 @@ plot_hdwgcna_network <- function(hdwgcna_dir,
       write.table(node_df, file.path(ct_dir, paste0("nodes_", ct_tag, ".tsv")),
                   sep = "\t", quote = FALSE, row.names = FALSE)
 
-      # ── Plot ───────────────────────────────────────────────────────────────
+      # ── Plot (ggraph) ──────────────────────────────────────────────────────
       if (nrow(edge_df) > 0) {
-        g      <- igraph::graph_from_data_frame(edge_df, directed = FALSE, vertices = node_df)
-        mods   <- unique(node_df$module)
-        pal    <- setNames(
-          colorRampPalette(RColorBrewer::brewer.pal(min(length(mods), 12), "Set3"))(length(mods)),
-          mods
-        )
-        node_df$color <- pal[node_df$module]
-        igraph::V(g)$color  <- node_df$color[match(igraph::V(g)$name, node_df$gene)]
-        igraph::V(g)$size   <- scales::rescale(node_df$kME, to = c(2, 8))[match(igraph::V(g)$name, node_df$gene)]
-        igraph::V(g)$label  <- ifelse(node_df$is_hub[match(igraph::V(g)$name, node_df$gene)], igraph::V(g)$name, NA)
-        igraph::E(g)$weight <- edge_df$weight
+        g       <- igraph::graph_from_data_frame(edge_df, directed = FALSE, vertices = node_df)
+        mods    <- sort(unique(node_df$module))
+        # WGCNA module names ARE colors — use directly, fallback to Set3 for non-color names
+        is_color <- function(x) tryCatch({ col2rgb(x); TRUE }, error=function(e) FALSE)
+        pal <- setNames(
+          ifelse(sapply(mods, is_color), mods,
+                 colorRampPalette(RColorBrewer::brewer.pal(min(length(mods),9),"Set1"))(length(mods))),
+          mods)
 
-        pdf(file.path(net_dir, paste0("network_", ct_tag, ".pdf")), width = 12, height = 12)
-        plot(g,
-             layout          = igraph::layout_with_fr(g),
-             vertex.color    = igraph::V(g)$color,
-             vertex.size     = igraph::V(g)$size,
-             vertex.label    = igraph::V(g)$label,
-             vertex.label.cex = 0.6,
-             vertex.frame.color = NA,
-             edge.width      = scales::rescale(igraph::E(g)$weight, to = c(0.2, 2)),
-             edge.color      = adjustcolor("grey60", 0.4),
-             main            = paste("Co-expression network —", gsub("_", " ", ct_tag)))
-        legend("topright", legend = mods, fill = pal[mods], title = "Module", cex = 0.7, bty = "n")
+        vdata <- node_df[match(igraph::V(g)$name, node_df$gene), ]
+
+        p <- ggraph::ggraph(g, layout = "graphopt") +
+          ggraph::geom_edge_link(ggplot2::aes(alpha = weight, width = weight),
+                                  color = "grey70", show.legend = FALSE) +
+          ggraph::scale_edge_width(range = c(0.1, 1.2)) +
+          ggraph::scale_edge_alpha(range = c(0.05, 0.4)) +
+          ggraph::geom_node_point(ggplot2::aes(size = vdata$kME,
+                                               color = vdata$module)) +
+          ggplot2::scale_color_manual(values = pal, name = "Module") +
+          ggplot2::scale_size(range = c(1.5, 6), name = "kME") +
+          ggraph::geom_node_label(
+            ggplot2::aes(label = ifelse(vdata$is_hub, igraph::V(g)$name, NA)),
+            size = 2.5, repel = TRUE, max.overlaps = 20,
+            label.padding = ggplot2::unit(0.1, "lines"),
+            label.size = 0.2, fill = "white", alpha = 0.85) +
+          ggplot2::labs(title = paste("Co-expression network —", gsub("_", " ", ct_tag)),
+                        subtitle = paste(nrow(edge_df), "edges |", nrow(node_df), "genes")) +
+          ggplot2::theme_void() +
+          ggplot2::theme(
+            plot.title    = ggplot2::element_text(face="bold", size=14, hjust=0.5),
+            plot.subtitle = ggplot2::element_text(size=9, hjust=0.5, color="grey50"),
+            legend.position = "right")
+
+        pdf(file.path(net_dir, paste0("network_", ct_tag, ".pdf")), width = 14, height = 12)
+        print(p)
         dev.off()
         cat("  Network PDF saved\n")
       } else {
@@ -3617,7 +3628,7 @@ filter_hdwgcna_by_de <- function(hdwgcna_dir,
 
   if (length(rds_files) == 0) { message("No hdWGCNA RDS files found."); return(invisible(NULL)) }
 
-  net_dir <- file.path(output_dir, "networks")
+  net_dir <- file.path(output_dir, "network_wgcna")
   dir.create(net_dir, showWarnings = FALSE)
 
   for (rds_path in rds_files) {
@@ -3686,33 +3697,43 @@ filter_hdwgcna_by_de <- function(hdwgcna_dir,
                   sep = "\t", quote = FALSE, row.names = FALSE)
       cat("  DE edges:", nrow(edge_df), "| DE nodes:", nrow(node_df), "\n")
 
-      g    <- igraph::graph_from_data_frame(edge_df, directed = FALSE, vertices = node_df)
-      mods <- unique(node_df$module)
-      pal  <- setNames(
-        colorRampPalette(RColorBrewer::brewer.pal(min(length(mods), 12), "Set3"))(length(mods)),
-        mods
-      )
-      vdata              <- node_df[match(igraph::V(g)$name, node_df$gene), ]
-      igraph::V(g)$color <- pal[vdata$module]
-      igraph::V(g)$size  <- scales::rescale(abs(vdata$log2FC), to = c(3, 12))
-      igraph::V(g)$label <- ifelse(
-        vdata$is_hub | abs(vdata$log2FC) >= quantile(abs(vdata$log2FC), 0.85, na.rm = TRUE),
-        igraph::V(g)$name, NA)
-      igraph::E(g)$weight <- edge_df$weight
+      g     <- igraph::graph_from_data_frame(edge_df, directed = FALSE, vertices = node_df)
+      mods  <- sort(unique(node_df$module))
+      is_color <- function(x) tryCatch({ col2rgb(x); TRUE }, error=function(e) FALSE)
+      pal <- setNames(
+        ifelse(sapply(mods, is_color), mods,
+               colorRampPalette(RColorBrewer::brewer.pal(min(length(mods),9),"Set1"))(length(mods))),
+        mods)
+      vdata <- node_df[match(igraph::V(g)$name, node_df$gene), ]
+      lfc_q <- quantile(abs(vdata$log2FC), 0.85, na.rm=TRUE)
 
-      pdf(file.path(net_dir, paste0("network_DE_", ct_tag, ".pdf")), width = 12, height = 12)
-      plot(g,
-           layout             = igraph::layout_with_fr(g),
-           vertex.color       = igraph::V(g)$color,
-           vertex.size        = igraph::V(g)$size,
-           vertex.label       = igraph::V(g)$label,
-           vertex.label.cex   = 0.65,
-           vertex.frame.color = NA,
-           edge.width         = scales::rescale(igraph::E(g)$weight, to = c(0.3, 2.5)),
-           edge.color         = adjustcolor("grey50", 0.4),
-           main               = paste("DE co-expression network —", gsub("_", " ", ct_tag),
-                                      "\n(padj <", padj_cut, "| |log2FC| >=", lfc_cut, ")"))
-      legend("topright", legend = mods, fill = pal[mods], title = "Module", cex = 0.7, bty = "n")
+      p <- ggraph::ggraph(g, layout = "graphopt") +
+        ggraph::geom_edge_link(ggplot2::aes(alpha = weight, width = weight),
+                                color = "grey70", show.legend = FALSE) +
+        ggraph::scale_edge_width(range = c(0.1, 1.5)) +
+        ggraph::scale_edge_alpha(range = c(0.05, 0.4)) +
+        ggraph::geom_node_point(ggplot2::aes(size  = abs(vdata$log2FC),
+                                             color = vdata$module)) +
+        ggplot2::scale_color_manual(values = pal, name = "Module") +
+        ggplot2::scale_size(range = c(1.5, 7), name = "|log2FC|") +
+        ggraph::geom_node_label(
+          ggplot2::aes(label = ifelse(vdata$is_hub | abs(vdata$log2FC) >= lfc_q,
+                                      igraph::V(g)$name, NA)),
+          size = 2.5, repel = TRUE, max.overlaps = 20,
+          label.padding = ggplot2::unit(0.1,"lines"),
+          label.size = 0.2, fill = "white", alpha = 0.85) +
+        ggplot2::labs(
+          title    = paste("DE co-expression network —", gsub("_"," ",ct_tag)),
+          subtitle = paste0(nrow(edge_df), " edges | ", nrow(node_df),
+                            " DE genes | padj<", padj_cut, " | |log2FC|>=", lfc_cut)) +
+        ggplot2::theme_void() +
+        ggplot2::theme(
+          plot.title    = ggplot2::element_text(face="bold", size=14, hjust=0.5),
+          plot.subtitle = ggplot2::element_text(size=9, hjust=0.5, color="grey50"),
+          legend.position = "right")
+
+      pdf(file.path(net_dir, paste0("network_DE_", ct_tag, ".pdf")), width=14, height=12)
+      print(p)
       dev.off()
       cat("  DE network PDF saved\n")
 
