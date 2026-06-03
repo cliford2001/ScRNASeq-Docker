@@ -3312,7 +3312,7 @@ run_hdwgcna <- function(seurat_obj,
 
   for (ct in all_types) {
     ct_tag   <- gsub("[^A-Za-z0-9_]", "_", ct)
-    ct_dir   <- file.path(output_dir, ct_tag)
+    ct_dir   <- normalizePath(file.path(output_dir, ct_tag), mustWork = FALSE)
     rds_file <- file.path(ct_dir, paste0("hdwgcna_", ct_tag, ".rds"))
     tom_file <- file.path(ct_dir, paste0(ct_tag, "_TOM.rda"))
 
