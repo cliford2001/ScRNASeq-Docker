@@ -3366,19 +3366,33 @@ run_hdwgcna <- function(seurat_obj,
                                        wgcna_name  = ct_tag)
       obj <- hdWGCNA::ModuleEigengenes(obj, wgcna_name = ct_tag)
 
-      # ── Merge modules until <= max_modules ────────────────────────────────
-      n_mods_cur <- length(unique(hdWGCNA::GetModules(obj, wgcna_name=ct_tag)$module)) - 1  # exclude grey
+      # ── Merge modules until <= max_modules (via ME correlation) ──────────
+      mods_tbl  <- hdWGCNA::GetModules(obj, wgcna_name = ct_tag)
+      mod_names <- unique(mods_tbl$module[mods_tbl$module != "grey"])
+      n_mods_cur <- length(mod_names)
+
       if (n_mods_cur > max_modules) {
         cat("  Merging", n_mods_cur, "modules down to <=", max_modules, "...\n")
-        cut_h <- 0.1
-        while (n_mods_cur > max_modules && cut_h <= 0.9) {
-          cut_h <- cut_h + 0.05
-          obj <- hdWGCNA::MergeCloseModules(obj, cutHeight = cut_h,
-                                             wgcna_name = ct_tag, verbose = 0)
-          obj <- hdWGCNA::ModuleEigengenes(obj, wgcna_name = ct_tag)
-          n_mods_cur <- length(unique(hdWGCNA::GetModules(obj, wgcna_name=ct_tag)$module)) - 1
+        MEs    <- hdWGCNA::GetMEs(obj, harmonized=FALSE, wgcna_name=ct_tag)
+        me_mat <- MEs[, paste0("ME", mod_names), drop=FALSE]
+
+        while (ncol(me_mat) > max_modules) {
+          cor_mat <- cor(me_mat)
+          diag(cor_mat) <- NA
+          idx  <- which(cor_mat == max(cor_mat, na.rm=TRUE), arr.ind=TRUE)[1,]
+          m1   <- gsub("^ME","", colnames(me_mat)[idx[1]])
+          m2   <- gsub("^ME","", colnames(me_mat)[idx[2]])
+          keep <- if (sum(mods_tbl$module==m1) >= sum(mods_tbl$module==m2)) m1 else m2
+          drop <- if (keep == m1) m2 else m1
+          mods_tbl$module[mods_tbl$module == drop] <- keep
+          me_mat <- me_mat[, colnames(me_mat) != paste0("ME",drop), drop=FALSE]
         }
-        cat("  Final modules:", n_mods_cur, "(cutHeight:", round(cut_h,2), ")\n")
+
+        # Update module assignments in object metadata
+        obj@meta.data[[paste0("module_",ct_tag)]] <-
+          mods_tbl$module[match(colnames(obj), mods_tbl$cell_name)]
+
+        cat("  Final modules:", ncol(me_mat), "\n")
       }
 
       obj <- hdWGCNA::ModuleConnectivity(obj, group.by = annot_col,
