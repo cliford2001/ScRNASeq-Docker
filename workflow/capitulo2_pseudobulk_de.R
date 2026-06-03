@@ -7,7 +7,7 @@
 # =============================================================================
 
 # ── Configuration (must match capitulo1_single_cell.R) ───────────────────────────────
-PIPELINE_DIR <- "~/projects2/eleo/ScRNA/metodologia/ScRNASeq-Docker/"
+PIPELINE_DIR <- "~/projects2/eleo/ScRNA/metodologia/ScRNASeq-Docker/workflow/"
 DATA_DIR     <- "~/projects2/eleo/ScRNA/"
 base_dir     <- file.path(DATA_DIR, "metodologia/resultados")
 

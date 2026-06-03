@@ -40,7 +40,7 @@
 
 # Directory containing the pipeline helper scripts.
 # Inside the Docker container this is typically /workspace/ScRNASeq-Docker
-PIPELINE_DIR <- "~/projects2/eleo/ScRNA/metodologia/ScRNASeq-Docker/"
+PIPELINE_DIR <- "~/projects2/eleo/ScRNA/metodologia/ScRNASeq-Docker/workflow/"
 
 # Root directory for your project data and results.
 # All result files will be written to DATA_DIR/results/<step>/
