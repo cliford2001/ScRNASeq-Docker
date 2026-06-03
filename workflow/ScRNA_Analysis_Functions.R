@@ -3411,6 +3411,7 @@ run_hdwgcna <- function(seurat_obj,
 plot_hdwgcna_network <- function(hdwgcna_dir,
                                   output_dir    = hdwgcna_dir,
                                   tom_threshold = 0.1,
+                                  max_edges     = 5000,
                                   cell_types    = NULL,
                                   n_hub_label   = 5) {
 
@@ -3453,6 +3454,9 @@ plot_hdwgcna_network <- function(hdwgcna_dir,
         target = colnames(tom_mat)[edges[, 2]],
         weight = tom_mat[edges]
       )
+      # Keep top max_edges by weight for manageability
+      if (nrow(edge_df) > max_edges)
+        edge_df <- edge_df[order(edge_df$weight, decreasing = TRUE)[seq_len(max_edges)], ]
       write.table(edge_df, file.path(ct_dir, paste0("edges_", ct_tag, ".tsv")),
                   sep = "\t", quote = FALSE, row.names = FALSE)
       cat("  Edges:", nrow(edge_df), "\n")
@@ -3465,11 +3469,14 @@ plot_hdwgcna_network <- function(hdwgcna_dir,
         kME    = if (!is.na(kme_col)) modules[[kme_col]] else NA,
         is_hub = modules$gene_name %in% hubs$gene_name
       )
+      # Keep only nodes that appear in edges
+      nodes_in_edges <- unique(c(edge_df$source, edge_df$target))
+      node_df <- node_df[node_df$gene %in% nodes_in_edges, ]
       write.table(node_df, file.path(ct_dir, paste0("nodes_", ct_tag, ".tsv")),
                   sep = "\t", quote = FALSE, row.names = FALSE)
 
       # ── Plot ───────────────────────────────────────────────────────────────
-      if (nrow(edge_df) > 0 && nrow(edge_df) <= 50000) {
+      if (nrow(edge_df) > 0) {
         g      <- igraph::graph_from_data_frame(edge_df, directed = FALSE, vertices = node_df)
         mods   <- unique(node_df$module)
         pal    <- setNames(
@@ -3531,7 +3538,8 @@ filter_hdwgcna_by_de <- function(hdwgcna_dir,
                                   output_dir    = hdwgcna_dir,
                                   padj_cut      = 0.05,
                                   lfc_cut       = 1,
-                                  n_hub_label   = 10) {
+                                  n_hub_label   = 10,
+                                  tom_threshold = 0.1) {
 
   rds_files <- list.files(hdwgcna_dir, pattern = "^hdwgcna_.*\\.rds$",
                            full.names = TRUE, recursive = TRUE)
