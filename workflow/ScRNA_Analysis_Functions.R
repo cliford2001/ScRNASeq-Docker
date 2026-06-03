@@ -772,7 +772,8 @@ export_to_scanpy <- function(seurat_obj,
   ok <- FALSE
   if (requireNamespace("anndataR", quietly = TRUE)) {
     message("Writing h5ad with anndataR (native R)...")
-    anndataR::writeH5AD(sce, path = outfile)
+    adata <- anndataR::as_AnnData(sce)
+    anndataR::write_h5ad(adata, path = outfile)
     ok <- TRUE
   } else if (requireNamespace("zellkonverter", quietly = TRUE)) {
     message("Writing h5ad with zellkonverter...")
