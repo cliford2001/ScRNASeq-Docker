@@ -286,5 +286,30 @@ plot_hdwgcna_network(
 message("\n✓ SECTION 22 COMPLETE: Network files and plots saved")
 
 
+# =============================================================================
+# SECTION 23 — DE-FILTERED NETWORK
+# =============================================================================
+# Filters the co-expression network from Section 21 to only DE genes per
+# cell type. Nodes are sized by |log2FC|, coloured by module, and the top
+# hub genes / highest-FC genes are labelled.
+# Reuses padj_cut and lfc_cut from Section 17.
+#
+# ┌─ PARAMETERS ────────────────────────────────────────────────────────────────
+#   n_hub_label : number of top genes to label in the plot (default 10)
+# └─────────────────────────────────────────────────────────────────────────────
+n_hub_label <- 10
+
+filter_hdwgcna_by_de(
+  hdwgcna_dir = dir_08,
+  de_dir      = file.path(dir_06, volcano_tag),
+  output_dir  = dir_08,
+  padj_cut    = padj_cut,
+  lfc_cut     = lfc_cut,
+  n_hub_label = n_hub_label
+)
+
+message("\n✓ SECTION 23 COMPLETE: DE-filtered networks saved")
+
+
 
 

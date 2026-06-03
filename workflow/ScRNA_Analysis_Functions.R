@@ -3480,6 +3480,131 @@ plot_hdwgcna_network <- function(hdwgcna_dir,
 }
 
 
+# =============================================================================
+# filter_hdwgcna_by_de
+# =============================================================================
+# Filters the hdWGCNA co-expression network to only DE genes per cell type.
+# Reads hdWGCNA RDS objects (from run_hdwgcna) and DESeq2 CSVs (from S16).
+# For each cell type saves:
+#   edges_DE_{ct}.tsv  — edges between DE genes only, with TOM weight
+#   nodes_DE_{ct}.tsv  — DE genes with module, kME, log2FC, padj
+#   network_DE_{ct}.pdf — network coloured by module, sized by |log2FC|
+#
+# Parameters:
+#   hdwgcna_dir — directory with cell-type subfolders from run_hdwgcna (dir_08)
+#   de_dir      — directory with DESeq2 CSVs from S16 (dir_06/volcano_tag)
+#   output_dir  — where to save outputs (same as hdwgcna_dir by default)
+#   padj_cut    — adjusted p-value threshold
+#   lfc_cut     — absolute log2FC threshold
+#   n_hub_label — top N hub genes to label in plot
+filter_hdwgcna_by_de <- function(hdwgcna_dir,
+                                  de_dir,
+                                  output_dir    = hdwgcna_dir,
+                                  padj_cut      = 0.05,
+                                  lfc_cut       = 1,
+                                  n_hub_label   = 10) {
+
+  rds_files <- list.files(hdwgcna_dir, pattern = "^hdwgcna_.*\\.rds$",
+                           full.names = TRUE, recursive = TRUE)
+
+  if (length(rds_files) == 0) { message("No hdWGCNA RDS files found."); return(invisible(NULL)) }
+
+  for (rds_path in rds_files) {
+    ct_tag <- sub("^hdwgcna_", "", tools::file_path_sans_ext(basename(rds_path)))
+    ct_dir <- dirname(rds_path)
+    cat("\n── DE-filtered network:", ct_tag, "──\n")
+
+    tryCatch({
+      ct_label   <- gsub("_", " ", ct_tag)
+      de_pattern <- paste0("DESeq2_", gsub(" ", "_", ct_label))
+      de_file    <- list.files(de_dir, pattern = de_pattern, full.names = TRUE)[1]
+
+      if (is.na(de_file) || !file.exists(de_file)) {
+        cat("  No DESeq2 file found — skipping\n"); next
+      }
+
+      de_res   <- read.csv(de_file, row.names = 1)
+      de_sig   <- de_res[!is.na(de_res$padj) &
+                           de_res$padj < padj_cut &
+                           abs(de_res$log2FoldChange) >= lfc_cut, ]
+      de_genes <- rownames(de_sig)
+      cat("  DE genes:", length(de_genes), "\n")
+      if (length(de_genes) < 3) { cat("  Too few DE genes — skipping\n"); next }
+
+      obj     <- readRDS(rds_path)
+      wn      <- ct_tag
+      modules <- hdWGCNA::GetModules(obj, wgcna_name = wn)
+      hubs    <- hdWGCNA::GetHubGenes(obj, n_hubs = n_hub_label, wgcna_name = wn)
+      TOM     <- hdWGCNA::GetTOM(obj, wgcna_name = wn)
+
+      kme_col <- grep("^kME", colnames(modules), value = TRUE)[1]
+      node_df <- data.frame(
+        gene   = modules$gene_name,
+        module = modules$module,
+        kME    = if (!is.na(kme_col)) modules[[kme_col]] else NA,
+        is_hub = modules$gene_name %in% hubs$gene_name
+      )
+      node_df$log2FC <- de_sig[node_df$gene, "log2FoldChange"]
+      node_df$padj   <- de_sig[node_df$gene, "padj"]
+      node_df        <- node_df[node_df$gene %in% de_genes & !is.na(node_df$log2FC), ]
+
+      if (nrow(node_df) < 3) { cat("  Too few DE genes in modules — skipping\n"); next }
+
+      de_in_tom <- intersect(node_df$gene, rownames(TOM))
+      tom_sub   <- as.matrix(TOM)[de_in_tom, de_in_tom]
+      tom_sub[lower.tri(tom_sub, diag = TRUE)] <- NA
+      edges     <- which(!is.na(tom_sub) & tom_sub > 0, arr.ind = TRUE)
+      edge_df   <- data.frame(
+        source = rownames(tom_sub)[edges[, 1]],
+        target = colnames(tom_sub)[edges[, 2]],
+        weight = tom_sub[edges]
+      )
+
+      write.table(edge_df, file.path(ct_dir, paste0("edges_DE_", ct_tag, ".tsv")),
+                  sep = "\t", quote = FALSE, row.names = FALSE)
+      write.table(node_df, file.path(ct_dir, paste0("nodes_DE_", ct_tag, ".tsv")),
+                  sep = "\t", quote = FALSE, row.names = FALSE)
+      cat("  DE edges:", nrow(edge_df), "| DE nodes:", nrow(node_df), "\n")
+
+      g    <- igraph::graph_from_data_frame(edge_df, directed = FALSE, vertices = node_df)
+      mods <- unique(node_df$module)
+      pal  <- setNames(
+        colorRampPalette(RColorBrewer::brewer.pal(min(length(mods), 12), "Set3"))(length(mods)),
+        mods
+      )
+      vdata              <- node_df[match(igraph::V(g)$name, node_df$gene), ]
+      igraph::V(g)$color <- pal[vdata$module]
+      igraph::V(g)$size  <- scales::rescale(abs(vdata$log2FC), to = c(3, 12))
+      igraph::V(g)$label <- ifelse(
+        vdata$is_hub | abs(vdata$log2FC) >= quantile(abs(vdata$log2FC), 0.85, na.rm = TRUE),
+        igraph::V(g)$name, NA)
+      igraph::E(g)$weight <- edge_df$weight
+
+      pdf(file.path(ct_dir, paste0("network_DE_", ct_tag, ".pdf")), width = 12, height = 12)
+      plot(g,
+           layout             = igraph::layout_with_fr(g),
+           vertex.color       = igraph::V(g)$color,
+           vertex.size        = igraph::V(g)$size,
+           vertex.label       = igraph::V(g)$label,
+           vertex.label.cex   = 0.65,
+           vertex.frame.color = NA,
+           edge.width         = scales::rescale(igraph::E(g)$weight, to = c(0.3, 2.5)),
+           edge.color         = adjustcolor("grey50", 0.4),
+           main               = paste("DE co-expression network —", gsub("_", " ", ct_tag),
+                                      "\n(padj <", padj_cut, "| |log2FC| >=", lfc_cut, ")"))
+      legend("topright", legend = mods, fill = pal[mods], title = "Module", cex = 0.7, bty = "n")
+      dev.off()
+      cat("  DE network PDF saved\n")
+
+    }, error = function(e) {
+      message("  Skipped (", ct_tag, "): ", conditionMessage(e))
+    })
+  }
+
+  invisible(NULL)
+}
+
+
 
 # =============================================================================
 # get_tfs_from_orgdb
