@@ -3338,14 +3338,17 @@ run_hdwgcna <- function(seurat_obj,
       }
       cat("  Soft power:", sp, "\n")
 
+      ct_dir <- file.path(output_dir, ct_tag)
+      dir.create(ct_dir, showWarnings = FALSE)
+
       obj <- hdWGCNA::ConstructNetwork(obj, soft_power = sp,
-                                       networkType = "signed hybrid", wgcna_name = ct_tag)
+                                       networkType  = "signed hybrid",
+                                       tom_outdir   = ct_dir,
+                                       wgcna_name   = ct_tag)
       obj <- hdWGCNA::ModuleEigengenes(obj, group.by.vars = "orig.ident", wgcna_name = ct_tag)
       obj <- hdWGCNA::ModuleConnectivity(obj, group.by = annot_col,
                                           group_name = ct, wgcna_name = ct_tag)
 
-      ct_dir    <- file.path(output_dir, ct_tag)
-      dir.create(ct_dir, showWarnings = FALSE)
       modules   <- hdWGCNA::GetModules(obj, wgcna_name = ct_tag)
       hub_genes <- hdWGCNA::GetHubGenes(obj, n_hubs = 20, wgcna_name = ct_tag)
 
