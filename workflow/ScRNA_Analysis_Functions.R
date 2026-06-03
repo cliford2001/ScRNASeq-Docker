@@ -3312,9 +3312,10 @@ run_hdwgcna <- function(seurat_obj,
 
   for (ct in all_types) {
     ct_tag   <- gsub("[^A-Za-z0-9_]", "_", ct)
-    ct_dir   <- normalizePath(file.path(output_dir, ct_tag), mustWork = FALSE)
-    rds_file <- file.path(ct_dir, paste0("hdwgcna_", ct_tag, ".rds"))
-    tom_file <- file.path(ct_dir, paste0(ct_tag, "_TOM.rda"))
+    ct_dir      <- normalizePath(file.path(output_dir, ct_tag), mustWork = FALSE)
+    ct_dir_rel  <- file.path("resultados/08_networks", ct_tag)   # relative — for hdWGCNA GetTOM
+    rds_file    <- file.path(ct_dir, paste0("hdwgcna_", ct_tag, ".rds"))
+    tom_file    <- file.path(ct_dir, paste0(ct_tag, "_TOM.rda"))
 
     if (file.exists(rds_file)) {
       cat("\n── hdWGCNA:", ct, "— already done, skipping\n")
@@ -3358,7 +3359,7 @@ run_hdwgcna <- function(seurat_obj,
 
       obj <- hdWGCNA::ConstructNetwork(obj, soft_power  = sp,
                                        networkType = "signed hybrid",
-                                       tom_outdir  = ct_dir,
+                                       tom_outdir  = ct_dir_rel,
                                        wgcna_name  = ct_tag)
       obj <- hdWGCNA::ModuleEigengenes(obj, wgcna_name = ct_tag)
       obj <- hdWGCNA::ModuleConnectivity(obj, group.by = annot_col,
