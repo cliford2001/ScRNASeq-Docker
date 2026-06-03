@@ -40,12 +40,12 @@
 
 # Directory containing the pipeline helper scripts.
 # Inside the Docker container this is typically /workspace/ScRNASeq-Docker
-PIPELINE_DIR <- "~/projects2/eleo/ScRNA/metodologia/ScRNASeq-Docker/workflow/"
+PIPELINE_DIR <- "/workspace/ScRNASeq-Docker/workflow"
 
 # Root directory for your project data and results.
-# All result files will be written to DATA_DIR/results/<step>/
-DATA_DIR   <- "~/projects2/eleo/ScRNA/"
-base_dir   <- file.path(DATA_DIR, "metodologia/resultados")
+# All result files will be written to DATA_DIR/resultados/<step>/
+DATA_DIR   <- "/workspace/."
+base_dir   <- file.path(DATA_DIR, "resultados")
 
 # ── Sample manifest (CellRanger filtered_feature_bc_matrix) ──────────────────
 # Add one entry per sample. Each entry needs:
@@ -291,7 +291,7 @@ message("\n✓ SECTION 6 COMPLETE: Final clustering complete")
 # Dot size = fraction of expressing cells; color = mean expression level.
 output_dir <- dir_03
 
-biblio_marks_file <- file.path(DATA_DIR, "metodologia/biblio_marks.txt")
+biblio_marks_file <- file.path(DATA_DIR, "biblio_marks.txt")
 marker_table      <- read.table(biblio_marks_file, header = TRUE, sep = "\t", quote = "")
 
 plot_marker_dotplot(
@@ -341,7 +341,7 @@ save_pdf(DimPlot(pbmc_harmony, group.by = "celltype",
          "umap_annotation_biblio.pdf")
 
 # ── 8b. Reference-based annotation ────────────────────────────────────────────
-reference_obj <- readRDS(file.path(DATA_DIR, "metodologia/GSE273033_seuratObj_for_publication.rds"))
+reference_obj <- readRDS(file.path(DATA_DIR, "GSE273033_seuratObj_for_publication.rds"))
 pbmc_harmony <- annotate_by_reference(pbmc_harmony,
                                       reference_obj = reference_obj,
                                       reference_col = "annotation")
