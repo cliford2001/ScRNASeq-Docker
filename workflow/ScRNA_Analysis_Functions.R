@@ -3311,10 +3311,24 @@ run_hdwgcna <- function(seurat_obj,
   results <- list()
 
   for (ct in all_types) {
-    ct_tag <- gsub("[^A-Za-z0-9_]", "_", ct)
+    ct_tag   <- gsub("[^A-Za-z0-9_]", "_", ct)
+    ct_dir   <- file.path(output_dir, ct_tag)
+    rds_file <- file.path(ct_dir, paste0("hdwgcna_", ct_tag, ".rds"))
+    tom_file <- file.path(ct_dir, paste0(ct_tag, "_TOM.rda"))
+
+    if (file.exists(rds_file)) {
+      cat("\n── hdWGCNA:", ct, "— already done, skipping\n")
+      obj     <- readRDS(rds_file)
+      modules <- hdWGCNA::GetModules(obj, wgcna_name = ct_tag)
+      results[[ct]] <- list(modules = modules)
+      next
+    }
+
     cat("\n── hdWGCNA:", ct, "──\n")
 
     tryCatch({
+      dir.create(ct_dir, showWarnings = FALSE)
+
       obj <- hdWGCNA::SetupForWGCNA(seurat_obj, gene_select = "fraction",
                                     fraction = 0.05, wgcna_name = ct_tag)
 
@@ -3342,12 +3356,10 @@ run_hdwgcna <- function(seurat_obj,
       dir.create(ct_dir, showWarnings = FALSE)
       tom_file <- file.path(ct_dir, paste0(ct_tag, "_TOM.rda"))
 
-      obj <- hdWGCNA::ConstructNetwork(obj, soft_power   = sp,
-                                       networkType  = "signed hybrid",
-                                       tom_outdir   = ct_dir,
-                                       overwrite_tom = !file.exists(tom_file),
-                                       wgcna_name   = ct_tag)
-      if (file.exists(tom_file)) cat("  TOM loaded from cache\n")
+      obj <- hdWGCNA::ConstructNetwork(obj, soft_power  = sp,
+                                       networkType = "signed hybrid",
+                                       tom_outdir  = ct_dir,
+                                       wgcna_name  = ct_tag)
       obj <- hdWGCNA::ModuleEigengenes(obj, group.by.vars = "orig.ident", wgcna_name = ct_tag)
       obj <- hdWGCNA::ModuleConnectivity(obj, group.by = annot_col,
                                           group_name = ct, wgcna_name = ct_tag)
