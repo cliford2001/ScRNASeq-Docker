@@ -155,7 +155,7 @@ seurat_list <- filter_seurat_samples(seurat_list_raw, min_features = 200, max_mt
 
 plot_qc_batch(seurat_list, colors, "qc_postfilter.pdf")
 
-# Checkpoint — restore with: seurat_list <- readRDS(file.path(dir_objects, "seurat_list_postfilter.rds"))
+# Checkpoint — restore with: seurat_list <- readRDS("resultados/objects/seurat_list_postfilter.rds")
 saveRDS(seurat_list, file.path(dir_objects, "seurat_list_postfilter.rds"))
 
 
@@ -180,7 +180,7 @@ pbmc_harmony <- reduce(seurat_list, merge) %>%  # merge all samples into one obj
 save_pdf(DimPlot(pbmc_harmony, group.by = "orig.ident", cols = colors),
          "umap_preharmony.pdf")
 
-# Checkpoint — restore with: pbmc_harmony <- readRDS(file.path(dir_objects, "pbmc_harmony_preharmony.rds"))
+# Checkpoint — restore with: pbmc_harmony <- readRDS("resultados/objects/pbmc_harmony_preharmony.rds")
 saveRDS(pbmc_harmony, file.path(dir_objects, "pbmc_harmony_preharmony.rds"))
 
 
@@ -202,7 +202,7 @@ pbmc_harmony <- pbmc_harmony %>%
 save_pdf(DimPlot(pbmc_harmony, group.by = "orig.ident", cols = colors),
          "umap_postharmony.pdf")
 
-# Checkpoint — restore with: pbmc_harmony <- readRDS(file.path(dir_objects, "pbmc_harmony_postharmony.rds"))
+# Checkpoint — restore with: pbmc_harmony <- readRDS("resultados/objects/pbmc_harmony_postharmony.rds")
 saveRDS(pbmc_harmony, file.path(dir_objects, "pbmc_harmony_postharmony.rds"))
 
 
@@ -550,7 +550,7 @@ save_pdf(
   "umap_curated.pdf"
 )
 
-# Checkpoint — restore with: pbmc_harmony <- readRDS(file.path(dir_objects, "pbmc_harmony_curated.rds"))
+# Checkpoint — restore with: pbmc_harmony <- readRDS("resultados/objects/pbmc_harmony_curated.rds")
 saveRDS(pbmc_harmony, file.path(dir_objects, "pbmc_harmony_curated.rds"))
 
 # =============================================================================
