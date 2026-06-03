@@ -3373,6 +3373,7 @@ run_hdwgcna <- function(seurat_obj,
       write.table(modules,   file.path(ct_dir, paste0("modules_",  ct_tag, ".tsv")), sep = "\t", quote = FALSE, row.names = FALSE)
       write.table(hub_genes, file.path(ct_dir, paste0("hubgenes_", ct_tag, ".tsv")), sep = "\t", quote = FALSE, row.names = FALSE)
 
+      # ── UMAP per module eigengene ─────────────────────────────────────────────
       plot_list <- hdWGCNA::ModuleFeaturePlot(obj, features = "hMEs",
                                               order = TRUE, wgcna_name = ct_tag)
       plot_list <- lapply(plot_list, function(p)
@@ -3381,6 +3382,34 @@ run_hdwgcna <- function(seurat_obj,
       pdf(file.path(ct_dir, paste0("eigengenes_", ct_tag, ".pdf")), width = 12, height = 8)
       print(patchwork::wrap_plots(plot_list, ncol = 4))
       dev.off()
+
+      # ── Eigengene heatmap (viridis, module colour bar) ────────────────────────
+      MEs <- hdWGCNA::GetMEs(obj, harmonized = FALSE, wgcna_name = ct_tag)
+      if (!is.null(MEs) && ncol(MEs) > 0) {
+        me_mat     <- t(as.matrix(MEs[, !grepl("^ME(grey|0)$", colnames(MEs))]))
+        mod_col    <- gsub("^ME", "", rownames(me_mat))
+        left_ha    <- ComplexHeatmap::rowAnnotation(
+          Module = ComplexHeatmap::anno_simple(mod_col,
+            col = setNames(mod_col, mod_col), width = grid::unit(0.5, "cm")))
+        pdf(file.path(ct_dir, paste0("eigengene_heatmap_", ct_tag, ".pdf")), width = 10,
+            height = max(4, nrow(me_mat) * 0.5 + 2))
+        ComplexHeatmap::draw(ComplexHeatmap::Heatmap(me_mat, name = "ME",
+          col = viridis::viridis(100), cluster_rows = TRUE, cluster_columns = TRUE,
+          left_annotation = left_ha, show_row_names = TRUE, row_labels = mod_col,
+          row_names_gp = grid::gpar(fontsize = 9, col = "black"),
+          show_column_names = FALSE,
+          column_title = paste0("Module eigengenes — ", gsub("_", " ", ct_tag)),
+          column_title_gp = grid::gpar(fontsize = 12, fontface = "bold")))
+        dev.off()
+      }
+
+      # ── Dendrogram ────────────────────────────────────────────────────────────
+      tryCatch({
+        pdf(file.path(ct_dir, paste0("dendrogram_", ct_tag, ".pdf")), width = 12, height = 6)
+        hdWGCNA::PlotDendrogram(obj, main = paste("Dendrogram —", gsub("_"," ",ct_tag)),
+                                 wgcna_name = ct_tag)
+        dev.off()
+      }, error = function(e) message("  Dendrogram skipped: ", conditionMessage(e)))
 
       n_mods <- length(unique(modules$module[modules$module != "grey"]))
       cat("  Modules found:", n_mods, "\n")
@@ -3653,6 +3682,34 @@ filter_hdwgcna_by_de <- function(hdwgcna_dir,
       legend("topright", legend = mods, fill = pal[mods], title = "Module", cex = 0.7, bty = "n")
       dev.off()
       cat("  DE network PDF saved\n")
+
+      # ── Eigengene heatmap — solo módulos con genes DE ────────────────────────
+      tryCatch({
+        MEs <- hdWGCNA::GetMEs(obj, harmonized = FALSE, wgcna_name = ct_tag)
+        if (!is.null(MEs) && ncol(MEs) > 0) {
+          me_mat <- t(as.matrix(MEs[, !grepl("^ME(grey|0)$", colnames(MEs))]))
+          de_per_mod <- sapply(gsub("^ME","",rownames(me_mat)), function(mod)
+            sum(modules$gene_name[modules$module == mod] %in% de_genes))
+          keep <- de_per_mod >= 3
+          if (sum(keep) >= 1) {
+            me_de     <- me_mat[keep,, drop=FALSE]
+            mod_col   <- gsub("^ME","", rownames(me_de))
+            left_ha   <- ComplexHeatmap::rowAnnotation(
+              Module = ComplexHeatmap::anno_simple(mod_col,
+                col = setNames(mod_col, mod_col), width = grid::unit(0.5,"cm")))
+            pdf(file.path(ct_dir, paste0("eigengene_heatmap_DE_", ct_tag, ".pdf")),
+                width=10, height=max(4, sum(keep)*0.5+2))
+            ComplexHeatmap::draw(ComplexHeatmap::Heatmap(me_de, name="ME",
+              col = viridis::viridis(100), cluster_rows=TRUE, cluster_columns=TRUE,
+              left_annotation=left_ha, show_row_names=TRUE, row_labels=mod_col,
+              row_names_gp=grid::gpar(fontsize=9, col="black"), show_column_names=FALSE,
+              column_title=paste0("Module eigengenes (DE) — ", gsub("_"," ",ct_tag)),
+              column_title_gp=grid::gpar(fontsize=12, fontface="bold")))
+            dev.off()
+            cat("  Eigengene DE heatmap saved\n")
+          }
+        }
+      }, error = function(e) message("  Eigengene DE heatmap skipped: ", conditionMessage(e)))
 
     }, error = function(e) {
       message("  Skipped (", ct_tag, "): ", conditionMessage(e))
