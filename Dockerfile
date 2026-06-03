@@ -116,7 +116,11 @@ RUN R -e "install.packages('leidenbase')"
 # ── anndataR: native R h5ad export (no Python/basilisk needed) ───────────────
 RUN R -e "BiocManager::install('anndataR', ask = FALSE, update = FALSE)"
 
+# ── hdWGCNA dependencies (Bioconductor) ──────────────────────────────────────
+RUN R -e "BiocManager::install(c('UCell', 'GeneOverlap'), ask = FALSE, update = FALSE)"
+
 # ── hdWGCNA: single-cell co-expression network analysis ──────────────────────
+RUN R -e "install.packages('enrichR')"
 RUN R -e "remotes::install_github('smorabit/hdWGCNA', ref='dev')"
 
 WORKDIR /workspace
