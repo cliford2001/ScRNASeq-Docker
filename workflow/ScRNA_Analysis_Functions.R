@@ -3259,7 +3259,9 @@ build_logfc_heatmap <- function(logfc_table,
     cluster_columns = FALSE,
 
     show_row_names    = FALSE,
-    show_column_names = FALSE,
+    show_column_names = TRUE,
+    column_names_gp   = grid::gpar(fontsize = 10, fontface = "bold"),
+    column_names_rot  = 45,
 
     column_title    = sprintf("log2FC — %s  (%d genes)", contrast_tag, nrow(mat)),
     column_title_gp = gpar(fontsize = 15, fontface = "bold"),
