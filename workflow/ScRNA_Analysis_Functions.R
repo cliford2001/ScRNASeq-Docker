@@ -3235,112 +3235,35 @@ run_simple_go_enrichment <- function(diff_table,
 # =============================================================================
 # build_logfc_heatmap
 # =============================================================================
-# Builds a log2FC heatmap per cell type with gene clustering.
-# Two clustering methods available:
-#   "hclust" — hierarchical clustering (euclidean + complete + cutreeDynamic)
-#   "wgcna"  — coexpression network (TOM + mergeCloseModules)
-# Returns cluster assignments invisibly.
+# Builds a log2FC heatmap per cell type.
+# Genes are ordered by the internal hierarchical clustering dendrogram
+# (cluster_rows = TRUE) — no manual clustering or cluster assignment.
 build_logfc_heatmap <- function(logfc_table,
                                 contrast_tag,
                                 output_dir,
-                                method           = "wgcna",
-                                limits           = c(-5, 5),
-                                merge_cut        = 0.25,
-                                min_cluster_size = 10) {
+                                limits = c(-5, 5)) {
 
   dir.create(output_dir, recursive = TRUE, showWarnings = FALSE)
 
-  # Build matrix
   mat <- as.matrix(logfc_table[, -1])
   rownames(mat) <- logfc_table[[1]]
   colnames(mat) <- gsub(paste0("_", contrast_tag, "$"), "", colnames(mat))
   mat[is.na(mat)] <- 0
 
-  # ── Clustering ──────────────────────────────────────────────────────────────
-  if (method == "hclust") {
-
-    dist_rows <- dist(mat, method = "euclidean")
-    hc_rows   <- hclust(dist_rows, method = "complete")
-    clust_num <- cutreeDynamic(
-      dendro = hc_rows, distM = as.matrix(dist_rows),
-      deepSplit = 1, minClusterSize = min_cluster_size, pamRespectsDendro = FALSE
-    )
-    names(clust_num) <- rownames(mat)
-    clust_labels <- as.character(clust_num)
-    row_order    <- rownames(mat)[hc_rows$order]
-
-  } else {
-
-    enableWGCNAThreads(2)
-    sft       <- pickSoftThreshold(t(mat), powerVector = c(1:10, seq(12, 20, 2)),
-                                    verbose = 0, networkType = "signed")
-    power_val <- if (is.na(sft$powerEstimate)) 6 else sft$powerEstimate
-    adj       <- adjacency(t(mat), power = power_val, type = "signed")
-    TOM       <- TOMsimilarity(adj, TOMType = "signed")
-    dissTOM   <- 1 - TOM
-    rownames(dissTOM) <- colnames(dissTOM) <- rownames(mat)
-    gene_tree <- hclust(as.dist(dissTOM), method = "average")
-    mod_num   <- cutreeDynamic(
-      dendro = gene_tree, distM = dissTOM,
-      deepSplit = 1, minClusterSize = min_cluster_size, pamRespectsDendro = FALSE
-    )
-    merged       <- mergeCloseModules(t(mat), labels2colors(mod_num),
-                                      cutHeight = merge_cut, verbose = 0)
-    clust_labels <- merged$colors
-    names(clust_labels) <- rownames(mat)
-    # Use tree order directly (simplest and most robust)
-    row_order    <- rownames(mat)[gene_tree$order]
-    # Remove any NA entries
-    row_order <- row_order[!is.na(row_order)]
-
-  }
-
-  message("Clusters found: ", length(unique(clust_labels[clust_labels != "0"])))
-
-  # ── Annotation ──────────────────────────────────────────────────────────────
-  # Order rows by cluster so genes of the same cluster are grouped together.
-  # Pass integer indices to ComplexHeatmap — character names are unreliable.
-  # hclust: sort numerically (1,2,3...) not alphabetically (1,10,11,2...).
-  # Cluster 0 = unassigned by cutreeDynamic — placed at the bottom.
-  if (method == "hclust") {
-    numeric_labels <- as.numeric(clust_labels)
-    numeric_labels[numeric_labels == 0] <- Inf   # push unassigned to bottom
-    row_order <- order(numeric_labels)
-    u_clust   <- as.character(sort(as.numeric(unique(clust_labels))))
-    pal_clust <- setNames(
-      colorRampPalette(brewer.pal(min(length(u_clust), 12), "Dark2"))(length(u_clust)),
-      u_clust
-    )
-  } else {
-    row_order <- order(clust_labels)
-    u_clust   <- sort(unique(clust_labels))
-    pal_clust <- setNames(u_clust, u_clust)  # WGCNA label names are color names
-  }
-
-  left_ha <- ComplexHeatmap::rowAnnotation(
-    Cluster = clust_labels,
-    col     = list(Cluster = pal_clust),
-    annotation_name_gp = grid::gpar(fontsize = 11, fontface = "bold"),
-    annotation_width   = grid::unit(0.5, "cm")
-  )
-
-  # ── Heatmap ──────────────────────────────────────────────────────────────────
   ht <- ComplexHeatmap::Heatmap(
     mat,
     name = "log2FC",
     col  = circlize::colorRamp2(c(limits[1], 0, limits[2]), c("blue", "black", "yellow")),
 
-    cluster_rows    = FALSE,  # rows ordered by clustering method, not dendrogram
-    row_order       = row_order,
+    cluster_rows    = TRUE,
     cluster_columns = FALSE,
 
-    left_annotation   = left_ha,
     show_row_names    = FALSE,
     show_column_names = TRUE,
     column_names_gp   = grid::gpar(fontsize = 14, fontface = "bold"),
     column_names_rot  = 45,
 
-    column_title    = sprintf("[%s] log2FC — %s  (%d genes)", method, contrast_tag, nrow(mat)),
+    column_title    = sprintf("log2FC — %s  (%d genes)", contrast_tag, nrow(mat)),
     column_title_gp = gpar(fontsize = 15, fontface = "bold"),
 
     heatmap_legend_param = list(
@@ -3350,18 +3273,12 @@ build_logfc_heatmap <- function(logfc_table,
     )
   )
 
-  pdf(file.path(output_dir, paste0("heatmap_", method, "_", contrast_tag, ".pdf")),
+  pdf(file.path(output_dir, paste0("heatmap_", contrast_tag, ".pdf")),
       width = 12, height = 16)
   ComplexHeatmap::draw(ht, merge_legend = TRUE, padding = grid::unit(c(2, 2, 2, 10), "mm"))
   dev.off()
 
-  # ── Save cluster assignments ─────────────────────────────────────────────────
-  assignments <- data.frame(gene_id = rownames(mat), cluster = clust_labels)
-  write.table(assignments,
-              file.path(output_dir, paste0("clusters_", method, "_", contrast_tag, ".tsv")),
-              sep = "\t", quote = FALSE, row.names = FALSE)
-
-  invisible(assignments)
+  invisible(NULL)
 }
 
 

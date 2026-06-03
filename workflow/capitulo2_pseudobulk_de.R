@@ -210,66 +210,27 @@ for (deseq2_file in deseq2_files) {
 # =============================================================================
 
 message("\n✓ SECTION 19 COMPLETE: GO enrichment complete")
-# SECTION 20 — LOG2FC HEATMAP + CLUSTERING
+# SECTION 20 — LOG2FC HEATMAP
 # =============================================================================
 # Heatmap of log2FC values across all cell types for the selected contrast.
+# Genes are ordered by the internal hierarchical dendrogram (cluster_rows = TRUE).
 #
 # ┌─ PARAMETERS ─────────────────────────────────────────────────────────────────
-#   CLUSTER_METHOD   : clustering method for grouping DE genes
-#     "hclust" — hierarchical (euclidean + cutreeDynamic) — numbered clusters (1,2,3...)
-#                fast, good starting point; increase min_cluster_size if too many small clusters
-#     "wgcna"  — coexpression network (TOM) — named clusters (turquoise, blue...)
-#                slower, captures co-regulation patterns
-#   heatmap_limits   : color scale range for log2FC values
-#   min_cluster_size : minimum genes per cluster — hclust only (default 10)
-#   wgcna_merge_cut  : merge close WGCNA modules — wgcna only (default 0.25)
+#   heatmap_limits : color scale range for log2FC values
 # └─────────────────────────────────────────────────────────────────────────────
-CLUSTER_METHOD   <- "hclust"  # "hclust" or "wgcna"
-heatmap_limits   <- c(-5, 5)
-min_cluster_size <- 100       # hclust only — increase to get fewer, larger clusters
-wgcna_merge_cut  <- 0.25     # wgcna only
+heatmap_limits <- c(-5, 5)
 
-heatmap_results <- build_logfc_heatmap(
-  logfc_table      = diff_tables$logfc,
-  contrast_tag     = volcano_tag,
-  output_dir       = file.path(dir_06, volcano_tag),
-  method           = CLUSTER_METHOD,
-  limits           = heatmap_limits,
-  min_cluster_size = min_cluster_size,
-  merge_cut        = wgcna_merge_cut
+build_logfc_heatmap(
+  logfc_table  = diff_tables$logfc,
+  contrast_tag = volcano_tag,
+  output_dir   = file.path(dir_06, volcano_tag),
+  limits       = heatmap_limits
 )
 
 
 # =============================================================================
 
-message("\n✓ SECTION 20 COMPLETE: Log2FC heatmap and clustering complete")
-# SECTION 21 — GO ENRICHMENT PER CLUSTER
-# =============================================================================
-# Runs GO enrichment for each cluster identified in Section 20.
-# Uses go_orgdb and go_keytype defined in Section 19 — change them there.
-# Uses the cluster assignments from heatmap_results.
-
-go_clusters_padj <- 0.05  # adjusted p-value threshold for GO enrichment per cluster
-
-for (clust_id in unique(heatmap_results$cluster)) {
-  genes <- heatmap_results$gene_id[heatmap_results$cluster == clust_id]
-
-  run_simple_go_enrichment(
-    diff_table   = data.frame(gene_id = genes),
-    output_dir   = file.path(dir_06, volcano_tag, paste0("GO_clusters_", CLUSTER_METHOD)),
-    orgdb        = go_orgdb,
-    keytype      = go_keytype,
-    go_space     = "BP",
-    padj_cutoff  = go_clusters_padj,
-    cell_type    = as.character(clust_id),
-    contrast_tag = volcano_tag
-  )
-}
-
-
-# =============================================================================
-
-message("\n✓ SECTION 21 COMPLETE: GO enrichment per cluster complete")
+message("\n✓ SECTION 20 COMPLETE: Log2FC heatmap saved")
 # SECTION 22 — NETWORK INFERENCE PER CLUSTER
 # =============================================================================
 # Identifies which transcription factors (TFs) regulate the genes in each
