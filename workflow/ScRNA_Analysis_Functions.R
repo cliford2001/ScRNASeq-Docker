@@ -3370,9 +3370,13 @@ run_hdwgcna <- function(seurat_obj,
       write.table(modules,   file.path(ct_dir, paste0("modules_",  ct_tag, ".tsv")), sep = "\t", quote = FALSE, row.names = FALSE)
       write.table(hub_genes, file.path(ct_dir, paste0("hubgenes_", ct_tag, ".tsv")), sep = "\t", quote = FALSE, row.names = FALSE)
 
-      p <- hdWGCNA::PlotModuleEigengenes(obj, group.by = annot_col, wgcna_name = ct_tag)
-      pdf(file.path(ct_dir, paste0("eigengenes_", ct_tag, ".pdf")), width = 10, height = 6)
-      print(p); dev.off()
+      me  <- hdWGCNA::GetMEs(obj, wgcna_name = ct_tag)
+      if (!is.null(me)) {
+        pdf(file.path(ct_dir, paste0("eigengenes_", ct_tag, ".pdf")), width = 10, height = 6)
+        pheatmap::pheatmap(t(me), main = paste("Module eigengenes —", gsub("_", " ", ct_tag)),
+                           fontsize = 9, cluster_cols = TRUE)
+        dev.off()
+      }
 
       n_mods <- length(unique(modules$module[modules$module != "grey"]))
       cat("  Modules found:", n_mods, "\n")
