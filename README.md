@@ -1,6 +1,6 @@
 # ScRNASeq-Docker — Helper Function Library
 
-This repository contains the pipeline helper scripts used in the **Methods in Molecular Biology** protocol for single-cell RNA-seq analysis of *Arabidopsis thaliana* (readily extensible to other organisms). The library covers the complete analytical trajectory: CellBender-aware data loading, QC visualization, doublet detection, pseudobulk aggregation, differential expression with DESeq2, and GO enrichment — all orchestrated through a set of modular, well-documented R functions.
+This repository contains the pipeline helper scripts used in the **Methods in Molecular Biology** protocol for single-cell RNA-seq analysis of *Arabidopsis thaliana* (readily extensible to other organisms). The library covers the complete analytical trajectory: CellRanger data loading, QC visualization, doublet detection, pseudobulk aggregation, differential expression with DESeq2, and GO enrichment — all orchestrated through a set of modular, well-documented R functions.
 
 ---
 
@@ -58,37 +58,49 @@ A pre-built Docker image with all dependencies (R 4.5, Python 3.12, Seurat, scan
 docker pull matigara/scrnaseq:latest
 ```
 
-### Run interactively (R console)
+### Run interactively with docker compose (recommended)
 
 ```bash
+cd /path/to/your/data   # folder containing ScRNASeq-Docker/ and your data
+docker compose run --rm r
+```
+
+### Or run manually
+
+```bash
+# R console
 docker run -it -v /path/to/your/data:/workspace matigara/scrnaseq:latest R
-```
 
-### Run interactively (Python console)
-
-```bash
+# Python console
 docker run -it -v /path/to/your/data:/workspace matigara/scrnaseq:latest python3
-```
 
-### Run a bash shell
-
-```bash
+# Bash shell
 docker run -it -v /path/to/your/data:/workspace matigara/scrnaseq:latest /bin/bash
 ```
 
-**Note:** Replace `/path/to/your/data` with your local data directory path. Inside the container, it will be available at `/workspace`.
+**Note:** Replace `/path/to/your/data` with your local data directory. Inside the container it will be available at `/workspace`. The pipeline scripts expect `PIPELINE_DIR = "/workspace/ScRNASeq-Docker/workflow"` and `DATA_DIR = "/workspace/."` — both set by default in each chapter script.
 
 ---
 
 ## Repository files
 
-| File | Purpose |
-|---|---|
-| `load_libraries.R` | Loads and, if necessary, installs all R package dependencies |
-| `ScRNA_Analysis_Functions.R` | Core helper function library (documented in full below) |
-| `custom_seurat.R` | Project-specific Seurat extensions and theme overrides |
-| `scrnaseq_pipeline.R` | Top-level pipeline script that calls the helper functions end-to-end |
-| `analysis.Rmd` / `analysis_code.pdf` | Reproducible analysis notebook and its rendered PDF for the protocol |
+```
+ScRNASeq-Docker/
+├── Dockerfile                          # Docker image definition
+├── docker-compose.yml                  # Compose config for interactive use
+├── README.md
+├── README_capitulo3.md
+├── pse.py
+└── workflow/
+    ├── capitulo1_single_cell.R         # Chapter 1: QC, integration, clustering, annotation
+    ├── capitulo2_pseudobulk_de.R       # Chapter 2: Pseudobulk DE, GO enrichment, networks
+    ├── capitulo3_pseudotime.ipynb      # Chapter 3: Trajectory and pseudotime (Python)
+    ├── ScRNA_Analysis_Functions.R      # Core R helper functions (documented below)
+    ├── ScRNA_Pseudotime_Functions.py   # Python helper functions for Chapter 3
+    ├── load_libraries.R                # R package loader
+    ├── load_libraries_python.py        # Python package loader
+    └── custom_seurat.R                 # Custom Seurat plot utilities
+```
 
 ---
 
