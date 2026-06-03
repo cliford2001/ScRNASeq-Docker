@@ -81,7 +81,8 @@ RUN R -e "BiocManager::install(c( \
     'BiocManager', \
     'clusterProfiler', \
     'org.At.tair.db', \
-    'GENIE3' \
+    'GENIE3', \
+    'ComplexHeatmap' \
 ), ask = FALSE, update = FALSE)"
 
 # ── Seurat ecosystem ───────────────────────────────────────────────────────────
