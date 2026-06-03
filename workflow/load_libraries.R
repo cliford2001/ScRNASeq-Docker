@@ -17,6 +17,7 @@ library(scater)
 library(SingleCellExperiment)
 library(SummarizedExperiment)
 library(zellkonverter)
+library(hdWGCNA)
 
 # ── Differential expression and GO enrichment ─────────────────────────────────
 library(DESeq2)
