@@ -3434,7 +3434,11 @@ plot_hdwgcna_network <- function(hdwgcna_dir,
       wn      <- ct_tag
       modules <- hdWGCNA::GetModules(obj, wgcna_name = wn)
       hubs    <- hdWGCNA::GetHubGenes(obj, n_hubs = n_hub_label, wgcna_name = wn)
-      TOM     <- hdWGCNA::GetTOM(obj, wgcna_name = wn)
+
+      # Load TOM directly from disk (avoids GetTOM path issues)
+      tom_file <- file.path(ct_dir, paste0(ct_tag, "_TOM.rda"))
+      tom_env  <- new.env(); load(tom_file, envir = tom_env)
+      TOM      <- get(ls(tom_env)[1], envir = tom_env)
 
       # ── Edge list ──────────────────────────────────────────────────────────
       tom_mat           <- as.matrix(TOM)
@@ -3556,7 +3560,11 @@ filter_hdwgcna_by_de <- function(hdwgcna_dir,
       wn      <- ct_tag
       modules <- hdWGCNA::GetModules(obj, wgcna_name = wn)
       hubs    <- hdWGCNA::GetHubGenes(obj, n_hubs = n_hub_label, wgcna_name = wn)
-      TOM     <- hdWGCNA::GetTOM(obj, wgcna_name = wn)
+
+      # Load TOM directly from disk (avoids GetTOM path issues)
+      tom_file <- file.path(ct_dir, paste0(ct_tag, "_TOM.rda"))
+      tom_env  <- new.env(); load(tom_file, envir = tom_env)
+      TOM      <- get(ls(tom_env)[1], envir = tom_env)
 
       kme_col <- grep("^kME", colnames(modules), value = TRUE)[1]
       node_df <- data.frame(
