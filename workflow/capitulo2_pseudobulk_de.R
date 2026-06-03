@@ -241,10 +241,12 @@ message("\n✓ SECTION 20 COMPLETE: Log2FC heatmap saved")
 #   cell_types_network : NULL = all cell types; or c("Guard Cell", "Mesophyll")
 #   n_metacells        : metacells per group (default 25)
 #   soft_power         : NULL = auto-detect; or integer to set manually
+#   max_modules        : maximum number of modules per cell type (default 8)
 # └─────────────────────────────────────────────────────────────────────────────
 cell_types_network <- NULL   # NULL = all, or e.g. c("Guard Cell", "Mesophyll")
 n_metacells        <- 25
 soft_power         <- NULL   # NULL = auto-detect
+max_modules        <- 8
 
 run_hdwgcna(
   seurat_obj  = pbmc_harmony,
@@ -252,7 +254,8 @@ run_hdwgcna(
   output_dir  = dir_08,
   cell_types  = cell_types_network,
   n_metacells = n_metacells,
-  soft_power  = soft_power
+  soft_power  = soft_power,
+  max_modules = max_modules
 )
 
 message("\n✓ SECTION 21 COMPLETE: hdWGCNA co-expression networks saved")

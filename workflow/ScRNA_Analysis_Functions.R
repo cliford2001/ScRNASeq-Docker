@@ -3301,7 +3301,8 @@ run_hdwgcna <- function(seurat_obj,
                         output_dir,
                         cell_types  = NULL,
                         n_metacells = 25,
-                        soft_power  = NULL) {
+                        soft_power  = NULL,
+                        max_modules = 8) {
 
   dir.create(output_dir, recursive = TRUE, showWarnings = FALSE)
 
@@ -3364,6 +3365,22 @@ run_hdwgcna <- function(seurat_obj,
                                        tom_outdir  = ct_dir_rel,
                                        wgcna_name  = ct_tag)
       obj <- hdWGCNA::ModuleEigengenes(obj, wgcna_name = ct_tag)
+
+      # ── Merge modules until <= max_modules ────────────────────────────────
+      n_mods_cur <- length(unique(hdWGCNA::GetModules(obj, wgcna_name=ct_tag)$module)) - 1  # exclude grey
+      if (n_mods_cur > max_modules) {
+        cat("  Merging", n_mods_cur, "modules down to <=", max_modules, "...\n")
+        cut_h <- 0.1
+        while (n_mods_cur > max_modules && cut_h <= 0.9) {
+          cut_h <- cut_h + 0.05
+          obj <- hdWGCNA::MergeCloseModules(obj, cutHeight = cut_h,
+                                             wgcna_name = ct_tag, verbose = 0)
+          obj <- hdWGCNA::ModuleEigengenes(obj, wgcna_name = ct_tag)
+          n_mods_cur <- length(unique(hdWGCNA::GetModules(obj, wgcna_name=ct_tag)$module)) - 1
+        }
+        cat("  Final modules:", n_mods_cur, "(cutHeight:", round(cut_h,2), ")\n")
+      }
+
       obj <- hdWGCNA::ModuleConnectivity(obj, group.by = annot_col,
                                           group_name = ct, wgcna_name = ct_tag)
 
