@@ -231,95 +231,31 @@ build_logfc_heatmap(
 # =============================================================================
 
 message("\n✓ SECTION 20 COMPLETE: Log2FC heatmap saved")
-# SECTION 22 — NETWORK INFERENCE PER CLUSTER
+# SECTION 21 — COEXPRESSION NETWORK (hdWGCNA)
 # =============================================================================
-# Identifies which transcription factors (TFs) regulate the genes in each
-# cluster from Section 20. Results are a ranked hypothesis list.
+# Builds co-expression gene modules per cell type using hdWGCNA.
+# Metacell aggregation handles single-cell sparsity before network construction.
+# Outputs: modules TSV, hub genes TSV, eigengene PDF — one folder per cell type.
 #
 # ┌─ PARAMETERS ────────────────────────────────────────────────────────────────
-#   NETWORK_METHOD : "GENIE3" — recommended for small datasets (n < 15 samples)
-#                    "WGCNA"  — for comparison only; unreliable with n < 15
-#   n_top_clusters :  3    — top 3 largest clusters (default, faster)
-#                    NULL — all clusters
-#   n_cores        : parallel cores (adjust to your machine)
-#
-#   cor_min  ★ ADJUST THIS to control how many TF→gene edges are reported:
-#     Only TF→gene pairs where expression is correlated with Pearson |r| ≥ cor_min
-#     are kept. Lower values = more edges (exploratory); higher = fewer but more
-#     reliable. Start at 0.70 and raise if the resulting network looks too dense.
+#   cell_types_network : NULL = all cell types; or c("Guard Cell", "Mesophyll")
+#   n_metacells        : metacells per group (default 25)
+#   soft_power         : NULL = auto-detect; or integer to set manually
 # └─────────────────────────────────────────────────────────────────────────────
-NETWORK_METHOD <- "GENIE3"  # "GENIE3" or "WGCNA"
-n_top_clusters <- NULL       # NULL = all clusters, or e.g. 3 for the 3 largest
-n_cores        <- 4          # adjust to your machine
-cor_min        <- 0.70       # ★ see table above — start here, raise if too noisy
+cell_types_network <- NULL   # NULL = all, or e.g. c("Guard Cell", "Mesophyll")
+n_metacells        <- 25
+soft_power         <- NULL   # NULL = auto-detect
 
-if (NETWORK_METHOD == "WGCNA")
-  message("\n⚠ WGCNA: unreliable with n < 15 samples — results are comparative only.")
-
-net_pipeline <- run_network_inference_pipeline(
-  heatmap_results  = heatmap_results,          # clusters from Section 20
-  pseudobulk_dir   = file.path(dir_objects, "pseudobulk_replicas"),
-  output_base_dir  = file.path(dir_08, volcano_tag),
-  methods          = c(NETWORK_METHOD),         # "GENIE3" or "WGCNA"
-  orgdb            = go_orgdb,                  # organism DB (set in Section 19)
-  keytype          = go_keytype,                # gene ID type (set in Section 19)
-  custom_tfs       = NULL,                      # NULL = auto-detect TFs from orgdb
-  cor_min          = cor_min,                    # threshold set above
-  genie3_ntrees    = 500,                       # Random Forest trees per gene
-  n_cores          = n_cores,                   # parallel cores
-  soft_power       = 18,                        # WGCNA only
-  network_type     = "signed",                  # WGCNA only
-  tom_threshold    = 0.05,                      # WGCNA only
-  n_top_clusters   = n_top_clusters,            # largest clusters to analyze
-  min_var_filter   = 0.01                       # drop near-constant genes
+run_hdwgcna(
+  seurat_obj  = pbmc_harmony,
+  annot_col   = pseudobulk_annot_col,
+  output_dir  = dir_08,
+  cell_types  = cell_types_network,
+  n_metacells = n_metacells,
+  soft_power  = soft_power
 )
 
-network_results <- net_pipeline$results[[NETWORK_METHOD]]
-message("\n✓ SECTION 22 COMPLETE: Network inference complete")
-
-
-# =============================================================================
-# SECTION 23 — NETWORK VISUALIZATION (FORCE-DIRECTED LAYOUT)
-# =============================================================================
-# Draws TF → target edges as a force-directed graph for each cluster.
-# Node size = number of connections; edge width = importance score.
-# Uses the method and results from Section 22 automatically.
-
-visualize_network_per_cluster(
-  network_results     = network_results,
-  cluster_assignments = heatmap_results,
-  output_dir          = file.path(dir_08, volcano_tag, "VISUALIZATION"),
-  method_name         = NETWORK_METHOD
-)
-
-message("\n✓ SECTION 23 COMPLETE: Network visualization saved")
-
-
-# =============================================================================
-# SECTION 24 — CLUSTER PROFILE REPORTS
-# =============================================================================
-# Per-cluster profiles: heatmaps, expression statistics, functional annotation.
-#
-# For each cluster from SEC 20:
-#   • Expression heatmap (pseudobulk × genes, with row clustering)
-#   • Expression statistics (mean, SD, range)
-#   • Gene count and composition
-#
-# Links to GO enrichment results from SEC 21 for functional context.
-
-exprMatr_pseudobulk <- load_pseudobulk_matrix(
-  file.path(dir_objects, "pseudobulk_replicas"),
-  normalize = TRUE
-)
-
-generate_cluster_profile_report(
-  cluster_assignments = heatmap_results,
-  pseudobulk_matrix   = exprMatr_pseudobulk,
-  output_dir          = file.path(dir_06, volcano_tag, "CLUSTER_PROFILES"),
-  method_name         = CLUSTER_METHOD
-)
-
-message("\n✓ SECTION 24 COMPLETE: Cluster profiles saved")
+message("\n✓ SECTION 21 COMPLETE: hdWGCNA co-expression networks saved")
 
 
 

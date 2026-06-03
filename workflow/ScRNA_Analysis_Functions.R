@@ -3282,6 +3282,93 @@ build_logfc_heatmap <- function(logfc_table,
 }
 
 
+# =============================================================================
+# run_hdwgcna
+# =============================================================================
+# Runs the full hdWGCNA co-expression network pipeline per cell type.
+# Uses metacell aggregation to handle single-cell sparsity before network
+# construction. Saves modules, hub genes and eigengene plots per cell type.
+#
+# Parameters:
+#   seurat_obj  — curated Seurat object (output of capitulo1)
+#   annot_col   — metadata column with cell-type labels
+#   output_dir  — base directory for results
+#   cell_types  — NULL = all; or character vector of specific cell types
+#   n_metacells — metacells per group (default 25)
+#   soft_power  — NULL = auto-detect; or integer to set manually
+run_hdwgcna <- function(seurat_obj,
+                        annot_col   = "celltype_reference",
+                        output_dir,
+                        cell_types  = NULL,
+                        n_metacells = 25,
+                        soft_power  = NULL) {
+
+  dir.create(output_dir, recursive = TRUE, showWarnings = FALSE)
+
+  all_types <- unique(seurat_obj@meta.data[[annot_col]])
+  if (!is.null(cell_types)) all_types <- intersect(cell_types, all_types)
+
+  results <- list()
+
+  for (ct in all_types) {
+    ct_tag <- gsub("[^A-Za-z0-9_]", "_", ct)
+    cat("\n── hdWGCNA:", ct, "──\n")
+
+    tryCatch({
+      obj <- hdWGCNA::SetupForWGCNA(seurat_obj, gene_select = "fraction",
+                                    fraction = 0.05, wgcna_name = ct_tag)
+
+      obj <- hdWGCNA::MetacellsByGroups(seurat_obj = obj,
+                                        group.by    = c(annot_col, "orig.ident"),
+                                        reduction   = "harmony",
+                                        k           = n_metacells,
+                                        max_shared  = 10,
+                                        ident.group = annot_col,
+                                        wgcna_name  = ct_tag)
+      obj <- hdWGCNA::NormalizeMetacells(obj, wgcna_name = ct_tag)
+
+      obj <- hdWGCNA::SetDatExpr(obj, group_name = ct, group.by = annot_col,
+                                  assay = "RNA", layer = "data", wgcna_name = ct_tag)
+
+      obj <- hdWGCNA::TestSoftPowers(obj, networkType = "signed hybrid", wgcna_name = ct_tag)
+      sp  <- if (!is.null(soft_power)) soft_power else {
+        pwr_tbl <- hdWGCNA::GetPowerTable(obj, wgcna_name = ct_tag)
+        best    <- pwr_tbl$Power[which(pwr_tbl$SFT.R.sq >= 0.8)[1]]
+        if (is.na(best)) 6L else as.integer(best)
+      }
+      cat("  Soft power:", sp, "\n")
+
+      obj <- hdWGCNA::ConstructNetwork(obj, soft_power = sp,
+                                       networkType = "signed hybrid", wgcna_name = ct_tag)
+      obj <- hdWGCNA::ModuleEigengenes(obj, group.by.vars = "orig.ident", wgcna_name = ct_tag)
+      obj <- hdWGCNA::ModuleConnectivity(obj, group.by = annot_col,
+                                          group_name = ct, wgcna_name = ct_tag)
+
+      ct_dir    <- file.path(output_dir, ct_tag)
+      dir.create(ct_dir, showWarnings = FALSE)
+      modules   <- hdWGCNA::GetModules(obj, wgcna_name = ct_tag)
+      hub_genes <- hdWGCNA::GetHubGenes(obj, n_hubs = 20, wgcna_name = ct_tag)
+
+      write.table(modules,   file.path(ct_dir, paste0("modules_",  ct_tag, ".tsv")), sep = "\t", quote = FALSE, row.names = FALSE)
+      write.table(hub_genes, file.path(ct_dir, paste0("hubgenes_", ct_tag, ".tsv")), sep = "\t", quote = FALSE, row.names = FALSE)
+
+      p <- hdWGCNA::PlotModuleEigengenes(obj, group.by = annot_col, wgcna_name = ct_tag)
+      pdf(file.path(ct_dir, paste0("eigengenes_", ct_tag, ".pdf")), width = 10, height = 6)
+      print(p); dev.off()
+
+      n_mods <- length(unique(modules$module[modules$module != "grey"]))
+      cat("  Modules found:", n_mods, "\n")
+      results[[ct]] <- list(modules = modules, hub_genes = hub_genes)
+
+    }, error = function(e) {
+      message("  Skipped (", ct, "): ", conditionMessage(e))
+    })
+  }
+
+  invisible(results)
+}
+
+
 
 # =============================================================================
 # get_tfs_from_orgdb
