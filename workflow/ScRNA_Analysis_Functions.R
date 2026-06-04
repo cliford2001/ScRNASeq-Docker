@@ -3365,42 +3365,21 @@ run_hdwgcna <- function(seurat_obj,
                                        tom_outdir  = ct_dir_rel,
                                        wgcna_name  = ct_tag)
       obj <- hdWGCNA::ModuleEigengenes(obj, wgcna_name = ct_tag)
-
-      # ── Merge modules until <= max_modules (via ME correlation) ──────────
-      mods_tbl  <- hdWGCNA::GetModules(obj, wgcna_name = ct_tag)
-      mod_names <- unique(mods_tbl$module[mods_tbl$module != "grey"])
-      n_mods_cur <- length(mod_names)
-
-      if (n_mods_cur > max_modules) {
-        cat("  Merging", n_mods_cur, "modules down to <=", max_modules, "...\n")
-        MEs    <- hdWGCNA::GetMEs(obj, harmonized=FALSE, wgcna_name=ct_tag)
-        me_mat <- MEs[, paste0("ME", mod_names), drop=FALSE]
-
-        while (ncol(me_mat) > max_modules) {
-          cor_mat <- cor(me_mat)
-          diag(cor_mat) <- NA
-          idx  <- which(cor_mat == max(cor_mat, na.rm=TRUE), arr.ind=TRUE)[1,]
-          m1   <- gsub("^ME","", colnames(me_mat)[idx[1]])
-          m2   <- gsub("^ME","", colnames(me_mat)[idx[2]])
-          keep <- if (sum(mods_tbl$module==m1) >= sum(mods_tbl$module==m2)) m1 else m2
-          drop <- if (keep == m1) m2 else m1
-          mods_tbl$module[mods_tbl$module == drop] <- keep
-          me_mat <- me_mat[, colnames(me_mat) != paste0("ME",drop), drop=FALSE]
-        }
-
-        cat("  Final modules:", ncol(me_mat), "\n")
-        # Propagate merged assignments back to mods_tbl
-        mods_tbl$module <- mods_tbl$module  # already updated in-place above
-      }
-
       obj <- hdWGCNA::ModuleConnectivity(obj, group.by = annot_col,
                                           group_name = ct, wgcna_name = ct_tag)
 
       modules   <- hdWGCNA::GetModules(obj, wgcna_name = ct_tag)
-      # Apply merged assignments if merging occurred
-      if (exists("mods_tbl") && !is.null(mods_tbl)) {
-        modules$module <- mods_tbl$module[match(modules$gene_name, mods_tbl$gene_name)]
+
+      # ── Keep only top max_modules by size, relabel rest as grey ──────────
+      mod_sizes  <- sort(table(modules$module[modules$module != "grey"]), decreasing=TRUE)
+      n_mods_cur <- length(mod_sizes)
+      if (n_mods_cur > max_modules) {
+        cat("  Reducing", n_mods_cur, "modules to top", max_modules, "by size...\n")
+        keep_mods <- names(mod_sizes)[seq_len(max_modules)]
+        modules$module[!modules$module %in% c(keep_mods, "grey")] <- "grey"
+        cat("  Done\n")
       }
+
       hub_genes <- hdWGCNA::GetHubGenes(obj, n_hubs = 20, wgcna_name = ct_tag)
 
       write.table(modules,   file.path(ct_dir, paste0("modules_",  ct_tag, ".tsv")), sep = "\t", quote = FALSE, row.names = FALSE)
