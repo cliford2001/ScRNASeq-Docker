@@ -3385,14 +3385,17 @@ run_hdwgcna <- function(seurat_obj,
       write.table(modules,   file.path(ct_dir, paste0("modules_",  ct_tag, ".tsv")), sep = "\t", quote = FALSE, row.names = FALSE)
       write.table(hub_genes, file.path(ct_dir, paste0("hubgenes_", ct_tag, ".tsv")), sep = "\t", quote = FALSE, row.names = FALSE)
 
-      # ── UMAP per module eigengene — only cells of this cell type ─────────────
-      ct_cells <- colnames(seurat_obj)[seurat_obj@meta.data[[annot_col]] == ct]
-      obj_sub  <- subset(obj, cells = ct_cells)
-      plot_list <- hdWGCNA::ModuleFeaturePlot(obj_sub, features = "hMEs",
+      # ── UMAP per module eigengene — full obj, highlight this cell type ──────
+      ct_cells  <- colnames(seurat_obj)[seurat_obj@meta.data[[annot_col]] == ct]
+      plot_list <- hdWGCNA::ModuleFeaturePlot(obj, features = "hMEs",
                                               order = TRUE, wgcna_name = ct_tag)
-      plot_list <- lapply(plot_list, function(p)
-        p + ggplot2::theme(axis.text  = ggplot2::element_blank(),
-                           axis.ticks = ggplot2::element_blank()))
+      plot_list <- lapply(plot_list, function(p) {
+        p$data$.is_ct <- rownames(p$data) %in% ct_cells
+        p + ggplot2::aes(alpha = ifelse(.is_ct, 1, 0.05)) +
+          ggplot2::theme(axis.text  = ggplot2::element_blank(),
+                         axis.ticks = ggplot2::element_blank(),
+                         legend.position = "none")
+      })
       pdf(file.path(ct_dir, paste0("eigengenes_", ct_tag, ".pdf")), width = 12, height = 8)
       print(patchwork::wrap_plots(plot_list, ncol = 4))
       dev.off()
