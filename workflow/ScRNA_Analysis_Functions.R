@@ -3388,17 +3388,19 @@ run_hdwgcna <- function(seurat_obj,
           me_mat <- me_mat[, colnames(me_mat) != paste0("ME",drop), drop=FALSE]
         }
 
-        # Update module assignments in object metadata
-        obj@meta.data[[paste0("module_",ct_tag)]] <-
-          mods_tbl$module[match(colnames(obj), mods_tbl$cell_name)]
-
         cat("  Final modules:", ncol(me_mat), "\n")
+        # Propagate merged assignments back to mods_tbl
+        mods_tbl$module <- mods_tbl$module  # already updated in-place above
       }
 
       obj <- hdWGCNA::ModuleConnectivity(obj, group.by = annot_col,
                                           group_name = ct, wgcna_name = ct_tag)
 
       modules   <- hdWGCNA::GetModules(obj, wgcna_name = ct_tag)
+      # Apply merged assignments if merging occurred
+      if (exists("mods_tbl") && !is.null(mods_tbl)) {
+        modules$module <- mods_tbl$module[match(modules$gene_name, mods_tbl$gene_name)]
+      }
       hub_genes <- hdWGCNA::GetHubGenes(obj, n_hubs = 20, wgcna_name = ct_tag)
 
       write.table(modules,   file.path(ct_dir, paste0("modules_",  ct_tag, ".tsv")), sep = "\t", quote = FALSE, row.names = FALSE)
