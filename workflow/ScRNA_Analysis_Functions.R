@@ -3461,7 +3461,8 @@ plot_hdwgcna_network <- function(hdwgcna_dir,
                                   tom_threshold = 0.1,
                                   max_edges     = 5000,
                                   cell_types    = NULL,
-                                  n_hub_label   = 5) {
+                                  n_hub_label   = 5,
+                                  max_modules   = NULL) {
 
   rds_files <- list.files(hdwgcna_dir, pattern = "^hdwgcna_.*\\.rds$",
                            full.names = TRUE, recursive = TRUE)
@@ -3485,6 +3486,14 @@ plot_hdwgcna_network <- function(hdwgcna_dir,
       obj     <- readRDS(rds_path)
       wn      <- ct_tag
       modules <- hdWGCNA::GetModules(obj, wgcna_name = wn)
+      # Reduce to top max_modules by size
+      if (!is.null(max_modules)) {
+        mod_sizes <- sort(table(modules$module[modules$module != "grey"]), decreasing=TRUE)
+        if (length(mod_sizes) > max_modules) {
+          keep_mods <- names(mod_sizes)[seq_len(max_modules)]
+          modules$module[!modules$module %in% c(keep_mods, "grey")] <- "grey"
+        }
+      }
       hubs    <- hdWGCNA::GetHubGenes(obj, n_hubs = n_hub_label, wgcna_name = wn)
 
       # Load TOM directly from disk (avoids GetTOM path issues)
@@ -3602,7 +3611,8 @@ filter_hdwgcna_by_de <- function(hdwgcna_dir,
                                   padj_cut      = 0.05,
                                   lfc_cut       = 1,
                                   n_hub_label   = 10,
-                                  tom_threshold = 0.1) {
+                                  tom_threshold = 0.1,
+                                  max_modules   = NULL) {
 
   rds_files <- list.files(hdwgcna_dir, pattern = "^hdwgcna_.*\\.rds$",
                            full.names = TRUE, recursive = TRUE)
@@ -3637,6 +3647,14 @@ filter_hdwgcna_by_de <- function(hdwgcna_dir,
       obj     <- readRDS(rds_path)
       wn      <- ct_tag
       modules <- hdWGCNA::GetModules(obj, wgcna_name = wn)
+      # Reduce to top max_modules by size
+      if (!is.null(max_modules)) {
+        mod_sizes <- sort(table(modules$module[modules$module != "grey"]), decreasing=TRUE)
+        if (length(mod_sizes) > max_modules) {
+          keep_mods <- names(mod_sizes)[seq_len(max_modules)]
+          modules$module[!modules$module %in% c(keep_mods, "grey")] <- "grey"
+        }
+      }
       hubs    <- hdWGCNA::GetHubGenes(obj, n_hubs = n_hub_label, wgcna_name = wn)
 
       # Load TOM directly from disk (avoids GetTOM path issues)
