@@ -123,6 +123,16 @@ RUN R -e "BiocManager::install(c('UCell', 'GeneOverlap'), ask = FALSE, update = 
 RUN R -e "install.packages('enrichR')"
 RUN R -e "remotes::install_github('smorabit/hdWGCNA', ref='dev')"
 
+# ── CellRanger 7.1.0 ──────────────────────────────────────────────────────────
+# Download cellranger-7.1.0.tar.gz from https://www.10xgenomics.com/support/
+# software/cell-ranger/downloads and place it in the build context before
+# running docker build.
+ARG CELLRANGER_VERSION=7.1.0
+COPY cellranger-${CELLRANGER_VERSION}.tar.gz /tmp/cellranger.tar.gz
+RUN tar -xzf /tmp/cellranger.tar.gz -C /opt/ && \
+    rm /tmp/cellranger.tar.gz
+ENV PATH="/opt/cellranger-${CELLRANGER_VERSION}:${PATH}"
+
 WORKDIR /workspace
 
 CMD ["R"]
