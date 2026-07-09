@@ -11,16 +11,13 @@
 # =============================================================================
 #
 #  1. QC AND VISUALIZATION FUNCTIONS
-#     - load_cellbender_filtered_h5
 #     - plot_qc_violin_grid
 #     - summarize_nfeature_plot
 #
 #  2. PREPROCESSING AND DOUBLET DETECTION
 #     - preprocesar_y_doubletfinder
 #     - doubletfinder_pipeline
-#     - load_sample          (load + annotate only, no filtering)
 #     - filter_sample        (filter + DoubletFinder on annotated object)
-#     - process_sample       (shortcut: load_sample + filter_sample)
 #
 #  3. BULK / PSEUDOBULK UTILITIES
 #     - normalize_bulk_pseudobulk
@@ -61,42 +58,6 @@
 # =============================================================================
 # 1. QC AND VISUALIZATION FUNCTIONS
 # =============================================================================
-
-#' Load CellBender Filtered HDF5 Data
-#'
-#' Reads filtered expression matrix from CellBender HDF5 output.
-#'
-#' @param h5_path Path to filtered HDF5 file.
-#' @param project  Project name for Seurat object metadata.
-#' @return A Seurat object containing raw counts.
-#' @export
-load_cellbender_filtered_h5 <- function(h5_path, project = "Sample") {
-
-  f <- H5File$new(h5_path, mode = "r")
-
-  message("Reading CSR components...")
-  data    <- f[["matrix/data"]]$read()
-  indices <- f[["matrix/indices"]]$read()
-  indptr  <- f[["matrix/indptr"]]$read()
-  shape   <- f[["matrix/shape"]]$read()
-
-  message("Reading gene IDs and barcodes...")
-  gene_ids <- f[["matrix/features/id"]]$read()
-  barcodes <- f[["matrix/barcodes"]]$read()
-
-  message("Creating sparse gene x cell matrix...")
-  mat <- new("dgCMatrix",
-             x         = as.numeric(data),
-             i         = indices,
-             p         = indptr,
-             Dim       = shape,
-             Dimnames  = list(gene_ids, barcodes))
-
-  seu <- CreateSeuratObject(counts = mat, project = project)
-
-  return(seu)
-}
-
 
 #' QC Violin Plot Grid
 #'
@@ -340,34 +301,6 @@ doubletfinder_pipeline <- function(obj,
 }
 
 
-#' Load and Annotate a Single Sample
-#'
-#' Loads a CellBender h5 file and computes mitochondrial / chloroplast
-#' percentages. No filtering or doublet detection — use this to inspect raw
-#' QC metrics before deciding thresholds.
-#'
-#' @param sample_info Named list with fields: file, label, condition.
-#' @param mt_pattern  Regex for mitochondrial genes (e.g. "^MT-", "^ATMG").
-#' @param cp_pattern  Regex for chloroplast genes (e.g. "^ATCG"); NULL to skip.
-#' @return Seurat object with percent.mt (and percent.cp) in metadata.
-#' @export
-load_sample <- function(sample_info,
-                        mt_pattern = "^ATMG",
-                        cp_pattern = "^ATCG") {
-
-  obj <- load_cellbender_filtered_h5(sample_info$file, sample_info$label)
-
-  obj[["percent.mt"]] <- PercentageFeatureSet(obj, pattern = mt_pattern)
-  if (!is.null(cp_pattern))
-    obj[["percent.cp"]] <- PercentageFeatureSet(obj, pattern = cp_pattern)
-
-  obj <- RenameCells(obj, add.cell.id = sample_info$condition)
-  obj$condition <- sample_info$condition
-
-  return(obj)
-}
-
-
 #' Filter and Run DoubletFinder on an Annotated Sample
 #'
 #' Applies QC thresholds to an already-annotated Seurat object (output of
@@ -421,39 +354,6 @@ filter_sample <- function(obj,
   if (run_doubletfinder)
     obj <- doubletfinder_pipeline(obj, etiqueta = Project(obj))
 
-  return(obj)
-}
-
-
-#' Load, Annotate, Filter and Run DoubletFinder (full pipeline shortcut)
-#'
-#' Convenience wrapper that calls load_sample() then filter_sample().
-#' Useful when you do not need to inspect raw QC plots before filtering.
-#'
-#' @inheritParams load_sample
-#' @inheritParams filter_sample
-#' @return Filtered Seurat object.
-#' @export
-process_sample <- function(sample_info,
-                           mt_pattern        = "^ATMG",
-                           cp_pattern        = "^ATCG",
-                           min_features      = 200,
-                           max_features      = Inf,
-                           min_counts        = 0,
-                           max_counts        = Inf,
-                           max_mt            = 5,
-                           max_cp            = 100,
-                           run_doubletfinder = TRUE) {
-
-  obj <- load_sample(sample_info, mt_pattern = mt_pattern, cp_pattern = cp_pattern)
-  obj <- filter_sample(obj,
-                       min_features      = min_features,
-                       max_features      = max_features,
-                       min_counts        = min_counts,
-                       max_counts        = max_counts,
-                       max_mt            = max_mt,
-                       max_cp            = max_cp,
-                       run_doubletfinder = run_doubletfinder)
   return(obj)
 }
 
@@ -659,20 +559,20 @@ unificar_nombres <- function(obj) {
 #'
 #' Creates and displays a cell type count comparison table using grid graphics.
 #'
-#' @param filtered_vec   Filtered annotation vector.
-#' @param cellbender_vec CellBender annotation vector.
-#' @param titulo         Table title.
+#' @param filtered_vec  Filtered annotation vector.
+#' @param reference_vec Reference annotation vector.
+#' @param titulo        Table title.
 #' @export
-mostrar_tabla <- function(filtered_vec, cellbender_vec, titulo = "Annotations") {
+mostrar_tabla <- function(filtered_vec, reference_vec, titulo = "Annotations") {
 
   t1       <- table(filtered_vec)
-  t2       <- table(cellbender_vec)
+  t2       <- table(reference_vec)
   all_types <- union(names(t1), names(t2))
 
   df <- data.frame(
     celltype   = all_types,
     filtered   = as.integer(t1[all_types]),
-    cellbender = as.integer(t2[all_types]),
+    reference  = as.integer(t2[all_types]),
     stringsAsFactors = FALSE
   )
   df[is.na(df)] <- 0
@@ -680,7 +580,7 @@ mostrar_tabla <- function(filtered_vec, cellbender_vec, titulo = "Annotations") 
   total_row <- data.frame(
     celltype   = "Total",
     filtered   = sum(df$filtered),
-    cellbender = sum(df$cellbender),
+    reference  = sum(df$reference),
     stringsAsFactors = FALSE
   )
   df <- rbind(df, total_row)
@@ -921,6 +821,13 @@ annotate_by_markers <- function(seurat_obj,
   cat("\nCoincidencias encontradas:\n")
   print(merged[, c("cluster", "gene", "cell.types")])
 
+  # Add .1 .2 suffix when multiple clusters share the same cell type label
+  type_count <- ave(seq_len(nrow(merged)), merged$cell.types, FUN = seq_along)
+  type_total <- ave(seq_len(nrow(merged)), merged$cell.types, FUN = length)
+  merged$cell.types <- ifelse(type_total > 1,
+                              paste0(merged$cell.types, ".", type_count),
+                              merged$cell.types)
+
   Idents(seurat_obj)  <- "seurat_clusters"
   new_ids             <- merged$cell.types
   names(new_ids)      <- merged$cluster
@@ -1030,7 +937,7 @@ plot_subcluster_umap <- function(obj, label, output_dir) {
   p <- DimPlot(obj, group.by = "cluster_subtipo", label = TRUE, raster = FALSE) +
     ggtitle(paste0(label, " — subclusters"))
   filename <- paste0("subcluster_", tolower(gsub(" ", "_", label)), ".pdf")
-  ggsave(file.path(output_dir, filename), p, width = 10, height = 8, dpi = 300)
+  ggsave(file.path(output_dir, filename), p, width = 18, height = 18, dpi = 300)
   invisible(p)
 }
 
@@ -1069,6 +976,9 @@ subcluster_cell_type <- function(obj, tipo, annot_col = "celltype_grouped",
 #' @return List of ggplot objects
 #' @export
 plot_markers_for_subset <- function(subset_obj, marker_table) {
+  available_genes <- rownames(subset_obj)
+  marker_table <- marker_table[marker_table$gene %in% available_genes, , drop = FALSE]
+  if (nrow(marker_table) == 0) return(list())
   lapply(seq_len(nrow(marker_table)), function(i) {
     FeaturePlot(subset_obj, features = marker_table$gene[i]) +
       ggtitle(paste0(marker_table$cell.types[i], "\n", marker_table$gene[i])) +
@@ -1097,7 +1007,7 @@ save_subcluster_composite <- function(subcluster_list, marker_table, output_dir,
   n_marker_rows <- ceiling(nrow(marker_table) / n_marker_cols)
   path <- file.path(output_dir, filename)
 
-  pdf(path, width = max(20, n_marker_cols * 4), height = 10 + n_marker_rows * 4)
+  pdf(path, width = 18, height = 18)
 
   # For each cell type: UMAP page → markers page
   for (x in subcluster_list) {
@@ -1292,14 +1202,7 @@ guardar_tablas_pseudobulk <- function(obj_list,
       next
     }
 
-    counts_reps_df <- tryCatch(
-      run_pseudobulk(obj),
-      error = function(e) {
-        warning("Skipping ", tipo, " due to pseudobulk error: ", e$message)
-        NULL
-      }
-    )
-    if (is.null(counts_reps_df)) next
+    counts_reps_df <- run_pseudobulk(obj)
 
     pseudobulk_list[[tipo]] <- counts_reps_df
 
@@ -1501,7 +1404,7 @@ render_volcano_plots <- function(results_dir,
     return(invisible(list()))
   }
 
-  pdf(file.path(output_dir, pdf_name), width = 12, height = 6)
+  pdf(file.path(output_dir, pdf_name), width = 18, height = 18)
   on.exit(dev.off(), add = TRUE)
 
   plots <- list()
@@ -1514,8 +1417,8 @@ render_volcano_plots <- function(results_dir,
     ggsave(
       filename = file.path(output_dir, paste0(tools::file_path_sans_ext(basename(file)), ".png")),
       plot     = p,
-      width    = 8,
-      height   = 6,
+      width    = 18,
+      height   = 18,
       dpi      = 300
     )
 
@@ -1673,8 +1576,8 @@ plot_marker_dotplot <- function(seurat_obj,
                                      clusters_remove = NULL,
                                      rename_map      = NULL,
                                      outfile         = NULL,
-                                     width           = 20,
-                                     height          = 10,
+                                     width           = 18,
+                                     height          = 18,
                                      dot_scale       = 12,
                                      base_size       = 18) {
 
@@ -1797,18 +1700,15 @@ correr_enriquecimiento_go <- function(tabla,
       next
     }
 
-    enri <- tryCatch(
-      enrichGO(gene          = gene,
-               universe      = universo,
-               OrgDb         = orgdb,
-               keyType       = keytype,
-               ont           = espacio,
-               pAdjustMethod = "BH",
-               pvalueCutoff  = pvalueCutoff,
-               qvalueCutoff  = qvalueCutoff,
-               readable      = FALSE),
-      error = function(e) NULL
-    )
+    enri <- enrichGO(gene          = gene,
+                     universe      = universo,
+                     OrgDb         = orgdb,
+                     keyType       = keytype,
+                     ont           = espacio,
+                     pAdjustMethod = "BH",
+                     pvalueCutoff  = pvalueCutoff,
+                     qvalueCutoff  = qvalueCutoff,
+                     readable      = FALSE)
 
     if (is.null(enri) || nrow(enri@result) == 0) {
       message("Sin GO: ", colnames(tabla)[n])
@@ -1870,7 +1770,7 @@ podar_go <- function(resuGO,
 
     if (is.null(resuGO[[k]])) next
 
-    res <- tryCatch(gofilter(resuGO[[k]], nivel), error = function(e) NULL)
+    res <- gofilter(resuGO[[k]], nivel)
     if (is.null(res) || nrow(res@result) == 0) next
 
     salida[[k]] <- res
@@ -2043,8 +1943,7 @@ run_go_enrichment_suite <- function(diff_table,
   on.exit(dev.off(), add = TRUE)
 
   for (obj in list(go_total, go_simple, go_total_podado, go_simple_podado)) {
-    tryCatch(print(graficar_go_balones(obj)),
-             error = function(e) message("Skipping GO balloon plot: ", e$message))
+    print(graficar_go_balones(obj))
   }
 
   invisible(list(
@@ -2169,7 +2068,7 @@ run_coexpression_cluster_suite <- function(diff_table,
   breaks_seq  <- seq(breaks[1], breaks[2], length.out = 80)
   color_scale <- colorRampPalette(c("blue", "black", "yellow"))(length(breaks_seq) - 1)
 
-  pdf(file.path(output_dir, heatmap_pdf), width = 10, height = 20)
+  pdf(file.path(output_dir, heatmap_pdf), width = 18, height = 18)
   heatmap_obj <- pheatmap(
     Mz,
     cluster_rows      = hc_rows,
@@ -2226,7 +2125,7 @@ run_coexpression_cluster_suite <- function(diff_table,
   tom_order <- gene_tree$order
   tom_plot_mat <- TOM[tom_order, tom_order, drop = FALSE]
   tom_plot_ann <- tom_annotation[tom_order, , drop = FALSE]
-  pdf(file.path(output_dir, tom_pdf), width = 10, height = 10)
+  pdf(file.path(output_dir, tom_pdf), width = 18, height = 18)
   pheatmap(
     tom_plot_mat,
     cluster_rows      = FALSE,
@@ -2383,7 +2282,7 @@ build_heatmap_clusters <- function(Mz,
   breaks_seq  <- seq(breaks[1], breaks[2], length.out = 80)
   color_scale <- colorRampPalette(c("blue", "black", "yellow"))(length(breaks_seq) - 1)
 
-  pdf(file.path(output_dir, heatmap_pdf), width = 10, height = 20)
+  pdf(file.path(output_dir, heatmap_pdf), width = 18, height = 18)
   pheatmap(
     Mz,
     cluster_rows      = hc_rows,
@@ -2486,7 +2385,7 @@ build_coexpression_modules <- function(Mz,
   tom_order <- gene_tree$order
   tom_plot_mat <- TOM[tom_order, tom_order, drop = FALSE]
   tom_plot_ann <- tom_annotation[tom_order, , drop = FALSE]
-  pdf(file.path(output_dir, tom_pdf), width = 10, height = 10)
+  pdf(file.path(output_dir, tom_pdf), width = 18, height = 18)
   pheatmap(
     tom_plot_mat,
     cluster_rows      = FALSE,
@@ -2583,21 +2482,21 @@ run_go_for_gene_clusters <- function(assignments,
 }
 
 # ── Plot-saving helpers ────────────────────────────────────────────────────────
-# save_pdf(plot, "name.pdf")             — UMAP / FeaturePlot  (10 × 8)
-# save_vln(plot, "name.pdf")             — VlnPlot single gene  (14 × 6)
-# save_vln(plot, "name.pdf", n = k)      — VlnPlot k genes      (14 × 6k)
+# save_pdf(plot, "name.pdf")             — standard plot (18 × 18)
+# save_vln(plot, "name.pdf")             — violin plot (18 × 18)
+# save_vln(plot, "name.pdf", n = k)      — violin plot (18 × 18)
 # save_qc(plot_list, "name.pdf")         — stacked QC grid
 
-save_pdf <- function(plot, file, w = 10, h = 8)
+save_pdf <- function(plot, file, w = 18, h = 18)
   ggsave(file.path(output_dir, file), plot, width = w, height = h,
          dpi = 300, limitsize = FALSE)
 
 save_vln <- function(plot, file, n = 1)
-  save_pdf(plot, file, w = 14, h = 6 * n)
+  save_pdf(plot, file, w = 18, h = 18)
 
 save_qc <- function(plot_list, file)
   ggsave(file.path(output_dir, file), wrap_plots(plot_list, ncol = 1),
-         width = 14, height = 6 * length(plot_list), dpi = 300, bg = "white")
+         width = 18, height = 18, dpi = 300, bg = "white")
 
 
 # =============================================================================
@@ -2693,7 +2592,7 @@ run_pseudobulk_pipeline <- function(obj,
   pseudobulk <- generate_pseudobulk(obj, group_by = "orig.ident")
   ggsave(file.path(dir_pseudobulk, "pseudobulk_correlation.pdf"),
          plot_replicate_correlation(pseudobulk$by_sample),
-         width = 8, height = 8, dpi = 300)
+         width = 18, height = 18, dpi = 300)
 
   # ── [2/6] Per-cell-type subsets + pseudo-replicates ──────────────────────────
   message("[2/6] Building cell-type subsets and pseudo-replicates...")
@@ -2732,7 +2631,7 @@ run_pseudobulk_pipeline <- function(obj,
     if (!length(csv_files)) { message("  No CSV for: ", tag); next }
 
     pdf(file.path(dir_volcano, paste0("VolcanoPlots_", tag, ".pdf")),
-        width = 12, height = 6)
+        width = 18, height = 18)
     plots <- list()
     for (f in csv_files) {
       plots <- c(plots, list(plot_volcano(f, padj_cut = padj_cut, lfc_cut = lfc_cut)))
@@ -2769,8 +2668,8 @@ run_pseudobulk_pipeline <- function(obj,
     matriz <- as.matrix(column_to_rownames(tabla_logfc, "gene_id"))
     matriz[is.na(matriz)] <- 0
     if (nrow(matriz) > 1) {
-      pdf(file.path(diff_dir, paste0("heatmap_", tag, ".pdf")), width = 14, height = 18)
-      tryCatch(plot_heatmap(matriz), error = function(e) message("Heatmap error: ", e$message))
+      pdf(file.path(diff_dir, paste0("heatmap_", tag, ".pdf")), width = 18, height = 18)
+      plot_heatmap(matriz)
       dev.off()
     }
   }
@@ -2803,12 +2702,10 @@ run_pseudobulk_pipeline <- function(obj,
                                  simplificar = TRUE,  output_dir = enr_dir)
 
     pdf(file.path(enr_dir, paste0("GO_enrichment_", tag, ".pdf")), width = 18, height = 18)
-    tryCatch({
-      print(graficar_go_balones(go_total))
-      print(graficar_go_balones(go_simple))
-      print(graficar_go_balones(go_total_podado))
-      print(graficar_go_balones(go_simple_podado))
-    }, error = function(e) message("GO plot error: ", e$message))
+    print(graficar_go_balones(go_total))
+    print(graficar_go_balones(go_simple))
+    print(graficar_go_balones(go_total_podado))
+    print(graficar_go_balones(go_simple_podado))
     dev.off()
   }
 
@@ -2818,173 +2715,30 @@ run_pseudobulk_pipeline <- function(obj,
 
 
 # =============================================================================
-# 10. PIPELINE WORKFLOW FIGURE
-# =============================================================================
-
-#' Plot Pipeline Workflow Overview
-#'
-#' Generates a visual diagram of the full scRNA-seq pipeline and saves it as a
-#' PDF. Useful as a quick reference for what each chapter covers.
-#'
-#' @param outfile Full path for the output PDF file.
-#' @return Invisible ggplot object. Side effect: writes PDF to disk.
-#' @export
-plot_pipeline_workflow <- function(outfile) {
-
-  # \u2500\u2500 Node positions \u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500
-  # Layout: inverted-Y
-  #   Stem  (Part 1) \u2014 center column x = 5, y = 9 \u2192 1
-  #   Junction        \u2014 Export h5ad at (5, 1)
-  #   Left  branch    \u2014 Pseudotime,  x = 2,  y = -1 \u2192 -3
-  #   Right branch    \u2014 Part 2 DE/Networks, x = 8, y = -1 \u2192 -5
-
-  trunk <- data.frame(
-    x = 5,
-    y = c(9, 8, 7, 6, 5, 4, 3, 2, 1),
-    label = c(
-      "FASTQ\n+ CellRanger", "CellBender\n(optional)",
-      "Load &\nQC", "Filter +\nDoubletFinder",
-      "Merge &\nNormalize", "Harmony\nIntegration",
-      "Clustering", "Annotate &\nCurate",
-      "Export\nh5ad"
-    ),
-    group    = c("Pre-processing", "Pre-processing", rep("Part 1", 6), "Junction"),
-    optional = c(FALSE, TRUE, rep(FALSE, 7)),
-    stringsAsFactors = FALSE
-  )
-
-  left_nodes <- data.frame(
-    x = 2, y = c(-1, -2, -3),
-    label = c("Load h5ad\n(Python)", "Trajectory\nInference", "Pseudotime\nPlots"),
-    group = "Pseudotime", optional = FALSE,
-    stringsAsFactors = FALSE
-  )
-
-  right_nodes <- data.frame(
-    x = 8, y = c(-1, -2, -3, -4, -5),
-    label = c("Cell-type\nSubsets", "Pseudobulk\n+ Replicates",
-              "DESeq2\nDE", "Volcano +\nHeatmap + GO", "Network\nInference"),
-    group = "Part 2", optional = FALSE,
-    stringsAsFactors = FALSE
-  )
-
-  nodes <- rbind(trunk[, c("x","y","label","group","optional")],
-                 left_nodes, right_nodes)
-
-  # \u2500\u2500 Edges \u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500
-  trunk_edges <- data.frame(x1 = 5, y1 = 9:2, x2 = 5, y2 = 8:1)
-
-  fork_edges  <- data.frame(      # Export \u2192 branch starts
-    x1 = c(5, 5), y1 = c(1, 1),
-    x2 = c(2, 8), y2 = c(-1, -1)
-  )
-
-  left_edges  <- data.frame(x1 = 2, y1 = c(-1,-2), x2 = 2, y2 = c(-2,-3))
-  right_edges <- data.frame(x1 = 8, y1 = -1:-4,    x2 = 8, y2 = -2:-5)
-
-  edges <- rbind(trunk_edges, fork_edges, left_edges, right_edges)
-
-  # \u2500\u2500 Colors \u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500
-  group_colors <- c(
-    "Pre-processing" = "#d9d9d9",
-    "Part 1"         = "#b3cde3",
-    "Junction"       = "#fdcdac",
-    "Pseudotime"     = "#e0c8f0",
-    "Part 2"         = "#ccebc5"
-  )
-
-  w <- 0.82; h <- 0.52
-
-  req  <- nodes[!nodes$optional, ]
-  opt  <- nodes[ nodes$optional, ]
-
-  p <- ggplot() +
-    # Section labels
-    annotate("text", x = 5,   y = 9.65,
-             label = "PART 1 \u2014 Single-Cell Analysis",
-             size = 3.5, color = "#1565c0", fontface = "bold") +
-    annotate("text", x = 2,   y = -0.3,
-             label = "Pseudotime", size = 3.2, color = "#6a1b9a", fontface = "bold") +
-    annotate("text", x = 8,   y = -0.3,
-             label = "PART 2 \u2014 Pseudobulk DE & Networks",
-             size = 3.2, color = "#2e7d32", fontface = "bold") +
-    # Background bands
-    annotate("rect", xmin = 3.9, xmax = 6.1, ymin = 0.35, ymax = 9.45,
-             fill = "#f0f4ff", color = NA) +
-    annotate("rect", xmin = 0.7, xmax = 3.3, ymin = -3.65, ymax = -0.45,
-             fill = "#f8f0ff", color = NA) +
-    annotate("rect", xmin = 6.7, xmax = 9.3, ymin = -5.65, ymax = -0.45,
-             fill = "#f0fff4", color = NA) +
-    # Edges
-    geom_segment(data = edges,
-                 aes(x = x1, y = y1, xend = x2, yend = y2),
-                 arrow     = arrow(length = unit(0.20, "cm"), type = "closed"),
-                 linewidth = 0.55, color = "grey45", lineend = "round") +
-    # Required nodes
-    geom_rect(data = req,
-              aes(xmin = x-w/2, xmax = x+w/2, ymin = y-h/2, ymax = y+h/2, fill = group),
-              color = "grey35", linewidth = 0.4) +
-    # Optional nodes (dashed border)
-    geom_rect(data = opt,
-              aes(xmin = x-w/2, xmax = x+w/2, ymin = y-h/2, ymax = y+h/2, fill = group),
-              color = "grey55", linewidth = 0.4, linetype = "dashed") +
-    geom_text(data = nodes, aes(x = x, y = y, label = label),
-              size = 2.6, lineheight = 0.9) +
-    scale_fill_manual(values = group_colors, name = NULL,
-                      guide  = guide_legend(nrow = 1)) +
-    theme_void() +
-    theme(legend.position = "bottom",
-          legend.text     = element_text(size = 9),
-          plot.margin     = margin(15, 20, 15, 20)) +
-    xlim(0, 10) + ylim(-6.3, 10.2)
-
-  dir.create(dirname(outfile), recursive = TRUE, showWarnings = FALSE)
-  ggsave(outfile, p, width = 12, height = 20, dpi = 300)
-  message("Workflow figure saved: ", outfile)
-  invisible(p)
-}
-
-
-# =============================================================================
-# END OF FUNCTIONS
-# =============================================================================
-
-
-# =============================================================================
 # DATA LOADING
 # =============================================================================
 
-#' Load Seurat objects from samples (CellBender or CellRanger)
+#' Load Seurat objects from CellRanger samples
 #'
 #' @param samples List of sample configurations (file, label, condition)
 #' @param DATA_DIR Root data directory path
-#' @param USE_CELLBENDER Logical; if TRUE load CellBender HDF5, if FALSE load CellRanger
 #' @param mt_pattern Regex pattern for mitochondrial genes (e.g., "^ATMG" for Arabidopsis)
 #' @param cp_pattern Regex pattern for chloroplast genes (e.g., "^ATCG" for Arabidopsis)
 #'
 #' @return Named list of Seurat objects with QC metrics (percent.mt, percent.cp)
 #'
 #' @export
-load_seurat_samples <- function(samples, DATA_DIR, USE_CELLBENDER, mt_pattern, cp_pattern) {
-  
-  if (USE_CELLBENDER) {
-    # Load CellBender-filtered HDF5 files
-    seurat_list <- lapply(samples, load_sample,
-                          mt_pattern = mt_pattern,
-                          cp_pattern = cp_pattern)
-  } else {
-    # Load CellRanger filtered_feature_bc_matrix directories
-    seurat_list <- lapply(samples, function(s) {
-      mat <- Read10X(data.dir = file.path(DATA_DIR, s$file))
-      obj <- CreateSeuratObject(counts = mat, project = s$label,
-                                min.cells = 3, min.features = 200)
-      obj$condition <- s$condition
-      obj[["percent.mt"]] <- PercentageFeatureSet(obj, pattern = mt_pattern)
-      if (!is.null(cp_pattern))
-        obj[["percent.cp"]] <- PercentageFeatureSet(obj, pattern = cp_pattern)
-      obj
-    })
-  }
+load_seurat_samples <- function(samples, DATA_DIR, mt_pattern, cp_pattern) {
+  seurat_list <- lapply(samples, function(s) {
+    mat <- Read10X(data.dir = file.path(DATA_DIR, s$file))
+    obj <- CreateSeuratObject(counts = mat, project = s$label,
+                              min.cells = 3, min.features = 200)
+    obj$condition <- s$condition
+    obj[["percent.mt"]] <- PercentageFeatureSet(obj, pattern = mt_pattern)
+    if (!is.null(cp_pattern))
+      obj[["percent.cp"]] <- PercentageFeatureSet(obj, pattern = cp_pattern)
+    obj
+  })
   
   names(seurat_list) <- sapply(samples, `[[`, "label")
   return(seurat_list)
@@ -3221,14 +2975,56 @@ run_simple_go_enrichment <- function(diff_table,
   # Generate plots with title
   plot_title <- if (!is.null(cell_type)) paste0("GO Enrichment - ", cell_type) else "GO Enrichment"
 
-  tryCatch({
-    pdf(file.path(output_dir, paste0(file_prefix, "_bubble.pdf")), width = 12, height = 8)
-    p <- dotplot(go_result, showCategory = 20) + ggtitle(plot_title)
-    print(p)
-    dev.off()
-  }, error = function(e) message("Could not generate bubble plot: ", e$message))
+  pdf(file.path(output_dir, paste0(file_prefix, "_bubble.pdf")), width = 18, height = 18)
+  p <- dotplot(go_result, showCategory = 20) + ggtitle(plot_title)
+  print(p)
+  dev.off()
 
   return(go_result)
+}
+
+
+#' Run GO enrichment for one DESeq2 contrast
+#'
+#' Finds all DESeq2 CSV files for a contrast, keeps genes passing the adjusted
+#' p-value cutoff, and runs GO enrichment per cell type.
+#'
+#' @export
+run_go_enrichment_for_contrast <- function(results_dir,
+                                           output_dir,
+                                           orgdb,
+                                           keytype = "TAIR",
+                                           go_space = "BP",
+                                           padj_cutoff = 0.05,
+                                           contrast_tag) {
+
+  deseq2_files <- list.files(results_dir,
+                             pattern = "^DESeq2_.*\\.csv$",
+                             full.names = TRUE)
+
+  go_results <- list()
+
+  for (deseq2_file in deseq2_files) {
+    cell_type <- gsub("^DESeq2_|\\.csv$", "", basename(deseq2_file))
+
+    deseq2_results <- read.csv(deseq2_file, row.names = 1)
+    sig_genes <- rownames(deseq2_results)[deseq2_results$padj < padj_cutoff]
+
+    if (length(sig_genes) > 0) {
+      go_results[[cell_type]] <- run_simple_go_enrichment(
+        diff_table   = data.frame(gene_id = sig_genes),
+        output_dir   = output_dir,
+        orgdb        = orgdb,
+        keytype      = keytype,
+        go_space     = go_space,
+        padj_cutoff  = padj_cutoff,
+        cell_type    = cell_type,
+        contrast_tag = contrast_tag
+      )
+    }
+  }
+
+  invisible(go_results)
 }
 
 
@@ -3274,11 +3070,154 @@ build_logfc_heatmap <- function(logfc_table,
   )
 
   pdf(file.path(output_dir, paste0("heatmap_", contrast_tag, ".pdf")),
-      width = 12, height = 16)
+      width = 18, height = 18)
   ComplexHeatmap::draw(ht, merge_legend = TRUE, padding = grid::unit(c(2, 2, 2, 10), "mm"))
   dev.off()
 
   invisible(NULL)
+}
+
+
+# =============================================================================
+# run_unified_hdwgcna
+# =============================================================================
+# Builds one hdWGCNA network from the genes in the log2FC heatmap table.
+# Saves modules, hub genes, the hdWGCNA object and three 18 x 18 plots.
+run_unified_hdwgcna <- function(seurat_obj,
+                                de_table_path,
+                                output_dir,
+                                annot_col,
+                                sample_col = "orig.ident",
+                                wgcna_name = "unified",
+                                n_metacells = 25,
+                                soft_power = NULL,
+                                min_module_size = 30,
+                                deep_split = 2) {
+
+  dir.create(output_dir, recursive = TRUE, showWarnings = FALSE)
+
+  de_table <- read.table(de_table_path, header = TRUE, sep = "\t",
+                         row.names = 1, check.names = FALSE)
+  de_genes <- rownames(de_table)[apply(!is.na(de_table), 1, any)]
+  de_genes <- intersect(de_genes, rownames(seurat_obj))
+
+  seurat_de <- seurat_obj[de_genes, ]
+  seurat_de$all_group <- "all"
+
+  obj <- hdWGCNA::SetupForWGCNA(seurat_de, gene_select = "all",
+                                wgcna_name = wgcna_name)
+  obj <- hdWGCNA::MetacellsByGroups(
+    seurat_obj  = obj,
+    group.by    = c(annot_col, sample_col, "all_group"),
+    reduction   = "harmony",
+    k           = n_metacells,
+    max_shared  = max(10L, as.integer(n_metacells * 0.4)),
+    ident.group = "all_group",
+    wgcna_name  = wgcna_name
+  )
+  obj <- hdWGCNA::NormalizeMetacells(obj, wgcna_name = wgcna_name)
+  obj <- hdWGCNA::SetDatExpr(obj, group_name = "all", group.by = "all_group",
+                             assay = "RNA", layer = "data",
+                             wgcna_name = wgcna_name)
+
+  obj <- hdWGCNA::TestSoftPowers(obj, networkType = "signed hybrid",
+                                 wgcna_name = wgcna_name)
+  selected_power <- soft_power
+  if (is.null(selected_power)) {
+    power_table <- hdWGCNA::GetPowerTable(obj, wgcna_name = wgcna_name)
+    selected_power <- power_table$Power[which(power_table$SFT.R.sq >= 0.8)[1]]
+    if (is.na(selected_power)) selected_power <- 6L
+  }
+  selected_power <- as.integer(selected_power)
+
+  obj <- hdWGCNA::ConstructNetwork(
+    obj,
+    soft_power    = selected_power,
+    networkType   = "signed hybrid",
+    minModuleSize = min_module_size,
+    deepSplit     = deep_split,
+    tom_outdir    = sub("^/workspace/", "", output_dir),
+    maxBlockSize  = max(length(de_genes) + 1L, 30000L),
+    useDiskCache  = FALSE,
+    overwrite_tom = TRUE,
+    wgcna_name    = wgcna_name
+  )
+  obj <- hdWGCNA::ModuleEigengenes(obj, wgcna_name = wgcna_name)
+  obj <- hdWGCNA::ModuleConnectivity(obj, group.by = "all_group",
+                                     group_name = "all",
+                                     wgcna_name = wgcna_name)
+
+  modules   <- hdWGCNA::GetModules(obj, wgcna_name = wgcna_name)
+  hub_genes <- hdWGCNA::GetHubGenes(obj, n_hubs = 20, wgcna_name = wgcna_name)
+  n_modules <- length(unique(modules$module[modules$module != "grey"]))
+
+  write.table(modules, file.path(output_dir, "modules_unified.tsv"),
+              sep = "\t", quote = FALSE, row.names = FALSE)
+  write.table(hub_genes, file.path(output_dir, "hubgenes_unified.tsv"),
+              sep = "\t", quote = FALSE, row.names = FALSE)
+  write.table(data.frame(
+    de_genes = length(de_genes),
+    soft_power = selected_power,
+    modules = n_modules
+  ), file.path(output_dir, "hdwgcna_summary.tsv"),
+  sep = "\t", quote = FALSE, row.names = FALSE)
+  saveRDS(obj, file.path(output_dir, "hdwgcna_unified.rds"))
+
+  plot_list <- hdWGCNA::ModuleFeaturePlot(obj, features = "hMEs",
+                                          order = TRUE,
+                                          wgcna_name = wgcna_name)
+  plot_list <- plot_list[!grepl("grey", names(plot_list), ignore.case = TRUE)]
+  plot_list <- lapply(plot_list, function(p) {
+    p + ggplot2::theme(axis.text = ggplot2::element_blank(),
+                       axis.ticks = ggplot2::element_blank())
+  })
+
+  pdf(file.path(output_dir, "umap_modules_unified.pdf"), width = 18, height = 18)
+  print(patchwork::wrap_plots(plot_list, ncol = 4) +
+          patchwork::plot_annotation(
+            title = "UMAP modules - unified WGCNA",
+            subtitle = sprintf("%d DEGs | %d modules", length(de_genes), n_modules)
+          ))
+  dev.off()
+
+  module_eigengenes <- hdWGCNA::GetMEs(obj, harmonized = FALSE,
+                                       wgcna_name = wgcna_name)
+  if (!is.null(module_eigengenes) && ncol(module_eigengenes) > 0) {
+    me_cols <- colnames(module_eigengenes)[
+      !grepl("grey|^0$", colnames(module_eigengenes), ignore.case = TRUE)
+    ]
+    if (length(me_cols) > 0) {
+      me_mat <- t(as.matrix(module_eigengenes[, me_cols, drop = FALSE]))
+      mod_col <- sub("^(ME|hME)", "", rownames(me_mat))
+
+      pdf(file.path(output_dir, "eigengene_heatmap_unified.pdf"),
+          width = 18, height = 18)
+      ComplexHeatmap::draw(ComplexHeatmap::Heatmap(
+        me_mat,
+        name = "ME",
+        col = viridis::viridis(100),
+        cluster_rows = TRUE,
+        cluster_columns = TRUE,
+        show_row_names = TRUE,
+        row_labels = mod_col,
+        show_column_names = FALSE,
+        column_title = sprintf("Unified module eigengenes (%d DEGs)",
+                               length(de_genes))
+      ))
+      dev.off()
+    }
+  }
+
+  pdf(file.path(output_dir, "dendrogram_unified.pdf"), width = 18, height = 18)
+  hdWGCNA::PlotDendrogram(
+    obj,
+    main = sprintf("Unified dendrogram | %d DEGs | %d modules",
+                   length(de_genes), n_modules),
+    wgcna_name = wgcna_name
+  )
+  dev.off()
+
+  invisible(list(modules = modules, hub_genes = hub_genes))
 }
 
 
@@ -3297,12 +3236,15 @@ build_logfc_heatmap <- function(logfc_table,
 #   n_metacells — metacells per group (default 25)
 #   soft_power  — NULL = auto-detect; or integer to set manually
 run_hdwgcna <- function(seurat_obj,
-                        annot_col   = "celltype_reference",
+                        annot_col       = "celltype_reference",
                         output_dir,
-                        cell_types  = NULL,
-                        n_metacells = 25,
-                        soft_power  = NULL,
-                        max_modules = 8) {
+                        cell_types      = NULL,
+                        n_metacells     = 25,
+                        soft_power      = NULL,
+                        max_modules     = 8,
+                        gene_select     = "fraction",
+                        fraction        = 0.05,
+                        de_genes_per_ct = NULL) {
 
   dir.create(output_dir, recursive = TRUE, showWarnings = FALSE)
 
@@ -3314,7 +3256,7 @@ run_hdwgcna <- function(seurat_obj,
   for (ct in all_types) {
     ct_tag   <- gsub("[^A-Za-z0-9_]", "_", ct)
     ct_dir      <- normalizePath(file.path(output_dir, ct_tag), mustWork = FALSE)
-    ct_dir_rel  <- file.path("resultados/08_networks", ct_tag)   # relative — for hdWGCNA GetTOM
+    ct_dir_rel  <- file.path(sub("^/workspace/", "", output_dir), ct_tag)  # relative to /workspace
     rds_file    <- file.path(ct_dir, paste0("hdwgcna_", ct_tag, ".rds"))
     tom_files   <- list.files(ct_dir, pattern = "_block\\..*\\.rda$", full.names = TRUE)
     tom_file    <- if (length(tom_files) > 0) tom_files[1] else file.path(ct_dir, paste0(ct_tag, "_TOM.rda"))
@@ -3329,11 +3271,24 @@ run_hdwgcna <- function(seurat_obj,
 
     cat("\n── hdWGCNA:", ct, "──\n")
 
-    tryCatch({
+    {
       dir.create(ct_dir, showWarnings = FALSE)
 
-      obj <- hdWGCNA::SetupForWGCNA(seurat_obj, gene_select = "fraction",
-                                    fraction = 0.05, wgcna_name = ct_tag)
+      n_genes_for_title <- nrow(seurat_obj)
+      seurat_ct <- seurat_obj
+
+      if (!is.null(de_genes_per_ct) && !is.null(de_genes_per_ct[[ct]])) {
+        genes_use <- intersect(de_genes_per_ct[[ct]], rownames(seurat_obj))
+        n_genes_for_title <- length(genes_use)
+        if (n_genes_for_title < 10) {
+          message("Skipping ", ct, ": fewer than 10 DE genes.")
+          next
+        }
+        seurat_ct <- subset(seurat_obj, features = genes_use)
+      }
+
+      obj <- hdWGCNA::SetupForWGCNA(seurat_ct, gene_select = gene_select,
+                                    fraction = fraction, wgcna_name = ct_tag)
 
       obj <- hdWGCNA::MetacellsByGroups(seurat_obj = obj,
                                         group.by    = c(annot_col, "orig.ident"),
@@ -3360,10 +3315,13 @@ run_hdwgcna <- function(seurat_obj,
       tom_files <- list.files(ct_dir, pattern = "_block\\..*\\.rda$", full.names = TRUE)
       tom_file  <- if (length(tom_files) > 0) tom_files[1] else file.path(ct_dir, paste0(ct_tag, "_TOM.rda"))
 
-      obj <- hdWGCNA::ConstructNetwork(obj, soft_power  = sp,
-                                       networkType = "signed hybrid",
-                                       tom_outdir  = ct_dir_rel,
-                                       wgcna_name  = ct_tag)
+      obj <- hdWGCNA::ConstructNetwork(obj, soft_power    = sp,
+                                       networkType   = "signed hybrid",
+                                       tom_outdir    = ct_dir_rel,
+                                       maxBlockSize  = max(nrow(seurat_ct) + 1L, 30000L),
+                                       useDiskCache  = FALSE,
+                                       overwrite_tom = TRUE,
+                                       wgcna_name    = ct_tag)
       obj <- hdWGCNA::ModuleEigengenes(obj, wgcna_name = ct_tag)
       obj <- hdWGCNA::ModuleConnectivity(obj, group.by = annot_col,
                                           group_name = ct, wgcna_name = ct_tag)
@@ -3371,45 +3329,55 @@ run_hdwgcna <- function(seurat_obj,
       modules   <- hdWGCNA::GetModules(obj, wgcna_name = ct_tag)
 
       # ── Keep only top max_modules by size, relabel rest as grey ──────────
-      mod_sizes  <- sort(table(modules$module[modules$module != "grey"]), decreasing=TRUE)
+      mod_sizes  <- sort(table(modules$module[modules$module != "grey"]), decreasing = TRUE)
       n_mods_cur <- length(mod_sizes)
+      keep_mods  <- names(mod_sizes)[seq_len(min(max_modules, n_mods_cur))]
       if (n_mods_cur > max_modules) {
         cat("  Reducing", n_mods_cur, "modules to top", max_modules, "by size...\n")
-        keep_mods <- names(mod_sizes)[seq_len(max_modules)]
         modules$module[!modules$module %in% c(keep_mods, "grey")] <- "grey"
-        cat("  Done\n")
       }
+      # Sync color column with module — PlotDendrogram reads $color not $module
+      modules$color <- modules$module
+
+      # Update object with trimmed module assignments (fixes dendrogram + plots)
+      obj <- hdWGCNA::SetModules(obj, modules, wgcna_name = ct_tag)
 
       hub_genes <- hdWGCNA::GetHubGenes(obj, n_hubs = 20, wgcna_name = ct_tag)
 
       write.table(modules,   file.path(ct_dir, paste0("modules_",  ct_tag, ".tsv")), sep = "\t", quote = FALSE, row.names = FALSE)
       write.table(hub_genes, file.path(ct_dir, paste0("hubgenes_", ct_tag, ".tsv")), sep = "\t", quote = FALSE, row.names = FALSE)
 
-      # ── UMAP per module eigengene — full obj, highlight this cell type ──────
+      # ── UMAP per module eigengene — only cells of this cell type, only kept modules ──
       ct_cells  <- colnames(seurat_obj)[seurat_obj@meta.data[[annot_col]] == ct]
       plot_list <- hdWGCNA::ModuleFeaturePlot(obj, features = "hMEs",
                                               order = TRUE, wgcna_name = ct_tag)
+      # Keep only panels for the retained modules (strip ME prefix if present)
+      plot_list <- plot_list[names(plot_list) %in%
+                               c(keep_mods, paste0("ME", keep_mods), paste0("hME", keep_mods))]
       plot_list <- lapply(plot_list, function(p) {
-        p$data$.is_ct <- rownames(p$data) %in% ct_cells
-        p + ggplot2::aes(alpha = ifelse(.is_ct, 1, 0.05)) +
-          ggplot2::theme(axis.text  = ggplot2::element_blank(),
-                         axis.ticks = ggplot2::element_blank(),
-                         legend.position = "none")
+        p$data <- p$data[rownames(p$data) %in% ct_cells, , drop = FALSE]
+        p + ggplot2::theme(axis.text  = ggplot2::element_blank(),
+                           axis.ticks = ggplot2::element_blank(),
+                           legend.position = "none")
       })
-      pdf(file.path(ct_dir, paste0("eigengenes_", ct_tag, ".pdf")), width = 12, height = 8)
+      pdf(file.path(ct_dir, paste0("eigengenes_", ct_tag, ".pdf")), width = 18, height = 18)
       print(patchwork::wrap_plots(plot_list, ncol = 4))
       dev.off()
 
       # ── Eigengene heatmap (viridis, module colour bar) ────────────────────────
       MEs <- hdWGCNA::GetMEs(obj, harmonized = FALSE, wgcna_name = ct_tag)
       if (!is.null(MEs) && ncol(MEs) > 0) {
-        me_mat     <- t(as.matrix(MEs[, !grepl("^ME(grey|0)$", colnames(MEs))]))
-        mod_col    <- gsub("^ME", "", rownames(me_mat))
+        me_cols_use <- colnames(MEs)[
+          (colnames(MEs) %in% keep_mods |
+           sub("^(ME|hME)", "", colnames(MEs)) %in% keep_mods) &
+          !grepl("^(ME|hME)?grey$|^0$", colnames(MEs))]
+        me_mat     <- t(as.matrix(MEs[, me_cols_use, drop = FALSE]))
+        mod_col    <- sub("^(ME|hME)", "", rownames(me_mat))
         left_ha    <- ComplexHeatmap::rowAnnotation(
           Module = ComplexHeatmap::anno_simple(mod_col,
             col = setNames(mod_col, mod_col), width = grid::unit(0.5, "cm")))
-        pdf(file.path(ct_dir, paste0("eigengene_heatmap_", ct_tag, ".pdf")), width = 10,
-            height = max(4, nrow(me_mat) * 0.5 + 2))
+        pdf(file.path(ct_dir, paste0("eigengene_heatmap_", ct_tag, ".pdf")), width = 18,
+            height = 18)
         ComplexHeatmap::draw(ComplexHeatmap::Heatmap(me_mat, name = "ME",
           col = viridis::viridis(100), cluster_rows = TRUE, cluster_columns = TRUE,
           left_annotation = left_ha, show_row_names = TRUE, row_labels = mod_col,
@@ -3421,12 +3389,15 @@ run_hdwgcna <- function(seurat_obj,
       }
 
       # ── Dendrogram ────────────────────────────────────────────────────────────
-      tryCatch({
-        pdf(file.path(ct_dir, paste0("dendrogram_", ct_tag, ".pdf")), width = 12, height = 6)
-        hdWGCNA::PlotDendrogram(obj, main = paste("Dendrogram —", gsub("_"," ",ct_tag)),
-                                 wgcna_name = ct_tag)
+      {
+        n_cells_ct <- length(ct_cells)
+        n_genes_ct <- n_genes_for_title
+        dend_title <- sprintf("Dendrogram — %s\n%d cells | %d DE genes",
+                              gsub("_", " ", ct_tag), n_cells_ct, n_genes_ct)
+        pdf(file.path(ct_dir, paste0("dendrogram_", ct_tag, ".pdf")), width = 18, height = 18)
+        hdWGCNA::PlotDendrogram(obj, main = dend_title, wgcna_name = ct_tag)
         dev.off()
-      }, error = function(e) message("  Dendrogram skipped: ", conditionMessage(e)))
+      }
 
       n_mods <- length(unique(modules$module[modules$module != "grey"]))
       cat("  Modules found:", n_mods, "\n")
@@ -3435,9 +3406,7 @@ run_hdwgcna <- function(seurat_obj,
 
       results[[ct]] <- list(modules = modules, hub_genes = hub_genes)
 
-    }, error = function(e) {
-      message("  Skipped (", ct, "): ", conditionMessage(e))
-    })
+    }
   }
 
   invisible(results)
@@ -3462,7 +3431,6 @@ run_hdwgcna <- function(seurat_obj,
 plot_hdwgcna_network <- function(hdwgcna_dir,
                                   output_dir    = hdwgcna_dir,
                                   tom_threshold = 0.1,
-                                  max_edges     = 5000,
                                   cell_types    = NULL,
                                   n_hub_label   = 5,
                                   max_modules   = NULL) {
@@ -3485,7 +3453,7 @@ plot_hdwgcna_network <- function(hdwgcna_dir,
     ct_dir <- dirname(rds_path)
     cat("\n── Network:", ct_tag, "──\n")
 
-    tryCatch({
+    {
       obj     <- readRDS(rds_path)
       wn      <- ct_tag
       modules <- hdWGCNA::GetModules(obj, wgcna_name = wn)
@@ -3518,9 +3486,6 @@ plot_hdwgcna_network <- function(hdwgcna_dir,
         target = colnames(tom_mat)[edges[, 2]],
         weight = tom_mat[edges]
       )
-      # Keep top max_edges by weight for manageability
-      if (nrow(edge_df) > max_edges)
-        edge_df <- edge_df[order(edge_df$weight, decreasing = TRUE)[seq_len(max_edges)], ]
       write.table(edge_df, file.path(ct_dir, paste0("edges_", ct_tag, ".tsv")),
                   sep = "\t", quote = FALSE, row.names = FALSE)
       cat("  Edges:", nrow(edge_df), "\n")
@@ -3541,16 +3506,16 @@ plot_hdwgcna_network <- function(hdwgcna_dir,
 
       # ── Plot (ggraph) ──────────────────────────────────────────────────────
       if (nrow(edge_df) > 0) {
-        g       <- igraph::graph_from_data_frame(edge_df, directed = FALSE, vertices = node_df)
-        mods    <- sort(unique(node_df$module))
-        # WGCNA module names ARE colors — use directly, fallback to Set3 for non-color names
-        is_color <- function(x) tryCatch({ col2rgb(x); TRUE }, error=function(e) FALSE)
-        pal <- setNames(
-          ifelse(sapply(mods, is_color), mods,
-                 colorRampPalette(RColorBrewer::brewer.pal(min(length(mods),9),"Set1"))(length(mods))),
-          mods)
+        edge_df_plot <- if (nrow(edge_df) > 50000) edge_df[order(edge_df$weight, decreasing=TRUE)[seq_len(50000)], ] else edge_df
+        nodes_in_plot <- unique(c(edge_df_plot$source, edge_df_plot$target))
+        node_df_plot <- node_df[node_df$gene %in% nodes_in_plot, ]
 
-        vdata <- node_df[match(igraph::V(g)$name, node_df$gene), ]
+        g       <- igraph::graph_from_data_frame(edge_df_plot, directed = FALSE, vertices = node_df_plot)
+        mods    <- sort(unique(node_df_plot$module))
+        pal <- setNames(as.character(mods), mods)
+        if ("grey" %in% names(pal)) pal["grey"] <- "grey30"
+
+        vdata <- node_df_plot[match(igraph::V(g)$name, node_df_plot$gene), ]
 
         p <- ggraph::ggraph(g, layout = "graphopt") +
           ggraph::geom_edge_link(ggplot2::aes(alpha = weight, width = weight),
@@ -3567,14 +3532,14 @@ plot_hdwgcna_network <- function(hdwgcna_dir,
             label.padding = ggplot2::unit(0.1, "lines"),
             label.size = 0.2, fill = "white", alpha = 0.85) +
           ggplot2::labs(title = paste("Co-expression network —", gsub("_", " ", ct_tag)),
-                        subtitle = paste(nrow(edge_df), "edges |", nrow(node_df), "genes")) +
+                        subtitle = paste(nrow(edge_df_plot), "edges |", nrow(node_df_plot), "connected genes")) +
           ggplot2::theme_void() +
           ggplot2::theme(
             plot.title    = ggplot2::element_text(face="bold", size=14, hjust=0.5),
             plot.subtitle = ggplot2::element_text(size=9, hjust=0.5, color="grey50"),
             legend.position = "right")
 
-        pdf(file.path(net_dir, paste0("network_", ct_tag, ".pdf")), width = 14, height = 12)
+        pdf(file.path(net_dir, paste0("network_", ct_tag, ".pdf")), width = 18, height = 18)
         print(p)
         dev.off()
         cat("  Network PDF saved\n")
@@ -3582,12 +3547,108 @@ plot_hdwgcna_network <- function(hdwgcna_dir,
         cat("  Skipped plot (", nrow(edge_df), "edges — adjust tom_threshold)\n")
       }
 
-    }, error = function(e) {
-      message("  Skipped (", ct_tag, "): ", conditionMessage(e))
-    })
+    }
   }
 
   invisible(NULL)
+}
+
+
+# =============================================================================
+# plot_hdwgcna_network_tf
+# =============================================================================
+# Restricts an already-exported hdWGCNA network (edges_<wgcna_name>.tsv and
+# nodes_<wgcna_name>.tsv, written by plot_hdwgcna_network()) to TF-TF and
+# TF-target co-expression edges, using a flat list of Arabidopsis TF loci
+# (e.g. AtTFDB, from AGRIS / TAIR: https://agris-knowledgebase.org/Downloads/).
+# Target-target edges (neither endpoint a known TF) are dropped.
+#
+# Parameters:
+#   network_dir  — directory containing edges_<wgcna_name>.tsv / nodes_<wgcna_name>.tsv
+#   tf_list_file — plain text file, one Arabidopsis locus per line (case-insensitive)
+#   wgcna_name   — name used when the network was exported (default "unified")
+#   output_dir   — where to save the filtered tables and plot
+#   n_hub_label  — number of hub genes to label in the plot
+#
+# Saves: edges_{wgcna_name}_TFfiltered.tsv, nodes_{wgcna_name}_TFfiltered.tsv,
+#        network_{wgcna_name}_TFfiltered.pdf (TFs shown as triangles, targets as circles)
+plot_hdwgcna_network_tf <- function(network_dir,
+                                     tf_list_file,
+                                     wgcna_name  = "unified",
+                                     output_dir  = network_dir,
+                                     n_hub_label = 10) {
+
+  edge_df <- read.table(file.path(network_dir, paste0("edges_", wgcna_name, ".tsv")),
+                        header = TRUE, sep = "\t")
+  node_df <- read.table(file.path(network_dir, paste0("nodes_", wgcna_name, ".tsv")),
+                        header = TRUE, sep = "\t")
+
+  tf_loci <- toupper(trimws(readLines(tf_list_file)))
+  node_df$is_TF <- toupper(node_df$gene) %in% tf_loci
+
+  edge_df$source_TF <- toupper(edge_df$source) %in% tf_loci
+  edge_df$target_TF  <- toupper(edge_df$target) %in% tf_loci
+  edge_df_tf <- edge_df[edge_df$source_TF | edge_df$target_TF, ]
+  edge_df_tf$edge_type <- ifelse(edge_df_tf$source_TF & edge_df_tf$target_TF,
+                                 "TF-TF", "TF-Target")
+
+  cat("Edges total:", nrow(edge_df), "\n")
+  cat("Edges TF-TF:", sum(edge_df_tf$edge_type == "TF-TF"), "\n")
+  cat("Edges TF-Target:", sum(edge_df_tf$edge_type == "TF-Target"), "\n")
+  cat("Edges dropped (Target-Target):", nrow(edge_df) - nrow(edge_df_tf), "\n")
+
+  nodes_in_edges <- unique(c(edge_df_tf$source, edge_df_tf$target))
+  node_df_tf <- node_df[node_df$gene %in% nodes_in_edges, ]
+  cat("Nodes kept:", nrow(node_df_tf), "( TFs:", sum(node_df_tf$is_TF),
+      "| targets:", sum(!node_df_tf$is_TF), ")\n")
+
+  write.table(edge_df_tf, file.path(output_dir, paste0("edges_", wgcna_name, "_TFfiltered.tsv")),
+              sep = "\t", quote = FALSE, row.names = FALSE)
+  write.table(node_df_tf, file.path(output_dir, paste0("nodes_", wgcna_name, "_TFfiltered.tsv")),
+              sep = "\t", quote = FALSE, row.names = FALSE)
+
+  hub_pool <- node_df_tf$gene[order(-node_df_tf$kME)]
+  hubs <- head(hub_pool, n_hub_label)
+
+  g    <- igraph::graph_from_data_frame(edge_df_tf, directed = FALSE, vertices = node_df_tf)
+  mods <- sort(unique(node_df_tf$module))
+  pal  <- setNames(as.character(mods), mods)
+  if ("grey" %in% names(pal)) pal["grey"] <- "grey30"
+
+  vdata <- node_df_tf[match(igraph::V(g)$name, node_df_tf$gene), ]
+
+  p <- ggraph::ggraph(g, layout = "graphopt") +
+    ggraph::geom_edge_link(ggplot2::aes(alpha = weight, width = weight, color = edge_type)) +
+    ggraph::scale_edge_width(range = c(0.2, 1.5)) +
+    ggraph::scale_edge_alpha(range = c(0.2, 0.7)) +
+    ggraph::scale_edge_color_manual(values = c("TF-TF" = "firebrick", "TF-Target" = "grey60"),
+                                     name = "Edge type") +
+    ggraph::geom_node_point(ggplot2::aes(size = vdata$kME, color = vdata$module,
+                                          shape = vdata$is_TF)) +
+    ggplot2::scale_color_manual(values = pal, name = "Module") +
+    ggplot2::scale_shape_manual(values = c(`TRUE` = 17, `FALSE` = 16),
+                                 labels = c(`TRUE` = "TF", `FALSE` = "Target"), name = "Role") +
+    ggplot2::scale_size(range = c(1.5, 6), name = "kME") +
+    ggraph::geom_node_label(
+      ggplot2::aes(label = ifelse(igraph::V(g)$name %in% hubs, igraph::V(g)$name, NA)),
+      size = 2.5, repel = TRUE, max.overlaps = 20,
+      label.padding = ggplot2::unit(0.1, "lines"),
+      label.size = 0.2, fill = "white", alpha = 0.85) +
+    ggplot2::labs(title = paste("TF-filtered co-expression network —", gsub("_", " ", wgcna_name)),
+                  subtitle = paste(nrow(edge_df_tf), "edges |", nrow(node_df_tf), "genes |",
+                                    sum(node_df_tf$is_TF), "TFs")) +
+    ggplot2::theme_void() +
+    ggplot2::theme(
+      plot.title    = ggplot2::element_text(face="bold", size=14, hjust=0.5),
+      plot.subtitle = ggplot2::element_text(size=9, hjust=0.5, color="grey50"),
+      legend.position = "right")
+
+  pdf(file.path(output_dir, paste0("network_", wgcna_name, "_TFfiltered.pdf")), width = 18, height = 18)
+  print(p)
+  dev.off()
+  cat("  TF-filtered network PDF saved\n")
+
+  invisible(list(edges = edge_df_tf, nodes = node_df_tf))
 }
 
 
@@ -3609,13 +3670,14 @@ plot_hdwgcna_network <- function(hdwgcna_dir,
 #   lfc_cut     — absolute log2FC threshold
 #   n_hub_label — top N hub genes to label in plot
 filter_hdwgcna_by_de <- function(hdwgcna_dir,
-                                  de_dir,
+                                  de_dirs,
                                   output_dir    = hdwgcna_dir,
                                   padj_cut      = 0.05,
                                   lfc_cut       = 1,
                                   n_hub_label   = 10,
                                   tom_threshold = 0.1,
-                                  max_modules   = NULL) {
+                                  max_modules   = NULL
+) {
 
   rds_files <- list.files(hdwgcna_dir, pattern = "^hdwgcna_.*\\.rds$",
                            full.names = TRUE, recursive = TRUE)
@@ -3630,22 +3692,31 @@ filter_hdwgcna_by_de <- function(hdwgcna_dir,
     ct_dir <- dirname(rds_path)
     cat("\n── DE-filtered network:", ct_tag, "──\n")
 
-    tryCatch({
+    {
       ct_label   <- gsub("_", " ", ct_tag)
       de_pattern <- paste0("DESeq2_", gsub(" ", "_", ct_label))
-      de_file    <- list.files(de_dir, pattern = de_pattern, full.names = TRUE)[1]
 
-      if (is.na(de_file) || !file.exists(de_file)) {
-        cat("  No DESeq2 file found — skipping\n"); next
+      # Collect DE genes for this cell type across ALL contrast directories
+      de_files <- unlist(lapply(de_dirs, function(d)
+        list.files(d, pattern = de_pattern, full.names = TRUE)
+      ))
+
+      if (length(de_files) == 0) {
+        cat("  No DESeq2 files found for this cell type — skipping\n"); next
       }
 
-      de_res   <- read.csv(de_file, row.names = 1)
-      de_sig   <- de_res[!is.na(de_res$padj) &
-                           de_res$padj < padj_cut &
-                           abs(de_res$log2FoldChange) >= lfc_cut, ]
+      # Union of significant DE genes across all contrasts for this cell type
+      de_list <- lapply(de_files, function(f) {
+        df <- read.csv(f, row.names = 1)
+        df[!is.na(df$padj) & df$padj < padj_cut & abs(df$log2FoldChange) >= lfc_cut, ]
+      })
+      de_sig   <- do.call(rbind, de_list)
+      # Keep the row with max |log2FC| per gene (in case gene appears in multiple contrasts)
+      de_sig   <- de_sig[order(abs(de_sig$log2FoldChange), decreasing = TRUE), ]
+      de_sig   <- de_sig[!duplicated(rownames(de_sig)), ]
       de_genes <- rownames(de_sig)
-      cat("  DE genes:", length(de_genes), "\n")
-      if (length(de_genes) < 3) { cat("  Too few DE genes — skipping\n"); next }
+
+      cat("  DE genes (this cell type, all contrasts):", length(de_genes), "\n")
 
       obj     <- readRDS(rds_path)
       wn      <- ct_tag
@@ -3681,7 +3752,6 @@ filter_hdwgcna_by_de <- function(hdwgcna_dir,
       node_df$padj   <- de_sig[node_df$gene, "padj"]
       node_df        <- node_df[node_df$gene %in% de_genes & !is.na(node_df$log2FC), ]
 
-      if (nrow(node_df) < 3) { cat("  Too few DE genes in modules — skipping\n"); next }
 
       de_in_tom <- intersect(node_df$gene, rownames(TOM))
       tom_sub   <- as.matrix(TOM)[de_in_tom, de_in_tom]
@@ -3693,54 +3763,62 @@ filter_hdwgcna_by_de <- function(hdwgcna_dir,
         weight = tom_sub[edges]
       )
 
+      nodes_in_edges <- unique(c(edge_df$source, edge_df$target))
+      node_df <- node_df[node_df$gene %in% nodes_in_edges, ]
+
       write.table(edge_df, file.path(ct_dir, paste0("edges_DE_", ct_tag, ".tsv")),
                   sep = "\t", quote = FALSE, row.names = FALSE)
       write.table(node_df, file.path(ct_dir, paste0("nodes_DE_", ct_tag, ".tsv")),
                   sep = "\t", quote = FALSE, row.names = FALSE)
       cat("  DE edges:", nrow(edge_df), "| DE nodes:", nrow(node_df), "\n")
 
-      g     <- igraph::graph_from_data_frame(edge_df, directed = FALSE, vertices = node_df)
-      mods  <- sort(unique(node_df$module))
-      is_color <- function(x) tryCatch({ col2rgb(x); TRUE }, error=function(e) FALSE)
-      pal <- setNames(
-        ifelse(sapply(mods, is_color), mods,
-               colorRampPalette(RColorBrewer::brewer.pal(min(length(mods),9),"Set1"))(length(mods))),
-        mods)
-      vdata <- node_df[match(igraph::V(g)$name, node_df$gene), ]
-      lfc_q <- quantile(abs(vdata$log2FC), 0.85, na.rm=TRUE)
+      if (nrow(edge_df) > 0) {
+        edge_df_plot <- if (nrow(edge_df) > 50000) edge_df[order(edge_df$weight, decreasing=TRUE)[seq_len(50000)], ] else edge_df
+        nodes_in_plot <- unique(c(edge_df_plot$source, edge_df_plot$target))
+        node_df_plot <- node_df[node_df$gene %in% nodes_in_plot, ]
 
-      p <- ggraph::ggraph(g, layout = "graphopt") +
-        ggraph::geom_edge_link(ggplot2::aes(alpha = weight, width = weight),
-                                color = "grey70", show.legend = FALSE) +
-        ggraph::scale_edge_width(range = c(0.1, 1.5)) +
-        ggraph::scale_edge_alpha(range = c(0.05, 0.4)) +
-        ggraph::geom_node_point(ggplot2::aes(size  = abs(vdata$log2FC),
-                                             color = vdata$module)) +
-        ggplot2::scale_color_manual(values = pal, name = "Module") +
-        ggplot2::scale_size(range = c(1.5, 7), name = "|log2FC|") +
-        ggraph::geom_node_label(
-          ggplot2::aes(label = ifelse(vdata$is_hub | abs(vdata$log2FC) >= lfc_q,
-                                      igraph::V(g)$name, NA)),
-          size = 2.5, repel = TRUE, max.overlaps = 20,
-          label.padding = ggplot2::unit(0.1,"lines"),
-          label.size = 0.2, fill = "white", alpha = 0.85) +
-        ggplot2::labs(
-          title    = paste("DE co-expression network —", gsub("_"," ",ct_tag)),
-          subtitle = paste0(nrow(edge_df), " edges | ", nrow(node_df),
-                            " DE genes | padj<", padj_cut, " | |log2FC|>=", lfc_cut)) +
-        ggplot2::theme_void() +
-        ggplot2::theme(
-          plot.title    = ggplot2::element_text(face="bold", size=14, hjust=0.5),
-          plot.subtitle = ggplot2::element_text(size=9, hjust=0.5, color="grey50"),
-          legend.position = "right")
+        g     <- igraph::graph_from_data_frame(edge_df_plot, directed = FALSE, vertices = node_df_plot)
+        mods  <- sort(unique(node_df_plot$module))
+        pal <- setNames(as.character(mods), mods)
+        if ("grey" %in% names(pal)) pal["grey"] <- "grey30"
+        vdata <- node_df_plot[match(igraph::V(g)$name, node_df_plot$gene), ]
+        lfc_q <- quantile(abs(vdata$log2FC), 0.85, na.rm=TRUE)
 
-      pdf(file.path(net_dir, paste0("network_DE_", ct_tag, ".pdf")), width=14, height=12)
-      print(p)
-      dev.off()
-      cat("  DE network PDF saved\n")
+        p <- ggraph::ggraph(g, layout = "graphopt") +
+          ggraph::geom_edge_link(ggplot2::aes(alpha = weight, width = weight),
+                                  color = "grey70", show.legend = FALSE) +
+          ggraph::scale_edge_width(range = c(0.1, 1.5)) +
+          ggraph::scale_edge_alpha(range = c(0.05, 0.4)) +
+          ggraph::geom_node_point(ggplot2::aes(size  = abs(vdata$log2FC),
+                                               color = vdata$module)) +
+          ggplot2::scale_color_manual(values = pal, name = "Module") +
+          ggplot2::scale_size(range = c(1.5, 7), name = "|log2FC|") +
+          ggraph::geom_node_label(
+            ggplot2::aes(label = ifelse(vdata$is_hub | abs(vdata$log2FC) >= lfc_q,
+                                        igraph::V(g)$name, NA)),
+            size = 2.5, repel = TRUE, max.overlaps = 20,
+            label.padding = ggplot2::unit(0.1,"lines"),
+            label.size = 0.2, fill = "white", alpha = 0.85) +
+          ggplot2::labs(
+            title    = paste("DE co-expression network —", gsub("_"," ",ct_tag)),
+            subtitle = paste0(nrow(edge_df_plot), " edges | ", nrow(node_df_plot),
+                              " connected DE genes | padj<", padj_cut, " | |log2FC|>=", lfc_cut)) +
+          ggplot2::theme_void() +
+          ggplot2::theme(
+            plot.title    = ggplot2::element_text(face="bold", size=14, hjust=0.5),
+            plot.subtitle = ggplot2::element_text(size=9, hjust=0.5, color="grey50"),
+            legend.position = "right")
+
+        pdf(file.path(net_dir, paste0("network_DE_", ct_tag, ".pdf")), width=18, height=18)
+        print(p)
+        dev.off()
+        cat("  DE network PDF saved\n")
+      } else {
+        cat("  Skipped DE plot (0 edges - adjust tom_threshold)\n")
+      }
 
       # ── Eigengene heatmap — solo módulos con genes DE ────────────────────────
-      tryCatch({
+      {
         MEs <- hdWGCNA::GetMEs(obj, harmonized = FALSE, wgcna_name = ct_tag)
         if (!is.null(MEs) && ncol(MEs) > 0) {
           me_mat <- t(as.matrix(MEs[, !grepl("^ME(grey|0)$", colnames(MEs))]))
@@ -3754,7 +3832,7 @@ filter_hdwgcna_by_de <- function(hdwgcna_dir,
               Module = ComplexHeatmap::anno_simple(mod_col,
                 col = setNames(mod_col, mod_col), width = grid::unit(0.5,"cm")))
             pdf(file.path(ct_dir, paste0("eigengene_heatmap_DE_", ct_tag, ".pdf")),
-                width=10, height=max(4, sum(keep)*0.5+2))
+                width=18, height=18)
             ComplexHeatmap::draw(ComplexHeatmap::Heatmap(me_de, name="ME",
               col = viridis::viridis(100), cluster_rows=TRUE, cluster_columns=TRUE,
               left_annotation=left_ha, show_row_names=TRUE, row_labels=mod_col,
@@ -3765,11 +3843,9 @@ filter_hdwgcna_by_de <- function(hdwgcna_dir,
             cat("  Eigengene DE heatmap saved\n")
           }
         }
-      }, error = function(e) message("  Eigengene DE heatmap skipped: ", conditionMessage(e)))
+      }
 
-    }, error = function(e) {
-      message("  Skipped (", ct_tag, "): ", conditionMessage(e))
-    })
+    }
   }
 
   invisible(NULL)
@@ -3784,16 +3860,11 @@ filter_hdwgcna_by_de <- function(hdwgcna_dir,
 # using GO:0003700 (DNA-binding transcription factor activity).
 # Works for any organism with GO annotation (Arabidopsis, human, mouse, etc.).
 get_tfs_from_orgdb <- function(orgdb, keytype = "TAIR") {
-  tryCatch({
-    tfs <- AnnotationDbi::select(orgdb,
-                                  keys    = "GO:0003700",
-                                  columns = keytype,
-                                  keytype = "GO")[[keytype]]
-    unique(stats::na.omit(tfs))
-  }, error = function(e) {
-    message("Could not retrieve TFs via GO:0003700 (", e$message, ")")
-    character(0)
-  })
+  tfs <- AnnotationDbi::select(orgdb,
+                               keys    = "GO:0003700",
+                               columns = keytype,
+                               keytype = "GO")[[keytype]]
+  unique(stats::na.omit(tfs))
 }
 
 
@@ -4155,7 +4226,7 @@ generate_network_pdf <- function(results,
   if (!length(results)) { message("No results to plot for ", method_name); return(invisible(NULL)) }
 
   pdf_path <- file.path(output_dir, paste0(method_name, "_network_report.pdf"))
-  pdf(pdf_path, width = 12, height = 10)
+  pdf(pdf_path, width = 18, height = 18)
 
   # ── Cover page with description ─────────────────────────────────────────────
   grid::grid.newpage()
@@ -4333,7 +4404,7 @@ visualize_network_per_cluster <- function(network_results,
   }
 
   pdf_path <- file.path(output_dir, paste0(method_name, "_network_visualization.pdf"))
-  pdf(pdf_path, width = 14, height = 11)
+  pdf(pdf_path, width = 18, height = 18)
 
   grid::grid.newpage()
   grid::grid.text(paste0(method_name, " - Network Visualization"),
@@ -4429,7 +4500,7 @@ generate_cluster_profile_report <- function(cluster_assignments,
   clusters_to_plot <- unique(cluster_assignments$cluster[cluster_assignments$cluster != "grey"])
   pdf_path <- file.path(output_dir, paste0(method_name, "_cluster_profiles.pdf"))
 
-  pdf(pdf_path, width = 14, height = 11)
+  pdf(pdf_path, width = 18, height = 18)
 
   grid::grid.newpage()
   grid::grid.text("Gene Cluster Profiles",
@@ -4750,7 +4821,7 @@ test_network_thresholds <- function(heatmap_results,
 
   # Generate comparison PDF
   pdf_path <- file.path(output_dir, paste0(method, "_threshold_comparison.pdf"))
-  pdf(pdf_path, width = 14, height = 11)
+  pdf(pdf_path, width = 18, height = 18)
 
   # Title page
   grid::grid.newpage()
@@ -4841,3 +4912,119 @@ test_network_thresholds <- function(heatmap_results,
 
   invisible(list(pdf = pdf_path, summary = results_summary, recommendation = best_name))
 }
+
+
+# ── TF Co-expression Network ─────────────────────────────────────────────────
+
+build_tf_network <- function(edges, tfs, de_mat) {
+  e_tf <- edges[(edges$source %in% tfs) | (edges$target %in% tfs), ]
+
+  .classify_de <- function(row) {
+    vals <- as.numeric(row[!is.na(row)])
+    if (length(vals) == 0) return("mixed")
+    n_up <- sum(vals > 0); n_dn <- sum(vals < 0)
+    if (n_up > 0 && n_dn == 0) return("up")
+    if (n_dn > 0 && n_up == 0) return("down")
+    return("mixed")
+  }
+  de_dir <- data.frame(
+    gene      = rownames(de_mat),
+    direction = apply(de_mat, 1, .classify_de),
+    stringsAsFactors = FALSE
+  )
+
+  all_genes <- unique(c(e_tf$source, e_tf$target))
+  node_df   <- data.frame(
+    gene  = all_genes,
+    is_tf = all_genes %in% tfs,
+    stringsAsFactors = FALSE
+  )
+  node_df$direction <- de_dir$direction[match(node_df$gene, de_dir$gene)]
+  node_df$direction[is.na(node_df$direction)] <- "mixed"
+
+  g <- igraph::graph_from_data_frame(
+    e_tf[, c("source", "target", "weight")],
+    directed = FALSE, vertices = node_df
+  )
+  list(graph = g, node_df = node_df, edge_df = e_tf)
+}
+
+plot_tf_de_network <- function(net, output_dir,
+                                layout       = "stress",
+                                n_hub_label  = 15,
+                                contrast_tag = "condition_1_vs_condition_2",
+                                output_pdf   = "network_tf_DE_direction.pdf",
+                                output_width = 12,
+                                output_height = 10) {
+  g       <- net$graph
+  node_df <- net$node_df
+
+  dir_colors <- c("up" = "#C0392B", "down" = "#2471A3", "mixed" = "#AAAAAA")
+  node_df$color      <- dir_colors[node_df$direction]
+  node_df$shape_type <- ifelse(node_df$is_tf, "triangle", "circle")
+
+  deg     <- igraph::degree(g)
+  tf_idx  <- which(node_df$is_tf)
+  tf_degs <- deg[node_df$gene[tf_idx]]
+  top_tfs <- names(sort(tf_degs, decreasing = TRUE))[seq_len(min(n_hub_label, length(tf_degs)))]
+  node_df$label <- ifelse(node_df$gene %in% top_tfs, node_df$gene, NA_character_)
+
+  igraph::V(g)$node_color <- node_df$color[match(igraph::V(g)$name, node_df$gene)]
+  igraph::V(g)$shape_type <- node_df$shape_type[match(igraph::V(g)$name, node_df$gene)]
+  igraph::V(g)$node_label <- node_df$label[match(igraph::V(g)$name, node_df$gene)]
+
+  # Pre-compute layout with spacing control
+  if (layout == "fr") {
+    set.seed(42)
+    coords <- igraph::layout_with_fr(g, niter = 1000)
+    coords[, 1] <- coords[, 1] * 3.5
+    coords[, 2] <- coords[, 2] * 3.5
+    lay <- ggraph::create_layout(g, layout = "manual",
+                                  x = coords[, 1], y = coords[, 2])
+  } else if (layout == "lgl") {
+    g_simple <- igraph::simplify(g)
+    coords   <- suppressWarnings(igraph::layout_with_lgl(g_simple,
+                                         maxiter  = 200,
+                                         maxdelta = igraph::vcount(g_simple)^0.6,
+                                         area     = igraph::vcount(g_simple)^3.0,
+                                         coolexp  = 1.5))
+    coords[, 1] <- coords[, 1] * 2.0
+    coords[, 2] <- coords[, 2] * 2.0
+    lay <- ggraph::create_layout(g, layout = "manual",
+                                  x = coords[, 1], y = coords[, 2])
+  } else {
+    lay <- ggraph::create_layout(g, layout = layout)
+  }
+  p <- ggraph::ggraph(lay) +
+    ggraph::geom_edge_link(alpha = 0.15, colour = "grey70", linewidth = 0.3) +
+    ggraph::geom_node_point(
+      ggplot2::aes(colour = node_color, shape = shape_type),
+      size = 2.5
+    ) +
+    ggraph::geom_node_text(
+      ggplot2::aes(label = node_label),
+      size = 2.5, repel = TRUE, max.overlaps = 20, na.rm = TRUE
+    ) +
+    ggplot2::scale_colour_identity() +
+    ggplot2::scale_shape_manual(
+      values = c("circle" = 16, "triangle" = 17),
+      labels = c("circle" = "Co-expression partner", "triangle" = "Transcription factor"),
+      name   = NULL
+    ) +
+    ggplot2::theme_void() +
+    ggplot2::labs(
+      title   = paste0("TF co-expression network (", contrast_tag, ")"),
+      caption = "Red = up-regulated | Blue = down-regulated | Grey = mixed across cell types"
+    ) +
+    ggplot2::theme(
+      legend.position = "bottom",
+      plot.title      = ggplot2::element_text(size = 11, face = "bold"),
+      plot.caption    = ggplot2::element_text(size = 8, colour = "grey40")
+    )
+
+  out_file <- file.path(output_dir, output_pdf)
+  ggplot2::ggsave(out_file, p, width = output_width, height = output_height, device = "pdf")
+  message("Network saved to ", out_file)
+  invisible(p)
+}
+
