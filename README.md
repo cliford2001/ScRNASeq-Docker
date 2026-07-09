@@ -4,6 +4,40 @@ Helper library and Docker environment for single-cell RNA-seq of *Arabidopsis th
 
 ---
 
+## System requirements
+
+### Minimum hardware
+
+| Resource | Minimum | Recommended |
+|---|---|---|
+| RAM | 64 GB | 128 GB+ |
+| CPU | 8 cores | 32+ cores |
+| Storage | 100 GB free | 500 GB SSD |
+| OS | Ubuntu 20.04 / macOS 13+ with Docker | Ubuntu 22.04+ |
+
+> CellRanger's `--localcores` flag should match available CPUs. The pipeline was validated on a 24-core / 70 GB RAM server (R + Python steps) and a 128-core / 1 TB RAM server (CellRanger alignment with `--localcores=80`).
+
+### Storage breakdown (4-sample run, Arabidopsis)
+
+Measured from the actual pipeline run. Sizes may vary with sequencing depth and cell count.
+
+| Component | Size |
+|---|---|
+| Docker image (`matigara/scrnaseq:latest`) | 10.4 GB |
+| CellRanger 7.1.0 binary | 1.9 GB |
+| Reference genome (TAIR10, `cellranger mkref` output) | 1.6 GB |
+| Raw FASTQs (4 samples, R1 + R2) | 15 – 25 GB |
+| CellRanger output (4 samples, `--no-bam`) | 2.5 GB |
+| Seurat checkpoint objects (`.rds`) | 1.4 GB |
+| Pipeline results (plots, tables, PDFs) | 2.2 GB |
+| **Total** | **~35 – 45 GB** |
+
+Key savings:
+- `--no-bam` in `cellranger count` avoids BAM files (~20–30 GB per sample)
+- Intermediate `.rds` checkpoints can be deleted once downstream steps are validated
+
+---
+
 ## Repository structure
 
 ```
