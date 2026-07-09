@@ -459,7 +459,7 @@ Also update the `universe` background gene vector in `run_simple_go_enrichment` 
 
 ## Software versions
 
-All analyses run inside `matigara/scrnaseq:latest` (Ubuntu 24.04.4 LTS, R 4.5.3, Python 3.12.3, CellRanger 7.1.0).
+All analyses run inside `matigara/scrnaseq:latest` (Ubuntu 24.04.4 LTS, R 4.5.3, Python 3.12.3, CellRanger 7.1.0). CellRanger is bundled in the image — no separate installation required.
 
 ### R packages
 
